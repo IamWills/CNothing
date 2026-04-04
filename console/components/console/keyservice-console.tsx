@@ -114,6 +114,12 @@ export function KeyServiceConsole() {
   React.useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) {
+      const sameOriginConnection = {
+        baseUrl: window.location.origin,
+        adminToken: "",
+      };
+      setConnection(sameOriginConnection);
+      setConnectionDraft(sameOriginConnection);
       return;
     }
     try {

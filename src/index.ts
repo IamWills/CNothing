@@ -10,8 +10,43 @@ import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler
 import { toHttpResponse } from "./utils/errors";
 import { corsHeaders } from "./utils/http";
 
+function parseForwardedHeader(value: string | null): { proto?: string; host?: string } {
+  if (!value) {
+    return {};
+  }
+
+  const firstEntry = value.split(",")[0]?.trim();
+  if (!firstEntry) {
+    return {};
+  }
+
+  const result: { proto?: string; host?: string } = {};
+  for (const segment of firstEntry.split(";")) {
+    const [rawKey, rawValue] = segment.split("=", 2);
+    const key = rawKey?.trim().toLowerCase();
+    const normalizedValue = rawValue?.trim().replace(/^"|"$/g, "");
+    if (!key || !normalizedValue) {
+      continue;
+    }
+    if (key === "proto") {
+      result.proto = normalizedValue;
+    }
+    if (key === "host") {
+      result.host = normalizedValue;
+    }
+  }
+  return result;
+}
+
 function inferBaseUrl(request: Request): string {
-  return new URL(request.url).origin;
+  const requestUrl = new URL(request.url);
+  const forwarded = parseForwardedHeader(request.headers.get("Forwarded"));
+  const forwardedProto = request.headers.get("X-Forwarded-Proto")?.split(",")[0]?.trim();
+  const forwardedHost = request.headers.get("X-Forwarded-Host")?.split(",")[0]?.trim();
+  const host = forwardedHost || forwarded.host || request.headers.get("Host") || requestUrl.host;
+  const proto = forwardedProto || forwarded.proto || requestUrl.protocol.replace(/:$/, "");
+
+  return `${proto}://${host}`;
 }
 
 function withCors(response: Response, request: Request): Response {

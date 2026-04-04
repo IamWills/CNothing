@@ -1,0 +1,79 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "KeyService AuthAI KV",
+  "name_for_model": "keyservice_authai_kv",
+  "description_for_human": "Register a client public key, obtain one-time encrypted challenges, and read or write encrypted KV payloads without exposing plaintext to the AI.",
+  "description_for_model": "KeyService AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI should never request or handle private keys. Instead, it registers a client public key, receives an encrypted one-time challenge for the client backend, and then forwards auth and data envelopes produced by that backend for kv save/read operations.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "http://localhost:3021/openapi.json",
+    "is_user_authenticated": false
+  },
+  "server": {
+    "type": "http",
+    "base_url": "http://localhost:3021"
+  },
+  "tools": [
+    {
+      "name": "get_authai_public_key",
+      "description": "Return the authai public key metadata used to encrypt auth and data envelopes toward keyservice.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "authai_register",
+      "description": "Register a client public key and receive an encrypted one-time challenge for the client backend.",
+      "input_schema": {
+        "type": "object",
+        "required": ["client_public_key"],
+        "properties": {
+          "client_public_key": { "type": "string" },
+          "client_key_alg": { "type": "string" },
+          "client_key_id": { "type": "string" },
+          "client_label": { "type": "string" },
+          "metadata": { "type": "object" }
+        }
+      }
+    },
+    {
+      "name": "authai_refresh",
+      "description": "Consume a valid auth envelope and issue the next encrypted challenge for the client backend.",
+      "input_schema": {
+        "type": "object",
+        "required": ["auth_envelope"],
+        "properties": {
+          "auth_envelope": { "type": "object" }
+        }
+      }
+    },
+    {
+      "name": "kv_save",
+      "description": "Save one or more encrypted KV items for the authenticated client namespace.",
+      "input_schema": {
+        "type": "object",
+        "required": ["auth_envelope", "data_envelope"],
+        "properties": {
+          "auth_envelope": { "type": "object" },
+          "data_envelope": { "type": "object" }
+        }
+      }
+    },
+    {
+      "name": "kv_read",
+      "description": "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key.",
+      "input_schema": {
+        "type": "object",
+        "required": ["auth_envelope", "query_envelope"],
+        "properties": {
+          "auth_envelope": { "type": "object" },
+          "query_envelope": { "type": "object" }
+        }
+      }
+    }
+  ]
+}

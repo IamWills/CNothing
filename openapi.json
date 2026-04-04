@@ -1,0 +1,93 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "KeyService AuthAI KV API",
+    "version": "2.0.0",
+    "description": "Production-grade authai registration, one-time challenge authentication, and encrypted KV storage API."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3021"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service health status"
+          }
+        }
+      }
+    },
+    "/v1/authai/public-key": {
+      "get": {
+        "summary": "Get the authai public key metadata",
+        "responses": {
+          "200": {
+            "description": "AuthAI public key metadata"
+          }
+        }
+      }
+    },
+    "/v1/authai/register": {
+      "post": {
+        "summary": "Register or reuse a client public key",
+        "responses": {
+          "200": {
+            "description": "Client registration result including an encrypted one-time challenge"
+          }
+        }
+      }
+    },
+    "/v1/authai/refresh": {
+      "post": {
+        "summary": "Refresh the one-time challenge using a valid auth envelope",
+        "responses": {
+          "200": {
+            "description": "New encrypted one-time challenge"
+          }
+        }
+      }
+    },
+    "/v1/kv/save": {
+      "post": {
+        "summary": "Store encrypted KV items for the authenticated client namespace",
+        "responses": {
+          "200": {
+            "description": "Save result plus next encrypted challenge"
+          }
+        }
+      }
+    },
+    "/v1/kv/read": {
+      "post": {
+        "summary": "Read encrypted KV items for the authenticated client namespace",
+        "responses": {
+          "200": {
+            "description": "Read result plus next encrypted challenge"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "get": {
+        "summary": "MCP server information or SSE endpoint negotiation",
+        "responses": {
+          "200": {
+            "description": "MCP server info"
+          }
+        }
+      },
+      "post": {
+        "summary": "MCP JSON-RPC message endpoint",
+        "responses": {
+          "200": {
+            "description": "MCP JSON-RPC response"
+          }
+        }
+      }
+    }
+  }
+}

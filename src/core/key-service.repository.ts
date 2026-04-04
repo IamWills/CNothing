@@ -1,0 +1,447 @@
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
+import { pool } from "../db";
+import type {
+  AuditEventRecord,
+  ChallengeRecord,
+  ClientRecord,
+  JsonObject,
+  KvRecord,
+} from "./key-service.entity";
+
+function normalizeMetadata(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonObject)
+    : {};
+}
+
+function asIso(value: unknown): string {
+  return new Date(String(value)).toISOString();
+}
+
+function mapClientRow(row: Record<string, unknown>): ClientRecord {
+  return {
+    client_uuid: String(row.client_uuid),
+    public_key_pem: String(row.public_key_pem),
+    public_key_fingerprint: String(row.public_key_fingerprint),
+    key_alg: String(row.key_alg),
+    key_id: row.key_id ? String(row.key_id) : null,
+    client_label: row.client_label ? String(row.client_label) : null,
+    metadata: normalizeMetadata(row.metadata),
+    created_at: asIso(row.created_at),
+    updated_at: asIso(row.updated_at),
+  };
+}
+
+function mapChallengeRow(row: Record<string, unknown>): ChallengeRecord {
+  return {
+    challenge_id: String(row.challenge_id),
+    client_uuid: String(row.client_uuid),
+    purpose: String(row.purpose),
+    nonce_hash: String(row.nonce_hash),
+    issued_at: asIso(row.issued_at),
+    expires_at: asIso(row.expires_at),
+    used_at: row.used_at ? asIso(row.used_at) : null,
+    status: String(row.status) as ChallengeRecord["status"],
+    request_id: row.request_id ? String(row.request_id) : null,
+    metadata: normalizeMetadata(row.metadata),
+  };
+}
+
+function mapKvRow(row: Record<string, unknown>): KvRecord {
+  return {
+    id: String(row.id),
+    client_uuid: String(row.client_uuid),
+    namespace: String(row.namespace),
+    record_key: String(row.record_key),
+    cipher_alg: String(row.cipher_alg),
+    ciphertext: row.ciphertext as Buffer,
+    cipher_iv: row.cipher_iv as Buffer,
+    cipher_tag: row.cipher_tag as Buffer,
+    wrapped_dek_alg: String(row.wrapped_dek_alg),
+    wrapped_dek: row.wrapped_dek as Buffer,
+    wrapped_dek_iv: row.wrapped_dek_iv as Buffer,
+    wrapped_dek_tag: row.wrapped_dek_tag as Buffer,
+    value_fingerprint: String(row.value_fingerprint),
+    metadata: normalizeMetadata(row.metadata),
+    created_at: asIso(row.created_at),
+    updated_at: asIso(row.updated_at),
+    last_read_at: row.last_read_at ? asIso(row.last_read_at) : null,
+  };
+}
+
+function mapAuditRow(row: Record<string, unknown>): AuditEventRecord {
+  return {
+    id: String(row.id),
+    client_uuid: row.client_uuid ? String(row.client_uuid) : null,
+    action: String(row.action),
+    status: String(row.status),
+    request_id: row.request_id ? String(row.request_id) : null,
+    error_code: row.error_code ? String(row.error_code) : null,
+    metadata: normalizeMetadata(row.metadata),
+    created_at: asIso(row.created_at),
+  };
+}
+
+async function queryRow<T>(
+  client: PoolClient,
+  sql: string,
+  params: unknown[],
+  mapper: (row: Record<string, unknown>) => T,
+): Promise<T | null> {
+  const result = await client.query(sql, params);
+  return result.rows[0] ? mapper(result.rows[0] as Record<string, unknown>) : null;
+}
+
+export class KeyServiceRepository {
+  async withTransaction<T>(handler: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await handler(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async findClientByFingerprint(
+    client: PoolClient,
+    fingerprint: string,
+  ): Promise<ClientRecord | null> {
+    return queryRow(
+      client,
+      `
+        SELECT *
+        FROM authai_clients
+        WHERE public_key_fingerprint = $1
+        LIMIT 1
+      `,
+      [fingerprint],
+      mapClientRow,
+    );
+  }
+
+  async findClientByUuid(client: PoolClient, clientUuid: string): Promise<ClientRecord | null> {
+    return queryRow(
+      client,
+      `
+        SELECT *
+        FROM authai_clients
+        WHERE client_uuid = $1
+        LIMIT 1
+      `,
+      [clientUuid],
+      mapClientRow,
+    );
+  }
+
+  async upsertClient(
+    client: PoolClient,
+    input: {
+      publicKeyPem: string;
+      publicKeyFingerprint: string;
+      keyAlg: string;
+      keyId?: string;
+      clientLabel?: string;
+      metadata: JsonObject;
+    },
+  ): Promise<ClientRecord> {
+    const existing = await this.findClientByFingerprint(client, input.publicKeyFingerprint);
+    if (existing) {
+      const result = await client.query(
+        `
+          UPDATE authai_clients
+          SET
+            public_key_pem = $2,
+            key_alg = $3,
+            key_id = $4,
+            client_label = $5,
+            metadata = $6::jsonb
+          WHERE client_uuid = $1
+          RETURNING *
+        `,
+        [
+          existing.client_uuid,
+          input.publicKeyPem,
+          input.keyAlg,
+          input.keyId ?? null,
+          input.clientLabel ?? null,
+          JSON.stringify(input.metadata),
+        ],
+      );
+      return mapClientRow(result.rows[0] as Record<string, unknown>);
+    }
+
+    const result = await client.query(
+      `
+        INSERT INTO authai_clients (
+          client_uuid,
+          public_key_pem,
+          public_key_fingerprint,
+          key_alg,
+          key_id,
+          client_label,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.publicKeyPem,
+        input.publicKeyFingerprint,
+        input.keyAlg,
+        input.keyId ?? null,
+        input.clientLabel ?? null,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapClientRow(result.rows[0] as Record<string, unknown>);
+  }
+
+  async createChallenge(
+    client: PoolClient,
+    input: {
+      clientUuid: string;
+      purpose: string;
+      nonceHash: string;
+      issuedAt: Date;
+      expiresAt: Date;
+      requestId?: string;
+      metadata: JsonObject;
+    },
+  ): Promise<ChallengeRecord> {
+    const result = await client.query(
+      `
+        INSERT INTO authai_challenges (
+          challenge_id,
+          client_uuid,
+          purpose,
+          nonce_hash,
+          issued_at,
+          expires_at,
+          status,
+          request_id,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8::jsonb)
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.clientUuid,
+        input.purpose,
+        input.nonceHash,
+        input.issuedAt.toISOString(),
+        input.expiresAt.toISOString(),
+        input.requestId ?? null,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapChallengeRow(result.rows[0] as Record<string, unknown>);
+  }
+
+  async findChallengeById(
+    client: PoolClient,
+    challengeId: string,
+  ): Promise<ChallengeRecord | null> {
+    return queryRow(
+      client,
+      `
+        SELECT *
+        FROM authai_challenges
+        WHERE challenge_id = $1
+        LIMIT 1
+      `,
+      [challengeId],
+      mapChallengeRow,
+    );
+  }
+
+  async markChallengeUsed(
+    client: PoolClient,
+    challengeId: string,
+    requestId?: string,
+  ): Promise<ChallengeRecord | null> {
+    return queryRow(
+      client,
+      `
+        UPDATE authai_challenges
+        SET
+          status = 'used',
+          used_at = NOW(),
+          request_id = COALESCE($2, request_id)
+        WHERE challenge_id = $1
+        RETURNING *
+      `,
+      [challengeId, requestId ?? null],
+      mapChallengeRow,
+    );
+  }
+
+  async revokeOtherActiveChallenges(
+    client: PoolClient,
+    clientUuid: string,
+    challengeId: string,
+    purpose: string,
+  ): Promise<void> {
+    await client.query(
+      `
+        UPDATE authai_challenges
+        SET status = 'revoked'
+        WHERE client_uuid = $1
+          AND purpose = $2
+          AND status = 'active'
+          AND challenge_id <> $3
+      `,
+      [clientUuid, purpose, challengeId],
+    );
+  }
+
+  async upsertKvRecord(
+    client: PoolClient,
+    input: {
+      clientUuid: string;
+      namespace: string;
+      recordKey: string;
+      cipherAlg: string;
+      ciphertext: Buffer;
+      cipherIv: Buffer;
+      cipherTag: Buffer;
+      wrappedDekAlg: string;
+      wrappedDek: Buffer;
+      wrappedDekIv: Buffer;
+      wrappedDekTag: Buffer;
+      valueFingerprint: string;
+      metadata: JsonObject;
+    },
+  ): Promise<KvRecord> {
+    const result = await client.query(
+      `
+        INSERT INTO authai_kv_records (
+          id,
+          client_uuid,
+          namespace,
+          record_key,
+          cipher_alg,
+          ciphertext,
+          cipher_iv,
+          cipher_tag,
+          wrapped_dek_alg,
+          wrapped_dek,
+          wrapped_dek_iv,
+          wrapped_dek_tag,
+          value_fingerprint,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+        ON CONFLICT (client_uuid, namespace, record_key)
+        DO UPDATE SET
+          cipher_alg = EXCLUDED.cipher_alg,
+          ciphertext = EXCLUDED.ciphertext,
+          cipher_iv = EXCLUDED.cipher_iv,
+          cipher_tag = EXCLUDED.cipher_tag,
+          wrapped_dek_alg = EXCLUDED.wrapped_dek_alg,
+          wrapped_dek = EXCLUDED.wrapped_dek,
+          wrapped_dek_iv = EXCLUDED.wrapped_dek_iv,
+          wrapped_dek_tag = EXCLUDED.wrapped_dek_tag,
+          value_fingerprint = EXCLUDED.value_fingerprint,
+          metadata = EXCLUDED.metadata
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.clientUuid,
+        input.namespace,
+        input.recordKey,
+        input.cipherAlg,
+        input.ciphertext,
+        input.cipherIv,
+        input.cipherTag,
+        input.wrappedDekAlg,
+        input.wrappedDek,
+        input.wrappedDekIv,
+        input.wrappedDekTag,
+        input.valueFingerprint,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapKvRow(result.rows[0] as Record<string, unknown>);
+  }
+
+  async findKvRecords(
+    client: PoolClient,
+    input: { clientUuid: string; namespace: string; keys: string[] },
+  ): Promise<KvRecord[]> {
+    const result = await client.query(
+      `
+        SELECT *
+        FROM authai_kv_records
+        WHERE client_uuid = $1
+          AND namespace = $2
+          AND record_key = ANY($3::text[])
+      `,
+      [input.clientUuid, input.namespace, input.keys],
+    );
+    return result.rows.map((row) => mapKvRow(row as Record<string, unknown>));
+  }
+
+  async markKvRead(
+    client: PoolClient,
+    input: { clientUuid: string; namespace: string; keys: string[] },
+  ): Promise<void> {
+    await client.query(
+      `
+        UPDATE authai_kv_records
+        SET last_read_at = NOW()
+        WHERE client_uuid = $1
+          AND namespace = $2
+          AND record_key = ANY($3::text[])
+      `,
+      [input.clientUuid, input.namespace, input.keys],
+    );
+  }
+
+  async appendAuditEvent(
+    client: PoolClient,
+    input: {
+      clientUuid?: string | null;
+      action: string;
+      status: string;
+      requestId?: string | null;
+      errorCode?: string | null;
+      metadata: JsonObject;
+    },
+  ): Promise<AuditEventRecord> {
+    const result = await client.query(
+      `
+        INSERT INTO authai_audit_events (
+          id,
+          client_uuid,
+          action,
+          status,
+          request_id,
+          error_code,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.clientUuid ?? null,
+        input.action,
+        input.status,
+        input.requestId ?? null,
+        input.errorCode ?? null,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapAuditRow(result.rows[0] as Record<string, unknown>);
+  }
+}

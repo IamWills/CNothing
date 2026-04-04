@@ -23,6 +23,7 @@ function withCors(response: Response, request: Request): Response {
 function renderHomePage(baseUrl: string): string {
   const endpointRows = [
     ["/health", "Health check"],
+    ["/skill.md", "Primary skill markdown for AI discovery"],
     ["/mcp", "MCP info endpoint"],
     ["/openapi.json", "OpenAPI document"],
     ["/v1/authai/public-key", "AuthAI public key"],
@@ -77,6 +78,25 @@ async function router(request: Request): Promise<Response> {
 
   if (pathname === "/health") {
     return withCors(Response.json({ status: "ok", service: config.serviceName }), request);
+  }
+
+  if (pathname === "/skill.md" && request.method === "GET") {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const content = readFileSync(
+      path.join(__dirname, "..", "skills", "keyservice-authai", "SKILL.md"),
+      "utf8",
+    );
+    return withCors(
+      new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+        },
+      }),
+      request,
+    );
   }
 
   if (pathname === "/" && request.method === "GET") {

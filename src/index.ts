@@ -1,7 +1,9 @@
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { handleAdminRequest } from "./admin/admin.api";
 import { handleKeyRequest } from "./api/key.api";
+import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
 import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
@@ -94,6 +96,12 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (pathname.startsWith("/v1/")) {
+    if (pathname.startsWith("/v1/catalog/")) {
+      return withCors(await handleCatalogRequest(request), request);
+    }
+    if (pathname.startsWith("/v1/admin/")) {
+      return withCors(await handleAdminRequest(request), request);
+    }
     return withCors(await handleKeyRequest(request), request);
   }
 

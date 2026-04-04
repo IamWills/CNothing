@@ -5,8 +5,11 @@ import type {
   AuditEventRecord,
   ChallengeRecord,
   ClientRecord,
+  ClientSummary,
   JsonObject,
   KvRecord,
+  KvRecordSummary,
+  NamespaceSummary,
 } from "./key-service.entity";
 
 function normalizeMetadata(value: unknown): JsonObject {
@@ -48,6 +51,15 @@ function mapChallengeRow(row: Record<string, unknown>): ChallengeRecord {
   };
 }
 
+function mapClientSummaryRow(row: Record<string, unknown>): ClientSummary {
+  return {
+    ...mapClientRow(row),
+    namespace_count: Number(row.namespace_count ?? 0),
+    kv_count: Number(row.kv_count ?? 0),
+    last_activity_at: row.last_activity_at ? asIso(row.last_activity_at) : null,
+  };
+}
+
 function mapKvRow(row: Record<string, unknown>): KvRecord {
   return {
     id: String(row.id),
@@ -62,6 +74,28 @@ function mapKvRow(row: Record<string, unknown>): KvRecord {
     wrapped_dek: row.wrapped_dek as Buffer,
     wrapped_dek_iv: row.wrapped_dek_iv as Buffer,
     wrapped_dek_tag: row.wrapped_dek_tag as Buffer,
+    value_fingerprint: String(row.value_fingerprint),
+    metadata: normalizeMetadata(row.metadata),
+    created_at: asIso(row.created_at),
+    updated_at: asIso(row.updated_at),
+    last_read_at: row.last_read_at ? asIso(row.last_read_at) : null,
+  };
+}
+
+function mapNamespaceRow(row: Record<string, unknown>): NamespaceSummary {
+  return {
+    namespace: String(row.namespace),
+    key_count: Number(row.key_count ?? 0),
+    last_updated_at: row.last_updated_at ? asIso(row.last_updated_at) : null,
+  };
+}
+
+function mapKvSummaryRow(row: Record<string, unknown>): KvRecordSummary {
+  return {
+    id: String(row.id),
+    client_uuid: String(row.client_uuid),
+    namespace: String(row.namespace),
+    record_key: String(row.record_key),
     value_fingerprint: String(row.value_fingerprint),
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
@@ -138,6 +172,28 @@ export class KeyServiceRepository {
       [clientUuid],
       mapClientRow,
     );
+  }
+
+  async listClients(client: PoolClient): Promise<ClientSummary[]> {
+    const result = await client.query(
+      `
+        SELECT
+          c.*,
+          COUNT(k.id)::int AS kv_count,
+          COUNT(DISTINCT k.namespace)::int AS namespace_count,
+          MAX(GREATEST(
+            c.updated_at,
+            COALESCE(k.updated_at, c.updated_at),
+            COALESCE(k.last_read_at, c.updated_at)
+          )) AS last_activity_at
+        FROM authai_clients c
+        LEFT JOIN authai_kv_records k
+          ON k.client_uuid = c.client_uuid
+        GROUP BY c.client_uuid
+        ORDER BY last_activity_at DESC NULLS LAST, c.updated_at DESC
+      `,
+    );
+    return result.rows.map((row) => mapClientSummaryRow(row as Record<string, unknown>));
   }
 
   async upsertClient(
@@ -389,6 +445,68 @@ export class KeyServiceRepository {
       [input.clientUuid, input.namespace, input.keys],
     );
     return result.rows.map((row) => mapKvRow(row as Record<string, unknown>));
+  }
+
+  async findKvRecord(
+    client: PoolClient,
+    input: { clientUuid: string; namespace: string; key: string },
+  ): Promise<KvRecord | null> {
+    return queryRow(
+      client,
+      `
+        SELECT *
+        FROM authai_kv_records
+        WHERE client_uuid = $1
+          AND namespace = $2
+          AND record_key = $3
+        LIMIT 1
+      `,
+      [input.clientUuid, input.namespace, input.key],
+      mapKvRow,
+    );
+  }
+
+  async listNamespaces(client: PoolClient, clientUuid: string): Promise<NamespaceSummary[]> {
+    const result = await client.query(
+      `
+        SELECT
+          namespace,
+          COUNT(*)::int AS key_count,
+          MAX(updated_at) AS last_updated_at
+        FROM authai_kv_records
+        WHERE client_uuid = $1
+        GROUP BY namespace
+        ORDER BY last_updated_at DESC NULLS LAST, namespace ASC
+      `,
+      [clientUuid],
+    );
+    return result.rows.map((row) => mapNamespaceRow(row as Record<string, unknown>));
+  }
+
+  async listKvRecordSummaries(
+    client: PoolClient,
+    input: { clientUuid: string; namespace: string },
+  ): Promise<KvRecordSummary[]> {
+    const result = await client.query(
+      `
+        SELECT
+          id,
+          client_uuid,
+          namespace,
+          record_key,
+          value_fingerprint,
+          metadata,
+          created_at,
+          updated_at,
+          last_read_at
+        FROM authai_kv_records
+        WHERE client_uuid = $1
+          AND namespace = $2
+        ORDER BY updated_at DESC, record_key ASC
+      `,
+      [input.clientUuid, input.namespace],
+    );
+    return result.rows.map((row) => mapKvSummaryRow(row as Record<string, unknown>));
   }
 
   async markKvRead(

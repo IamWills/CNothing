@@ -12,6 +12,12 @@ export type ClientRecord = {
   updated_at: string;
 };
 
+export type ClientSummary = ClientRecord & {
+  namespace_count: number;
+  kv_count: number;
+  last_activity_at: string | null;
+};
+
 export type ChallengeRecord = {
   challenge_id: string;
   client_uuid: string;
@@ -38,6 +44,24 @@ export type KvRecord = {
   wrapped_dek: Buffer;
   wrapped_dek_iv: Buffer;
   wrapped_dek_tag: Buffer;
+  value_fingerprint: string;
+  metadata: JsonObject;
+  created_at: string;
+  updated_at: string;
+  last_read_at: string | null;
+};
+
+export type NamespaceSummary = {
+  namespace: string;
+  key_count: number;
+  last_updated_at: string | null;
+};
+
+export type KvRecordSummary = {
+  id: string;
+  client_uuid: string;
+  namespace: string;
+  record_key: string;
   value_fingerprint: string;
   metadata: JsonObject;
   created_at: string;

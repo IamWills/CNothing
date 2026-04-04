@@ -1,13 +1,21 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import config from "../config";
 import { encryptForPublicKey, decryptWithPrivateKey, getPublicKeyInfo } from "../crypto/hybrid-envelope";
-import {
-  createSha256Fingerprint,
-  decryptWithAes256Gcm,
-  encryptWithAes256Gcm,
-  generateDataEncryptionKey,
-} from "../crypto/master-key";
+import { createSha256Fingerprint } from "../crypto/master-key";
 import { NotFoundError, ValidationError, ConflictError } from "../utils/errors";
+import { decryptKvRecordValue, encryptJsonValue } from "./key-service-kv";
+import {
+  addSeconds,
+  assertJsonSerializable,
+  authaiPublicKeyView,
+  createNonce,
+  normalizeClientPublicKey,
+  normalizeJsonObject,
+  normalizeNamespace,
+  normalizeOptionalString,
+  normalizeRecordKey,
+  now,
+} from "./key-service.shared";
 import type {
   AuthaiPublicKeyView,
   ChallengeRecord,
@@ -56,91 +64,6 @@ type ReadEnvelopePayload = {
   namespace: string;
   keys: string[];
 };
-
-function normalizeString(
-  value: unknown,
-  fieldName: string,
-  pattern: RegExp,
-  maxLength: number,
-): string {
-  const normalized = typeof value === "string" ? value.trim() : "";
-  if (!normalized) {
-    throw new ValidationError(`${fieldName} is required`, { error_code: "missing_field" });
-  }
-  if (normalized.length > maxLength || !pattern.test(normalized)) {
-    throw new ValidationError(`${fieldName} contains unsupported characters`, {
-      error_code: "invalid_field",
-      field: fieldName,
-    });
-  }
-  return normalized;
-}
-
-function normalizeOptionalString(value: unknown, maxLength: number): string | undefined {
-  const normalized = typeof value === "string" ? value.trim() : "";
-  if (!normalized) return undefined;
-  if (normalized.length > maxLength) {
-    throw new ValidationError("Field is too long", { error_code: "field_too_long" });
-  }
-  return normalized;
-}
-
-function normalizeJsonObject(value: unknown): JsonObject {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonObject)
-    : {};
-}
-
-function assertJsonSerializable(value: unknown, fieldName: string): void {
-  try {
-    JSON.stringify(value);
-  } catch (error) {
-    throw new ValidationError(`${fieldName} must be JSON serializable`, {
-      error_code: "invalid_json",
-      cause: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-function now(): Date {
-  return new Date();
-}
-
-function addSeconds(date: Date, seconds: number): Date {
-  return new Date(date.getTime() + seconds * 1000);
-}
-
-function createNonce(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-function authaiPublicKeyView(): AuthaiPublicKeyView {
-  return getPublicKeyInfo({
-    publicKeyPem: config.authaiPublicKeyPem,
-    keyId: config.authaiKeyId,
-  });
-}
-
-function normalizeNamespace(value: unknown): string {
-  return normalizeString(value, "namespace", /^[a-zA-Z0-9._:@/-]{1,160}$/, 160);
-}
-
-function normalizeRecordKey(value: unknown): string {
-  return normalizeString(value, "key", /^[a-zA-Z0-9._:@/-]{1,256}$/, 256);
-}
-
-function normalizeClientPublicKey(value: unknown): string {
-  const pem = typeof value === "string" ? value.trim() : "";
-  if (!pem) {
-    throw new ValidationError("client_public_key is required", { error_code: "missing_field" });
-  }
-  if (!pem.includes("BEGIN PUBLIC KEY")) {
-    throw new ValidationError("client_public_key must be a PEM encoded public key", {
-      error_code: "invalid_public_key",
-    });
-  }
-  return pem;
-}
 
 export class KeyService {
   private readonly repo = new KeyServiceRepository();
@@ -358,29 +281,20 @@ export class KeyService {
         const recordKey = normalizeRecordKey(item?.key);
         assertJsonSerializable(item?.value, `value for ${recordKey}`);
         const metadata = normalizeJsonObject(item?.metadata);
-        const plaintext = Buffer.from(JSON.stringify(item?.value ?? null), "utf8");
-        const dek = generateDataEncryptionKey();
-        const encryptedValue = encryptWithAes256Gcm({
-          plaintext,
-          key: dek,
-        });
-        const wrappedDek = encryptWithAes256Gcm({
-          plaintext: dek,
-          key: config.masterKey,
-        });
+        const encryptedValue = encryptJsonValue(item?.value);
         await this.repo.upsertKvRecord(tx, {
           clientUuid: client.client_uuid,
           namespace,
           recordKey,
-          cipherAlg: encryptedValue.algorithm,
+          cipherAlg: encryptedValue.cipher_alg,
           ciphertext: encryptedValue.ciphertext,
-          cipherIv: encryptedValue.iv,
-          cipherTag: encryptedValue.tag,
-          wrappedDekAlg: wrappedDek.algorithm,
-          wrappedDek: wrappedDek.ciphertext,
-          wrappedDekIv: wrappedDek.iv,
-          wrappedDekTag: wrappedDek.tag,
-          valueFingerprint: createSha256Fingerprint(plaintext),
+          cipherIv: encryptedValue.cipher_iv,
+          cipherTag: encryptedValue.cipher_tag,
+          wrappedDekAlg: encryptedValue.wrapped_dek_alg,
+          wrappedDek: encryptedValue.wrapped_dek,
+          wrappedDekIv: encryptedValue.wrapped_dek_iv,
+          wrappedDekTag: encryptedValue.wrapped_dek_tag,
+          valueFingerprint: encryptedValue.value_fingerprint,
           metadata,
         });
         keys.push(recordKey);
@@ -459,21 +373,7 @@ export class KeyService {
     });
 
     const resultItems = Object.fromEntries(
-      rows.map((row) => {
-        const dek = decryptWithAes256Gcm({
-          ciphertext: row.wrapped_dek,
-          key: config.masterKey,
-          iv: row.wrapped_dek_iv,
-          tag: row.wrapped_dek_tag,
-        });
-        const plaintext = decryptWithAes256Gcm({
-          ciphertext: row.ciphertext,
-          key: dek,
-          iv: row.cipher_iv,
-          tag: row.cipher_tag,
-        });
-        return [row.record_key, JSON.parse(plaintext.toString("utf8"))];
-      }),
+      rows.map((row) => [row.record_key, decryptKvRecordValue(row)]),
     );
 
     const resultEnvelope = encryptForPublicKey({

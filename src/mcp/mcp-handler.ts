@@ -1,4 +1,5 @@
 import config from "../config";
+import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
 import { KeyService } from "../core/key-service";
 
 const service = new KeyService();
@@ -55,92 +56,19 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
         break;
 
       case "resources/list":
-        result = { resources: [] };
+        result = { resources: listMcpResources() };
         break;
 
       case "resources/read":
         result = {
           contents: [
-            {
-              uri: String(params.uri ?? "resource://keyservice/protocol"),
-              mimeType: "application/json",
-              text: JSON.stringify(
-                {
-                  protocol: "authai-kv",
-                  public_key_endpoint: "/v1/authai/public-key",
-                  register_endpoint: "/v1/authai/register",
-                  refresh_endpoint: "/v1/authai/refresh",
-                  save_endpoint: "/v1/kv/save",
-                  read_endpoint: "/v1/kv/read",
-                },
-                null,
-                2,
-              ),
-            },
+            readMcpResource(String(params.uri ?? "resource://keyservice/protocol")),
           ],
         };
         break;
 
       case "tools/list":
-        result = {
-          tools: [
-            {
-              name: "get_authai_public_key",
-              description: "Return the keyservice authai public key metadata for encrypting auth and data envelopes.",
-              inputSchema: { type: "object", properties: {} },
-            },
-            {
-              name: "authai_register",
-              description: "Register a client public key and receive an encrypted one-time challenge for the client backend.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  client_public_key: { type: "string" },
-                  client_key_alg: { type: "string" },
-                  client_key_id: { type: "string" },
-                  client_label: { type: "string" },
-                  metadata: { type: "object" },
-                },
-                required: ["client_public_key"],
-              },
-            },
-            {
-              name: "authai_refresh",
-              description: "Consume a valid auth envelope and issue the next encrypted challenge for the client backend.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  auth_envelope: { type: "object" },
-                },
-                required: ["auth_envelope"],
-              },
-            },
-            {
-              name: "kv_save",
-              description: "Store one or more encrypted KV items for the authenticated client namespace.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  auth_envelope: { type: "object" },
-                  data_envelope: { type: "object" },
-                },
-                required: ["auth_envelope", "data_envelope"],
-              },
-            },
-            {
-              name: "kv_read",
-              description: "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  auth_envelope: { type: "object" },
-                  query_envelope: { type: "object" },
-                },
-                required: ["auth_envelope", "query_envelope"],
-              },
-            },
-          ],
-        };
+        result = { tools: listMcpTools() };
         break;
 
       case "tools/call": {

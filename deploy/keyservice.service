@@ -1,0 +1,20 @@
+[Unit]
+Description=KeyService (Bun) for cnothing.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=KEYSERVICE_USER
+Group=KEYSERVICE_GROUP
+WorkingDirectory=KEYSERVICE_ROOT
+EnvironmentFile=KEYSERVICE_ROOT/.env
+ExecStart=KEYSERVICE_BUN run src/index.ts
+Restart=on-failure
+RestartSec=5
+# Hardening (optional; comment out if Bun needs more caps)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

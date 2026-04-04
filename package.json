@@ -9,6 +9,10 @@
     "start": "bun run src/index.ts",
     "migrate": "bun run src/db/migrate.ts",
     "generate-secrets": "bun run src/scripts/generate-secrets.ts",
+    "console:dev": "cd console && bun run dev",
+    "console:build": "cd console && bun run build",
+    "console:start": "cd console && bun run start",
+    "console:typecheck": "cd console && bun run typecheck",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"
   },

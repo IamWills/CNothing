@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8f8fb;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-muted: #f1f2f6;
+  --border: #e8e8ee;
+  --brand: #ca279c;
+  --system-blue: #0a84ff;
+  --radius-view: 28px;
+  --radius-control: 24px;
+  --radius-tab-nav: 28px;
+  --radius-tab-item: 24px;
+  --radius-textarea: 30px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans:
+    "SF Pro Text", "SF Pro Display", "SF Pro Rounded", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  transition-timing-function: linear;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand) 10%, transparent), transparent 36%),
+    linear-gradient(180deg, #ffffff 0%, #f7f7fb 44%, #eef1f7 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--foreground);
+  background: transparent;
+  font-family:
+    "SF Pro Text", "SF Pro Display", "SF Pro Rounded", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+button,
+[role="button"],
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: default;
+}
+
+pre,
+code {
+  font-family:
+    "SF Mono", "ui-monospace", "Menlo", "Monaco", "Cascadia Mono", "Segoe UI Mono", monospace;
+}

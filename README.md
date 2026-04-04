@@ -29,6 +29,38 @@
 - `POST /v1/kv/read`
   - 使用 `auth_envelope + query_envelope` 读取 KV，结果加密给客户端公钥
 
+## Console And Browse APIs
+
+仓库现在包含一个与 `MoloUI` 视觉语言对齐的独立控制台应用：
+
+- `console/`
+  - Next.js 控制台，用于浏览 MCP tools / resources、skills、客户端、namespace、键名和值
+
+控制台依赖的后端 API 也对 AI / 自动化开放：
+
+- `GET /v1/catalog/mcp`
+  - 列出 MCP tools 与 resources
+- `GET /v1/catalog/skills`
+  - 列出仓库内 skills
+- `GET /v1/admin/clients`
+  - 列出已注册客户端
+- `POST /v1/admin/clients/register`
+  - 手工通过复制粘贴公钥完成注册
+- `GET /v1/admin/clients/:client_uuid/namespaces`
+  - 列出客户端下的 namespaces
+- `GET /v1/admin/clients/:client_uuid/kv?namespace=...`
+  - 列出指定 namespace 下的键名
+- `GET /v1/admin/clients/:client_uuid/kv/value?namespace=...&key=...`
+  - 查看指定键的解密值
+- `POST /v1/admin/clients/:client_uuid/kv/save`
+  - 通过管理 API 手工写入 JSON 值
+
+说明：
+
+- `catalog` API 默认可公开访问，适合浏览和 AI 发现
+- `admin` API 会复用 `KEYSERVICE_BEARER_TOKEN` 作为 Bearer Token 鉴权
+- 如果未配置 `KEYSERVICE_BEARER_TOKEN`，控制台和 admin API 将不额外拦截
+
 ## Security Model
 
 - 客户端注册时只提交公钥
@@ -84,6 +116,21 @@ bun install
 bun run generate-secrets
 bun run migrate
 bun run dev
+```
+
+启动控制台：
+
+```bash
+cd keyservice/console
+bun install
+bun run dev
+```
+
+或者从仓库根目录：
+
+```bash
+cd keyservice
+bun run console:dev
 ```
 
 ## Publish As Standalone Repo

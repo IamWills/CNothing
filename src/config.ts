@@ -7,6 +7,7 @@ export interface AppConfig {
   databaseUrl: string;
   serviceName: string;
   protocolVersion: string;
+  consoleUrl?: string;
   masterKey: Buffer;
   authaiPrivateKeyPath: string;
   authaiPublicKeyPath?: string;
@@ -102,6 +103,7 @@ const config: AppConfig = {
   databaseUrl: readRequiredEnv("DATABASE_URL"),
   serviceName: "KeyService",
   protocolVersion: "2024-11-05",
+  consoleUrl: process.env.KEYSERVICE_CONSOLE_URL?.trim() || undefined,
   masterKey,
   authaiPrivateKeyPath: resolveFilePath(authaiPrivateKeyPath),
   authaiPublicKeyPath: authaiPublicKeyPath ? resolveFilePath(authaiPublicKeyPath) : undefined,

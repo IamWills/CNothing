@@ -20,6 +20,52 @@ function withCors(response: Response, request: Request): Response {
   return new Response(response.body, { status: response.status, headers });
 }
 
+function renderHomePage(baseUrl: string): string {
+  const endpointRows = [
+    ["/health", "Health check"],
+    ["/mcp", "MCP info endpoint"],
+    ["/openapi.json", "OpenAPI document"],
+    ["/v1/authai/public-key", "AuthAI public key"],
+    ["/v1/catalog/mcp", "Browsable MCP tools and resources"],
+    ["/v1/catalog/skills", "Bundled skills catalog"],
+  ];
+
+  const links = endpointRows
+    .map(
+      ([pathname, label]) =>
+        `<li><a href="${pathname}" style="color:#ca279c;text-decoration:none;font-weight:600">${pathname}</a><span style="color:#64748b"> - ${label}</span></li>`,
+    )
+    .join("");
+
+  const consoleHint = config.consoleUrl
+    ? `<p style="margin:16px 0 0"><a href="${config.consoleUrl}" style="display:inline-flex;align-items:center;gap:8px;background:#ca279c;color:white;padding:10px 16px;border-radius:999px;text-decoration:none;font-weight:600">Open KeyService Console</a></p>`
+    : `<p style="color:#475569">The standalone console UI is a separate Next.js app. If you deploy it, set <code>KEYSERVICE_CONSOLE_URL</code> to redirect the homepage there.</p>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KeyService</title>
+  </head>
+  <body style="margin:0;font-family:'SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#ffffff 0%,#f7f7fb 44%,#eef1f7 100%);color:#0f172a">
+    <main style="max-width:960px;margin:0 auto;padding:48px 20px 64px">
+      <section style="border:1px solid #e8e8ee;border-radius:28px;background:rgba(255,255,255,0.92);box-shadow:0 18px 60px rgba(15,23,42,0.06);padding:32px">
+        <div style="display:inline-flex;align-items:center;border:1px solid #e8e8ee;border-radius:999px;padding:6px 10px;font-size:12px;background:#f1f2f6">KeyService API</div>
+        <h1 style="font-size:40px;line-height:1.05;margin:16px 0 12px">KeyService is running.</h1>
+        <p style="font-size:17px;line-height:1.6;color:#475569;margin:0 0 20px">This deployment is serving the KeyService backend at <code>${baseUrl}</code>.</p>
+        ${consoleHint}
+      </section>
+
+      <section style="margin-top:20px;border:1px solid #e8e8ee;border-radius:28px;background:white;padding:28px">
+        <h2 style="margin:0 0 14px;font-size:22px">Available endpoints</h2>
+        <ul style="margin:0;padding-left:18px;display:grid;gap:10px">${links}</ul>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
 async function router(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
@@ -31,6 +77,22 @@ async function router(request: Request): Promise<Response> {
 
   if (pathname === "/health") {
     return withCors(Response.json({ status: "ok", service: config.serviceName }), request);
+  }
+
+  if (pathname === "/" && request.method === "GET") {
+    if (config.consoleUrl) {
+      return withCors(Response.redirect(config.consoleUrl, 302), request);
+    }
+    return withCors(
+      new Response(renderHomePage(baseUrl), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+        },
+      }),
+      request,
+    );
   }
 
   if (pathname === "/mcp" && request.method === "POST") {

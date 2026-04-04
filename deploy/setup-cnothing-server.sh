@@ -181,5 +181,14 @@ if ! certbot renew --dry-run; then
   echo "certbot renew --dry-run failed (another certbot may be running); retry later." >&2
 fi
 
+chmod +x "${DEPLOY_DIR}/keyservice-sync.sh"
+sed -e "s|KEYSERVICE_DIR|${KEYSERVICE_DIR}|g" \
+  "${DEPLOY_DIR}/keyservice-sync.service" > /etc/systemd/system/keyservice-sync.service
+cp "${DEPLOY_DIR}/keyservice-sync.timer" /etc/systemd/system/keyservice-sync.timer
+systemctl daemon-reload
+systemctl enable keyservice-sync.timer
+systemctl start keyservice-sync.timer
+
 echo "Done. KeyService: systemctl status keyservice"
 echo "HTTPS: certbot certificates; auto-renew: systemctl status certbot.timer"
+echo "Git sync: systemctl status keyservice-sync.timer; logs: journalctl -u keyservice-sync.service"

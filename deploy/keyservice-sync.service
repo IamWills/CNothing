@@ -1,0 +1,10 @@
+[Unit]
+Description=KeyService: sync from GitHub and restart
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=KEYSERVICE_ROOT=KEYSERVICE_DIR
+Environment=KEYSERVICE_GIT_REF=origin/main
+ExecStart=KEYSERVICE_DIR/deploy/keyservice-sync.sh

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Pull latest code from GitHub, install deps, migrate DB, restart keyservice.
+# Pull latest code from GitHub, install deps, build the console, migrate DB, restart services.
 # Intended for root + systemd timer. Configure branch with KEYSERVICE_GIT_REF (default: origin/main).
 set -euo pipefail
 
 KEYSERVICE_ROOT="${KEYSERVICE_ROOT:-/var/www/keyservice}"
+KEYSERVICE_CONSOLE_ROOT="${KEYSERVICE_CONSOLE_ROOT:-${KEYSERVICE_ROOT}/console}"
 GIT_REF="${KEYSERVICE_GIT_REF:-origin/main}"
 LOG_TAG="keyservice-sync"
 
@@ -43,9 +44,22 @@ fi
 log "updated ${before} -> ${after}"
 
 /usr/local/bin/bun install
+if [[ -d "${KEYSERVICE_CONSOLE_ROOT}" ]]; then
+  (
+    cd "${KEYSERVICE_CONSOLE_ROOT}"
+    /usr/local/bin/bun install
+    /usr/local/bin/bun run build
+  )
+  log "console dependencies installed and build completed"
+fi
 /usr/local/bin/bun run migrate
 
 chown -R keyservice:keyservice "${KEYSERVICE_ROOT}"
 
 systemctl restart keyservice.service
 log "keyservice.service restarted"
+
+if systemctl list-unit-files keyservice-console.service >/dev/null 2>&1; then
+  systemctl restart keyservice-console.service
+  log "keyservice-console.service restarted"
+fi

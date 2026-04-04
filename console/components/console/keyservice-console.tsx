@@ -39,7 +39,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:3021";
 const STORAGE_KEY = "keyservice-console-settings";
 
 type StoredSettings = {
@@ -74,12 +73,14 @@ function formatDate(value: string | null): string {
 }
 
 export function KeyServiceConsole() {
+  const initialBaseUrl =
+    typeof window === "undefined" ? "" : window.location.origin;
   const [connection, setConnection] = React.useState<ConsoleConnection>({
-    baseUrl: DEFAULT_BASE_URL,
+    baseUrl: initialBaseUrl,
     adminToken: "",
   });
   const [connectionDraft, setConnectionDraft] = React.useState<StoredSettings>({
-    baseUrl: DEFAULT_BASE_URL,
+    baseUrl: initialBaseUrl,
     adminToken: "",
   });
   const [publicKey, setPublicKey] = React.useState<AuthaiPublicKey | null>(null);
@@ -118,11 +119,11 @@ export function KeyServiceConsole() {
     try {
       const parsed = JSON.parse(stored) as StoredSettings;
       setConnection({
-        baseUrl: parsed.baseUrl || DEFAULT_BASE_URL,
+        baseUrl: parsed.baseUrl || window.location.origin,
         adminToken: parsed.adminToken || "",
       });
       setConnectionDraft({
-        baseUrl: parsed.baseUrl || DEFAULT_BASE_URL,
+        baseUrl: parsed.baseUrl || window.location.origin,
         adminToken: parsed.adminToken || "",
       });
     } catch {
@@ -244,7 +245,7 @@ export function KeyServiceConsole() {
 
   function saveConnectionSettings() {
     const nextConnection = {
-      baseUrl: connectionDraft.baseUrl.trim() || DEFAULT_BASE_URL,
+      baseUrl: connectionDraft.baseUrl.trim() || window.location.origin,
       adminToken: connectionDraft.adminToken.trim(),
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextConnection));

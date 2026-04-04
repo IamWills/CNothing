@@ -45,6 +45,22 @@ ensure_bun() {
   }
 }
 
+# systemd runs as non-root; a symlink /usr/local/bin/bun -> /root/.bun/bin/bun breaks execution.
+ensure_bun_not_root_symlink() {
+  local target=/usr/local/bin/bun
+  [[ -e "${target}" ]] || return 0
+  if [[ -L "${target}" ]]; then
+    local real
+    real="$(readlink -f "${target}" 2>/dev/null || true)"
+    if [[ "${real}" == /root/.bun/* ]]; then
+      echo "Replacing ${target} (symlink under /root) with a real binary for systemd user..."
+      rm -f "${target}"
+      cp /root/.bun/bin/bun "${target}"
+      chmod 755 "${target}"
+    fi
+  fi
+}
+
 detect_parent() {
   if [[ -n "${BOTGROCER_PARENT:-}" ]]; then
     echo "${BOTGROCER_PARENT}"
@@ -54,6 +70,10 @@ detect_parent() {
   bot="$(find /var/www /srv /home /opt /root -maxdepth 6 -type d -name botgrocer 2>/dev/null | head -1 || true)"
   if [[ -n "${bot}" ]]; then
     dirname "${bot}"
+    return
+  fi
+  if [[ -d /var/www/botgrocer.com ]]; then
+    echo "/var/www"
     return
   fi
   echo "Could not find botgrocer; set BOTGROCER_PARENT to the parent directory." >&2
@@ -68,6 +88,7 @@ echo "Using parent: ${PARENT}"
 echo "KeyService dir: ${KEYSERVICE_DIR}"
 
 ensure_bun
+ensure_bun_not_root_symlink
 
 if [[ ! -d "${KEYSERVICE_DIR}/.git" ]]; then
   git clone "${REPO_URL}" "${KEYSERVICE_DIR}"
@@ -101,6 +122,8 @@ if ! id -u "${KEYSERVICE_USER}" >/dev/null 2>&1; then
 fi
 chown -R "${KEYSERVICE_USER}:${KEYSERVICE_USER}" "${KEYSERVICE_DIR}"
 
+BUN_BIN="$(command -v bun)"
+ensure_bun_not_root_symlink
 BUN_BIN="$(command -v bun)"
 SERVICE_SRC="${DEPLOY_DIR}/keyservice.service"
 SERVICE_DST="/etc/systemd/system/keyservice.service"
@@ -136,14 +159,27 @@ if ! command -v certbot >/dev/null 2>&1; then
   fi
 fi
 
-certbot --nginx \
-  -d cnothing.com -d www.cnothing.com -d ai.cnothing.com \
-  --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" \
-  --redirect
+# Some Certbot/LE combinations error on a 3-domain first request ("No such authorization");
+# issue apex first, then expand to www + ai.
+CERTBOT_BASE=(--nginx --non-interactive --agree-tos -m "${CERTBOT_EMAIL}")
+if certbot certificates 2>/dev/null | grep -q "Certificate Name: cnothing.com"; then
+  certbot "${CERTBOT_BASE[@]}" \
+    --cert-name cnothing.com \
+    -d cnothing.com -d www.cnothing.com -d ai.cnothing.com \
+    --expand
+else
+  certbot "${CERTBOT_BASE[@]}" -d cnothing.com --redirect
+  certbot "${CERTBOT_BASE[@]}" \
+    --cert-name cnothing.com \
+    -d cnothing.com -d www.cnothing.com -d ai.cnothing.com \
+    --expand
+fi
 
 systemctl enable certbot.timer 2>/dev/null || true
 systemctl start certbot.timer 2>/dev/null || true
-certbot renew --dry-run
+if ! certbot renew --dry-run; then
+  echo "certbot renew --dry-run failed (another certbot may be running); retry later." >&2
+fi
 
 echo "Done. KeyService: systemctl status keyservice"
 echo "HTTPS: certbot certificates; auto-renew: systemctl status certbot.timer"

@@ -121,6 +121,87 @@ CNothing 的角色拆分非常简单：
 - `admin` 接口复用 `KEYSERVICE_BEARER_TOKEN` 做 Bearer 鉴权
 - 如果未配置 `KEYSERVICE_BEARER_TOKEN`，console 和 admin API 不会增加额外阻拦
 
+## 第三方服务端 SDK
+
+仓库现在也包含了一套可复用的 Node.js / Bun SDK，方便第三方后端直接接入 `https://cnothing.com`，而不用自己手写整套协议实现。
+
+发布到包仓库后的目标安装方式是：
+
+```bash
+npm install cnothing
+```
+
+或者：
+
+```bash
+bun add cnothing
+```
+
+这套 SDK 是给服务端使用的。第三方系统可以：
+
+- 生成或加载自己的客户端密钥对
+- 把自己的公钥注册到 `CNothing`
+- 始终把私钥保留在自己的后端本地
+- 通过 `https://cnothing.com` 读写加密 KV
+- 让 AI 使用 CNothing 协议参与流程，但仍然看不到明文 secrets
+
+最小示例：
+
+```ts
+import { CNothingClient, generateClientKeyPair } from "cnothing";
+
+const { privateKeyPem, publicKeyPem } = generateClientKeyPair();
+
+const client = new CNothingClient({
+  baseUrl: "https://cnothing.com",
+  clientPrivateKeyPem: privateKeyPem,
+  clientPublicKeyPem: publicKeyPem,
+  clientLabel: "third-party-service",
+});
+
+await client.register();
+
+await client.saveJson({
+  namespace: "thirdparty.example.production",
+  items: [
+    {
+      key: "provider/openai/api-key",
+      value: { apiKey: "sk-..." },
+    },
+  ],
+});
+
+const readResult = await client.readJson({
+  namespace: "thirdparty.example.production",
+  keys: ["provider/openai/api-key"],
+});
+
+console.log(readResult.result.items["provider/openai/api-key"]);
+```
+
+SDK 当前主要导出：
+
+- `CNothingClient`
+  - 高层 register / refresh / save / read 工作流客户端
+- `generateClientKeyPair()`
+  - 生成本地 RSA 密钥对，适合开发或初始配置
+- 一组 envelope helpers
+  - 给想要自己控制底层请求构造方式的团队使用
+
+## 为什么第三方用户不用担心 AI 泄露敏感数据
+
+只要第三方后端按照 `https://cnothing.com` 的协议正确接入，AI 仍然拿不到第三方的敏感明文。
+
+原因是：
+
+- 第三方后端会把客户端私钥保留在本地
+- `CNothing` 返回的 challenge 永远加密给第三方的公钥
+- 第三方后端在本地解密 challenge，并在本地生成加密给 CNothing 的 envelope
+- AI 只会转发密文 envelope 和非敏感元数据
+- 读取结果也会重新加密给第三方公钥，因此只有第三方后端能解密
+
+换句话说，AI 可以参与流程编排，但它并不会成为第三方明文 secrets 的持有者。真正的可信边界依然是第三方后端和 CNothing 协议本身，而不是模型上下文。
+
 ## 安全属性
 
 - 注册阶段客户端只提交公钥
@@ -175,6 +256,21 @@ bun run generate-secrets
 - `.local-keys/generated.env`
 
 这种显式初始化方式是刻意设计的：服务身份不会在重启后悄悄变化，密钥轮换也会保持可控且可审计。
+
+如果你不是部署 CNothing 本身，而是从第三方后端接入 `https://cnothing.com`，那就在第三方项目里安装 SDK 并这样配置：
+
+```ts
+import { CNothingClient } from "cnothing";
+
+const client = new CNothingClient({
+  baseUrl: "https://cnothing.com",
+  clientPrivateKeyPem: process.env.CNOTHING_CLIENT_PRIVATE_KEY_PEM!,
+  clientPublicKeyPem: process.env.CNOTHING_CLIENT_PUBLIC_KEY_PEM!,
+  clientLabel: "my-service",
+});
+
+await client.register();
+```
 
 ### 3. 配置环境变量
 

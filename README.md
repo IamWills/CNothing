@@ -121,6 +121,87 @@ Notes:
 - The `admin` APIs reuse `KEYSERVICE_BEARER_TOKEN` for Bearer authentication
 - If `KEYSERVICE_BEARER_TOKEN` is unset, the console and admin APIs do not add extra blocking
 
+## Third-Party Server SDK
+
+This repository now also includes a reusable Node.js and Bun SDK so third-party backends can integrate with `https://cnothing.com` without reimplementing the protocol by hand.
+
+After publishing the package, the intended installation flow is:
+
+```bash
+npm install cnothing
+```
+
+or:
+
+```bash
+bun add cnothing
+```
+
+The SDK is designed for backend use. A third-party service can:
+
+- Generate or load its own client key pair
+- Register its public key with `CNothing`
+- Keep its private key local
+- Save and read encrypted KV values through `https://cnothing.com`
+- Let AI use the CNothing protocol without ever seeing plaintext secrets
+
+Minimal example:
+
+```ts
+import { CNothingClient, generateClientKeyPair } from "cnothing";
+
+const { privateKeyPem, publicKeyPem } = generateClientKeyPair();
+
+const client = new CNothingClient({
+  baseUrl: "https://cnothing.com",
+  clientPrivateKeyPem: privateKeyPem,
+  clientPublicKeyPem: publicKeyPem,
+  clientLabel: "third-party-service",
+});
+
+await client.register();
+
+await client.saveJson({
+  namespace: "thirdparty.example.production",
+  items: [
+    {
+      key: "provider/openai/api-key",
+      value: { apiKey: "sk-..." },
+    },
+  ],
+});
+
+const readResult = await client.readJson({
+  namespace: "thirdparty.example.production",
+  keys: ["provider/openai/api-key"],
+});
+
+console.log(readResult.result.items["provider/openai/api-key"]);
+```
+
+The SDK exports:
+
+- `CNothingClient`
+  - High-level register / refresh / save / read workflow client
+- `generateClientKeyPair()`
+  - Generate a local RSA key pair for development or first-time setup
+- Envelope helpers
+  - For teams that want lower-level control over how requests are built
+
+## Why Third-Party Users Do Not Need To Fear AI Leaking Their Secrets
+
+When a third-party backend uses `https://cnothing.com` correctly, the AI still does not gain access to the third-party's sensitive plaintext values.
+
+That is because:
+
+- The third-party backend keeps the client private key locally
+- `CNothing` encrypts challenges to the third-party public key
+- The backend decrypts those challenges locally and creates ciphertext envelopes for CNothing
+- AI only forwards ciphertext envelopes and non-sensitive metadata
+- Read results are encrypted back to the third-party public key, so only that backend can decrypt them
+
+In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. The trust boundary remains the third-party backend and the CNothing protocol, not the model context.
+
 ## Security Properties
 
 - Clients only submit public keys during registration
@@ -175,6 +256,21 @@ This creates:
 - `.local-keys/generated.env`
 
 That explicit initialization step is intentional: service identity does not silently change on restart, and key rotation remains operationally visible.
+
+If you are integrating from a separate third-party backend instead of deploying CNothing itself, install the SDK there and point it at `https://cnothing.com`:
+
+```ts
+import { CNothingClient } from "cnothing";
+
+const client = new CNothingClient({
+  baseUrl: "https://cnothing.com",
+  clientPrivateKeyPem: process.env.CNOTHING_CLIENT_PRIVATE_KEY_PEM!,
+  clientPublicKeyPem: process.env.CNOTHING_CLIENT_PUBLIC_KEY_PEM!,
+  clientLabel: "my-service",
+});
+
+await client.register();
+```
 
 ### 3. Configure the environment
 

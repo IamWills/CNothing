@@ -1,0 +1,313 @@
+import { randomUUID } from "node:crypto";
+import {
+  buildAuthEnvelope,
+  buildReadEnvelope,
+  buildSaveEnvelope,
+  decryptChallengeForClient,
+  decryptReadResultForClient,
+  derivePublicKeyPem,
+} from "./crypto";
+import type {
+  AuthEnvelopePayload,
+  AuthaiPublicKey,
+  CNothingClientConfig,
+  CNothingSession,
+  JsonObject,
+  JsonValue,
+  ReadEnvelopePayload,
+  ReadKvResponse,
+  ReadResultPayload,
+  RefreshChallengeResponse,
+  RegisterClientResponse,
+  SaveEnvelopePayload,
+  SaveKvResponse,
+} from "./entity";
+
+const DEFAULT_BASE_URL = "https://cnothing.com";
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, "");
+}
+
+async function requestJson<T>(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+  });
+
+  const text = await response.text();
+  const data = text ? (JSON.parse(text) as unknown) : null;
+
+  if (!response.ok) {
+    const errorMessage =
+      data && typeof data === "object" && "error" in data
+        ? String((data as { error?: { message?: string } }).error?.message ?? "Request failed")
+        : `Request failed with status ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return data as T;
+}
+
+export class CNothingClient {
+  private readonly baseUrl: string;
+  private readonly clientPrivateKeyPem: string;
+  private readonly clientPublicKeyPem: string;
+  private readonly clientKeyId?: string;
+  private readonly clientLabel?: string;
+  private readonly metadata?: JsonObject;
+  private readonly fetchImpl: typeof fetch;
+
+  private session: CNothingSession | null = null;
+
+  constructor(config: CNothingClientConfig) {
+    this.baseUrl = normalizeBaseUrl(config.baseUrl ?? DEFAULT_BASE_URL);
+    this.clientPrivateKeyPem = config.clientPrivateKeyPem;
+    this.clientPublicKeyPem =
+      config.clientPublicKeyPem ?? derivePublicKeyPem(config.clientPrivateKeyPem);
+    this.clientKeyId = config.clientKeyId;
+    this.clientLabel = config.clientLabel;
+    this.metadata = config.metadata;
+    this.fetchImpl = config.fetch ?? fetch;
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  getSession(): CNothingSession | null {
+    return this.session;
+  }
+
+  setSession(session: CNothingSession | null): void {
+    this.session = session;
+  }
+
+  async getAuthaiPublicKey(): Promise<AuthaiPublicKey> {
+    const response = await requestJson<{ ok: true; authai_public_key: AuthaiPublicKey }>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v1/authai/public-key",
+    );
+    return response.authai_public_key;
+  }
+
+  async register(input?: {
+    clientKeyId?: string;
+    clientLabel?: string;
+    metadata?: JsonObject;
+  }): Promise<CNothingSession> {
+    const response = await requestJson<RegisterClientResponse>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v1/authai/register",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          client_public_key: this.clientPublicKeyPem,
+          client_key_id: input?.clientKeyId ?? this.clientKeyId,
+          client_label: input?.clientLabel ?? this.clientLabel,
+          metadata: input?.metadata ?? this.metadata,
+        }),
+      },
+    );
+
+    const challenge = decryptChallengeForClient({
+      clientPrivateKeyPem: this.clientPrivateKeyPem,
+      envelope: response.challenge_for_client,
+      expectedKeyId: input?.clientKeyId ?? this.clientKeyId,
+    });
+
+    const session = {
+      clientUuid: response.client_uuid,
+      challenge,
+      authaiPublicKey: response.authai_public_key,
+    };
+    this.session = session;
+    return session;
+  }
+
+  async refresh(): Promise<CNothingSession> {
+    const session = this.requireSession();
+    const authPayload = this.buildAuthPayload(session, "authai.refresh");
+    const response = await requestJson<RefreshChallengeResponse>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v1/authai/refresh",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          auth_envelope: buildAuthEnvelope({
+            authaiPublicKey: session.authaiPublicKey,
+            payload: authPayload,
+          }),
+        }),
+      },
+    );
+
+    this.session = this.advanceSession({
+      clientUuid: response.client_uuid,
+      authaiPublicKey: response.authai_public_key,
+      nextChallengeEnvelope: response.next_challenge_for_client,
+    });
+    return this.session;
+  }
+
+  async saveJson(input: {
+    namespace: string;
+    items: Array<{ key: string; value: JsonValue; metadata?: JsonObject }>;
+  }): Promise<SaveKvResponse & { session: CNothingSession }> {
+    const session = this.requireSession();
+    const authPayload = this.buildAuthPayload(session, "kv.save");
+    const dataPayload: SaveEnvelopePayload = {
+      v: "ksp1",
+      type: "kv.save",
+      namespace: input.namespace,
+      items: input.items,
+    };
+
+    const response = await requestJson<SaveKvResponse>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v1/kv/save",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          auth_envelope: buildAuthEnvelope({
+            authaiPublicKey: session.authaiPublicKey,
+            payload: authPayload,
+          }),
+          data_envelope: buildSaveEnvelope({
+            authaiPublicKey: session.authaiPublicKey,
+            payload: dataPayload,
+          }),
+        }),
+      },
+    );
+
+    this.session = this.advanceSession({
+      clientUuid: response.client_uuid,
+      authaiPublicKey: response.authai_public_key,
+      nextChallengeEnvelope: response.next_challenge_for_client,
+    });
+
+    return {
+      ...response,
+      session: this.session,
+    };
+  }
+
+  async readJson(input: {
+    namespace: string;
+    keys: string[];
+  }): Promise<
+    ReadKvResponse & {
+      session: CNothingSession;
+      result: ReadResultPayload;
+    }
+  > {
+    const session = this.requireSession();
+    const authPayload = this.buildAuthPayload(session, "kv.read");
+    const queryPayload: ReadEnvelopePayload = {
+      v: "ksp1",
+      type: "kv.read",
+      namespace: input.namespace,
+      keys: input.keys,
+    };
+
+    const response = await requestJson<ReadKvResponse>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v1/kv/read",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          auth_envelope: buildAuthEnvelope({
+            authaiPublicKey: session.authaiPublicKey,
+            payload: authPayload,
+          }),
+          query_envelope: buildReadEnvelope({
+            authaiPublicKey: session.authaiPublicKey,
+            payload: queryPayload,
+          }),
+        }),
+      },
+    );
+
+    const result = decryptReadResultForClient({
+      clientPrivateKeyPem: this.clientPrivateKeyPem,
+      envelope: response.result_envelope_for_client,
+      expectedKeyId: this.clientKeyId,
+    });
+
+    this.session = this.advanceSession({
+      clientUuid: response.client_uuid,
+      authaiPublicKey: response.authai_public_key,
+      nextChallengeEnvelope: response.next_challenge_for_client,
+    });
+
+    return {
+      ...response,
+      result,
+      session: this.session,
+    };
+  }
+
+  private buildAuthPayload(
+    session: CNothingSession,
+    action: AuthEnvelopePayload["action"],
+  ): AuthEnvelopePayload {
+    return {
+      v: "ksp1",
+      type: "auth",
+      action,
+      client_uuid: session.clientUuid,
+      challenge_id: session.challenge.challenge_id,
+      nonce: session.challenge.nonce,
+      issued_at: session.challenge.issued_at,
+      expires_at: session.challenge.expires_at,
+      request_id: randomUUID(),
+    };
+  }
+
+  private advanceSession(input: {
+    clientUuid: string;
+    authaiPublicKey: AuthaiPublicKey;
+    nextChallengeEnvelope: ReadKvResponse["next_challenge_for_client"];
+  }): CNothingSession {
+    const challenge = decryptChallengeForClient({
+      clientPrivateKeyPem: this.clientPrivateKeyPem,
+      envelope: input.nextChallengeEnvelope,
+      expectedKeyId: this.clientKeyId,
+    });
+
+    return {
+      clientUuid: input.clientUuid,
+      challenge,
+      authaiPublicKey: input.authaiPublicKey,
+    };
+  }
+
+  private requireSession(): CNothingSession {
+    if (!this.session) {
+      throw new Error(
+        "CNothing session is not initialized. Call register() first or restore a saved session.",
+      );
+    }
+    return this.session;
+  }
+}
+
+export function createCNothingClient(config: CNothingClientConfig): CNothingClient {
+  return new CNothingClient(config);
+}

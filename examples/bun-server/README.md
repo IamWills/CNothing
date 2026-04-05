@@ -1,0 +1,29 @@
+# Bun Example
+
+This example shows a minimal Bun backend using the published `cnothing` package in blind mode.
+
+## Install
+
+```bash
+cd examples/bun-server
+bun install
+```
+
+## Run
+
+```bash
+CNOTHING_PRIVACY_KEY=replace-me \
+bun run index.ts
+```
+
+Optional environment variables:
+
+- `CNOTHING_BASE_URL`
+- `CNOTHING_CLIENT_PRIVATE_KEY_PEM`
+- `CNOTHING_CLIENT_PUBLIC_KEY_PEM`
+- `CNOTHING_CLIENT_LABEL`
+- `CNOTHING_NAMESPACE`
+- `CNOTHING_KEY`
+- `CNOTHING_SECRET_VALUE`
+
+If you do not provide a key pair, the example generates one locally for the process.

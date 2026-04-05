@@ -1,0 +1,11 @@
+{
+  "name": "cnothing-node-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "cnothing": "^0.1.2"
+  }
+}

@@ -204,6 +204,11 @@ SDK 当前主要导出：
 - 一组 envelope helpers
   - 给想要自己控制底层请求构造方式的团队使用
 
+参考示例：
+
+- [examples/node-server](./examples/node-server)
+- [examples/bun-server](./examples/bun-server)
+
 ## 为什么第三方用户不用担心 AI 泄露敏感数据
 
 只要第三方后端按照 `https://cnothing.com` 的协议正确接入，AI 仍然拿不到第三方的敏感明文。

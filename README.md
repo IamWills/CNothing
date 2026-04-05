@@ -204,6 +204,11 @@ The SDK exports:
 - Envelope helpers
   - For teams that want lower-level control over how requests are built
 
+Reference examples:
+
+- [examples/node-server](./examples/node-server)
+- [examples/bun-server](./examples/bun-server)
+
 ## Why Third-Party Users Do Not Need To Fear AI Leaking Their Secrets
 
 When a third-party backend uses `https://cnothing.com` correctly, the AI still does not gain access to the third-party's sensitive plaintext values.

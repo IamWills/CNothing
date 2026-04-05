@@ -1,19 +1,21 @@
 # CNothing
 
-`CNothing` 现在实现的是一套面向 AI 自动化系统的生产级 `AuthAI + Encrypted KV` 协议。
+For Chinese documentation, see [README.CN.MD](./README.CN.MD).
 
-目标：
+`CNothing` implements a production-oriented `AuthAI + Encrypted KV` protocol for AI automation systems.
 
-- AI 模型不接触敏感值明文
-- 客户端后端持有私钥，作为可信边界
-- `CNothing` 用一次性 challenge 做身份认证
-- KV 按 `client_uuid + namespace + key` 隔离
-- 数据库存储继续使用 envelope encryption 做静态加密
-- HTTP / MCP / Skill 三种入口遵循同一套协议
-- GitHub 仓库：
+Goals:
+
+- Keep plaintext secrets away from AI models
+- Treat the client backend, which holds the private key, as the trusted boundary
+- Use one-time challenges for authentication
+- Isolate KV data by `client_uuid + namespace + key`
+- Keep data encrypted at rest with envelope encryption
+- Expose a consistent protocol across HTTP, MCP, and Skill entry points
+- GitHub repository:
   - [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
 
-详细协议说明见：
+Detailed protocol references:
 
 - [docs/protocol.md](./docs/protocol.md)
 - [docs/mcp.md](./docs/mcp.md)
@@ -21,94 +23,94 @@
 ## Main Endpoints
 
 - `GET /v1/authai/public-key`
-  - 获取 `CNothing` 的 authai 公钥
+  - Return the CNothing AuthAI public key
 - `POST /v1/authai/register`
-  - 注册或复用客户端公钥，并返回加密给客户端公钥的一次性 challenge
+  - Register or reuse a client public key and return a one-time challenge encrypted for that client
 - `POST /v1/authai/refresh`
-  - 使用有效 auth envelope 续签下一次 challenge
+  - Renew the next challenge with a valid auth envelope
 - `POST /v1/kv/save`
-  - 使用 `auth_envelope + data_envelope` 保存 KV
+  - Save KV items using `auth_envelope + data_envelope`
 - `POST /v1/kv/read`
-  - 使用 `auth_envelope + query_envelope` 读取 KV，结果加密给客户端公钥
+  - Read KV items using `auth_envelope + query_envelope`, then return the result encrypted to the client public key
 
 ## Console And Browse APIs
 
-仓库现在包含一个独立的 `CNothing Console` 应用：
+This repository also includes a standalone `CNothing Console` application:
 
 - `console/`
-  - Next.js 控制台，用于浏览 MCP tools / resources、skills、客户端、namespace、键名和值
+  - A Next.js console for browsing MCP tools and resources, skills, clients, namespaces, key names, and values
 
-控制台依赖的后端 API 也对 AI / 自动化开放：
+The console relies on backend APIs that are also available to AI and automation systems:
 
 - `GET /v1/catalog/mcp`
-  - 列出 MCP tools 与 resources
+  - List MCP tools and resources
 - `GET /v1/catalog/skills`
-  - 列出仓库内 skills
+  - List bundled skills in the repository
 - `GET /v1/admin/clients`
-  - 列出已注册客户端
+  - List registered clients
 - `POST /v1/admin/clients/register`
-  - 手工通过复制粘贴公钥完成注册
+  - Manually register a client by pasting in a public key
 - `GET /v1/admin/clients/:client_uuid/namespaces`
-  - 列出客户端下的 namespaces
+  - List namespaces under a client
 - `GET /v1/admin/clients/:client_uuid/kv?namespace=...`
-  - 列出指定 namespace 下的键名
+  - List key names under a namespace
 - `GET /v1/admin/clients/:client_uuid/kv/value?namespace=...&key=...`
-  - 查看指定键的解密值
+  - View the decrypted value for a key
 - `POST /v1/admin/clients/:client_uuid/kv/save`
-  - 通过管理 API 手工写入 JSON 值
+  - Manually write JSON values through the admin API
 
-说明：
+Notes:
 
-- `catalog` API 默认可公开访问，适合浏览和 AI 发现
-- `admin` API 会复用 `KEYSERVICE_BEARER_TOKEN` 作为 Bearer Token 鉴权
-- 如果未配置 `KEYSERVICE_BEARER_TOKEN`，控制台和 admin API 将不额外拦截
+- The `catalog` APIs are public by default and work well for browsing and AI discovery
+- The `admin` APIs reuse `KEYSERVICE_BEARER_TOKEN` for Bearer authentication
+- If `KEYSERVICE_BEARER_TOKEN` is not configured, the console and admin APIs do not add extra blocking
 
 ## Security Model
 
-- 客户端注册时只提交公钥
-- `challenge_for_client` 总是加密给客户端公钥
-- `auth_envelope` 和 `data/query_envelope` 总是加密给 `CNothing`
-- 每个 challenge 单次使用，默认 TTL 由环境变量控制，默认 300 秒
-- 服务端数据按记录级别生成随机 DEK，并由主密钥包裹
+- Clients only submit public keys during registration
+- `challenge_for_client` is always encrypted to the client public key
+- `auth_envelope` and `data/query_envelope` are always encrypted to `CNothing`
+- Each challenge is single-use, with TTL controlled by environment variables and defaulting to 300 seconds
+- Server-side records use per-record random DEKs wrapped by the master key
 
-注意：
+Important constraints:
 
-- AI 不应请求私钥
-- AI 不应解密任何 envelope
-- AI 只能转发密文 envelope 和非敏感键名 / namespace
-- 如果键名本身敏感，请由调用方后端再做映射或哈希
+- AI should never request private keys
+- AI should never decrypt any envelope
+- AI should only forward ciphertext envelopes and non-sensitive key names or namespaces
+- If the key name itself is sensitive, the caller backend should add a mapping or hashing layer
 
 ## Environment
 
 - `PORT`
-  - 默认 `3021`
+  - Defaults to `3021`
 - `DATABASE_URL`
-  - PostgreSQL 连接串
+  - PostgreSQL connection string
 - `KEYSERVICE_MASTER_KEY`
-  - Base64 或 Base64URL 编码的 32 字节主密钥
+  - A 32-byte master key encoded in Base64 or Base64URL
 - `KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH`
-  - `CNothing` 的 RSA 私钥文件路径，用于解密 auth/data/query envelope
+  - Path to the CNothing RSA private key used to decrypt auth, data, and query envelopes
 - `KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH`
-  - 可选；authai 公钥文件路径。若未设置，服务会从私钥推导公钥
+  - Optional AuthAI public key path; if unset, the service derives the public key from the private key
 - `KEYSERVICE_CHALLENGE_TTL_SECONDS`
-  - challenge 有效期，默认 `300`
+  - Challenge TTL, default `300`
 - `KEYSERVICE_BEARER_TOKEN`
-  - 当前新协议不依赖它；仅保留给未来管理接口或兼容场景
+  - Not required by the current protocol; retained for admin and compatibility scenarios
 
-项目可以自己生成主密钥和 authai RSA 密钥对，但建议通过显式命令生成，而不是在服务启动时自动生成：
+You can generate a master key and AuthAI RSA key pair explicitly instead of generating them automatically at service startup:
 
 ```bash
 cd CNothing
 bun run generate-secrets
 ```
 
-该命令会在 `.local-keys/` 下生成：
+This command creates the following files in `.local-keys/`:
 
 - `authai-private-key.pem`
 - `authai-public-key.pem`
 - `generated.env`
 
-这符合生产最佳实践里的“显式初始化”原则：服务身份不会在重启时悄悄变化，密钥轮换也能被运维明确控制。
+That matches the preferred production pattern of explicit initialization: service identity does not silently change on restart, and key rotation stays intentional and operationally visible.
 
 ## Run
 
@@ -120,7 +122,7 @@ bun run migrate
 bun run dev
 ```
 
-启动控制台：
+Start the console:
 
 ```bash
 cd CNothing/console
@@ -128,7 +130,7 @@ bun install
 bun run dev
 ```
 
-或者从仓库根目录：
+Or from the repository root:
 
 ```bash
 cd CNothing
@@ -137,22 +139,22 @@ bun run console:dev
 
 ## Publish As Standalone Repo
 
-`CNothing` 适合以独立仓库发布和部署。公开仓库中建议：
+`CNothing` works well as an independently published and deployed repository. For a public repository:
 
-- 保留 `.env.example`
-- 不提交 `.env`
-- 不提交 `.local-keys/`
-- 在部署环境中通过环境变量或单独的 secrets 目录提供生产密钥
+- Keep `.env.example`
+- Do not commit `.env`
+- Do not commit `.local-keys/`
+- Provide production secrets through environment variables or a separate secrets directory in deployment
 
 ## Files
 
 - [src/core/key-service.ts](./src/core/key-service.ts)
-  - 核心协议编排
+  - Core protocol orchestration
 - [src/core/key-service.repository.ts](./src/core/key-service.repository.ts)
-  - PostgreSQL 仓储
+  - PostgreSQL repository layer
 - [src/crypto/hybrid-envelope.ts](./src/crypto/hybrid-envelope.ts)
-  - `RSA-OAEP-256 + AES-256-GCM` 混合加密
+  - `RSA-OAEP-256 + AES-256-GCM` hybrid encryption
 - [migrations/002_authai_kv.sql](./migrations/002_authai_kv.sql)
-  - `clients/challenges/kv/audit` 表结构
+  - `clients/challenges/kv/audit` schema
 - [skills/keyservice-authai/SKILL.md](./skills/keyservice-authai/SKILL.md)
-  - AI 使用规范
+  - AI usage conventions

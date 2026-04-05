@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, RefreshCcw, Shield, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, RefreshCcw, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,12 @@ const sections: Array<{
   description: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
+  {
+    href: "/standard",
+    title: "Standard",
+    description: "Browse the published CNothing Authentication Standard 1.0 as an expandable implementation profile.",
+    icon: ShieldCheck,
+  },
   {
     href: "/readme",
     title: "Readme",

@@ -1,4 +1,6 @@
+import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageFrame } from "@/components/layout/page-frame";
 import { authStandard, type StandardSection } from "@/lib/auth-standard";
@@ -9,9 +11,23 @@ export function AuthStandardPage() {
       title={authStandard.title}
       description={authStandard.intro}
       actions={
-        <Badge className="border-transparent bg-white/15 px-3 py-1 text-white">
-          {authStandard.status}
-        </Badge>
+        <>
+          <Badge className="border-transparent bg-white/15 px-3 py-1 text-white">
+            {authStandard.status}
+          </Badge>
+          <a href={`${authStandard.canonicalPath}/markdown`}>
+            <Button variant="secondary">
+              Export Markdown
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+          </a>
+          <a href={`${authStandard.canonicalPath}/html`}>
+            <Button variant="secondary">
+              Export HTML
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+          </a>
+        </>
       }
     >
       <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
@@ -19,6 +35,15 @@ export function AuthStandardPage() {
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Published</p>
             <p className="text-sm font-medium text-slate-700">{authStandard.publishedAt}</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Version</p>
+            <p className="text-sm font-medium text-slate-700">{authStandard.version}</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Canonical path</p>
+            <a
+              href={authStandard.canonicalPath}
+              className="break-all text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-4"
+            >
+              {authStandard.canonicalPath}
+            </a>
           </div>
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-slate-950">Section tree</h2>

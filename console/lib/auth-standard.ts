@@ -12,7 +12,9 @@ export const authStandard = {
   title: "CNothing Authentication Standard 1.0",
   shortTitle: "Auth Standard",
   status: "Public Implementation Profile",
+  version: "1.0",
   publishedAt: "2026-04-05",
+  canonicalPath: "/standards/authentication/1.0",
   intro:
     "This standard defines the authentication and operation-authorization rules used by CNothing for challenge-based client identity, envelope submission, replay prevention, and key rotation.",
   sections: [
@@ -361,3 +363,150 @@ export const authStandard = {
     },
   ] satisfies StandardSection[],
 };
+
+export function renderAuthStandardMarkdown(): string {
+  const lines: string[] = [
+    `# ${authStandard.title}`,
+    "",
+    `Status: ${authStandard.status}`,
+    `Published: ${authStandard.publishedAt}`,
+    `Canonical Path: ${authStandard.canonicalPath}`,
+    "",
+    authStandard.intro,
+    "",
+  ];
+
+  for (const section of authStandard.sections) {
+    appendSectionMarkdown(lines, section, 2);
+  }
+
+  return lines.join("\n");
+}
+
+export function renderAuthStandardHtmlDocument(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(authStandard.title)}</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        padding: 40px 24px 80px;
+        background: #f6f7fb;
+        color: #0f172a;
+        font: 16px/1.7 "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      }
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 28px;
+        padding: 40px;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
+      }
+      h1, h2, h3, h4 { line-height: 1.2; margin: 1.6em 0 0.6em; }
+      h1 { margin-top: 0; font-size: 2.4rem; }
+      h2 { font-size: 1.55rem; }
+      h3 { font-size: 1.2rem; }
+      h4 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; color: #475569; }
+      p, li { color: #334155; }
+      pre {
+        overflow: auto;
+        padding: 16px;
+        border-radius: 20px;
+        background: #020617;
+        color: #e2e8f0;
+        font: 13px/1.65 "SF Mono", Menlo, monospace;
+      }
+      ul { padding-left: 1.4rem; }
+      section.section {
+        border-top: 1px solid #e2e8f0;
+        margin-top: 24px;
+        padding-top: 24px;
+      }
+      .summary {
+        color: #64748b;
+        font-size: 0.95rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(authStandard.title)}</h1>
+      <p><strong>Status:</strong> ${escapeHtml(authStandard.status)}</p>
+      <p><strong>Published:</strong> ${escapeHtml(authStandard.publishedAt)}</p>
+      <p><strong>Canonical Path:</strong> ${escapeHtml(authStandard.canonicalPath)}</p>
+      <p>${escapeHtml(authStandard.intro)}</p>
+${authStandard.sections.map((section) => renderSectionHtml(section, 2)).join("\n")}
+    </main>
+  </body>
+</html>`;
+}
+
+function appendSectionMarkdown(lines: string[], section: StandardSection, level: number) {
+  lines.push(`${"#".repeat(level)} ${section.title}`);
+  lines.push("");
+  lines.push(section.summary);
+  lines.push("");
+
+  for (const paragraph of section.paragraphs ?? []) {
+    lines.push(paragraph);
+    lines.push("");
+  }
+
+  if (section.bullets?.length) {
+    for (const bullet of section.bullets) {
+      lines.push(`- ${bullet}`);
+    }
+    lines.push("");
+  }
+
+  if (section.code) {
+    lines.push("```text");
+    lines.push(section.code);
+    lines.push("```");
+    lines.push("");
+  }
+
+  for (const child of section.children ?? []) {
+    appendSectionMarkdown(lines, child, Math.min(level + 1, 4));
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderSectionHtml(section: StandardSection, level: number): string {
+  const headingTag = `h${Math.min(level, 4)}`;
+  const paragraphs = (section.paragraphs ?? [])
+    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+    .join("\n");
+  const bullets = section.bullets?.length
+    ? `<ul>${section.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}</ul>`
+    : "";
+  const code = section.code
+    ? `<pre><code>${escapeHtml(section.code)}</code></pre>`
+    : "";
+  const children = (section.children ?? [])
+    .map((child) => renderSectionHtml(child, level + 1))
+    .join("\n");
+
+  return `<section class="section" id="${escapeHtml(section.id)}">
+    <${headingTag}>${escapeHtml(section.title)}</${headingTag}>
+    <p class="summary">${escapeHtml(section.summary)}</p>
+    ${paragraphs}
+    ${bullets}
+    ${code}
+    ${children}
+  </section>`;
+}

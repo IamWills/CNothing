@@ -7,7 +7,7 @@ import { brand } from "@/lib/brand";
 
 const navigation: Array<{ href: string; label: string }> = [
   { href: "/", label: "Home" },
-  { href: "/standard", label: "Standard" },
+  { href: "/standards/authentication/1.0", label: "Standard" },
   { href: "/readme", label: "Readme" },
   { href: "/catalog", label: "Catalog" },
   { href: "/clients", label: "Clients" },
@@ -65,7 +65,7 @@ export function SiteHeader() {
                     : "border-[color:var(--border)] bg-white text-slate-700 hover:border-slate-400"
                 }`}
               >
-                {item.href === "/standard" ? <ShieldCheck className="mr-2 inline h-4 w-4" /> : null}
+                {item.label === "Standard" ? <ShieldCheck className="mr-2 inline h-4 w-4" /> : null}
                 {item.href === "/readme" ? <FileText className="mr-2 inline h-4 w-4" /> : null}
                 {item.label}
               </a>

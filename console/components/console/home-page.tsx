@@ -18,7 +18,7 @@ const sections: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   {
-    href: "/standard",
+    href: "/standards/authentication/1.0",
     title: "Standard",
     description: "Browse the published CNothing Authentication Standard 1.0 as an expandable implementation profile.",
     icon: ShieldCheck,

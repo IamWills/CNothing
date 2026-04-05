@@ -1,5 +1,5 @@
 [Unit]
-Description=KeyService: sync from GitHub and restart
+Description=CNothing: sync from GitHub and restart
 After=network-online.target postgresql.service
 Wants=network-online.target
 

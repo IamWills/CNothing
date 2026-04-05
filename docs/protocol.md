@@ -2,7 +2,7 @@
 
 ## Overview
 
-`keyservice` 提供一套 `AuthAI + Encrypted KV` 协议，适用于：
+`CNothing` 提供一套 `AuthAI + Encrypted KV` 协议，适用于：
 
 - AI 负责流程编排
 - 客户端后端持有私钥
@@ -16,7 +16,7 @@
 
 部署说明：
 
-- `keyservice` 自身的 authai 私钥与公钥推荐以文件路径配置
+- `CNothing` 自身的 authai 私钥与公钥推荐以文件路径配置
 - 运行时读取：
   - `KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH`
   - `KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH` 可选
@@ -92,7 +92,7 @@
 
 ## Auth Envelope
 
-客户端后端解密 challenge 后，发起 save/read/refresh 前要先生成 `auth_envelope`，并用 `keyservice` 的 authai 公钥加密。
+客户端后端解密 challenge 后，发起 save/read/refresh 前要先生成 `auth_envelope`，并用 `CNothing` 的 authai 公钥加密。
 
 明文结构：
 

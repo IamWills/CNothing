@@ -35,7 +35,7 @@ ensure_bun() {
   if [[ -n "${current}" && "${current}" != /root/.bun/* ]]; then
     return 0
   fi
-  echo "Installing Bun to /usr/local (so user keyservice can run it)..."
+  echo "Installing Bun to /usr/local (so user keyservice can run it for CNothing)..."
   export BUN_INSTALL=/usr/local
   curl -fsSL https://bun.sh/install | bash
   hash -r
@@ -85,7 +85,7 @@ KEYSERVICE_DIR="${PARENT}/keyservice"
 DEPLOY_DIR="${KEYSERVICE_DIR}/deploy"
 
 echo "Using parent: ${PARENT}"
-echo "KeyService dir: ${KEYSERVICE_DIR}"
+echo "CNothing deploy dir: ${KEYSERVICE_DIR}"
 
 ensure_bun
 ensure_bun_not_root_symlink
@@ -138,7 +138,7 @@ systemctl enable keyservice.service
 systemctl restart keyservice.service
 
 if ! systemctl is-active --quiet keyservice.service; then
-  echo "keyservice failed to start; check: journalctl -u keyservice -n 50 --no-pager" >&2
+  echo "CNothing API failed to start; check: journalctl -u keyservice -n 50 --no-pager" >&2
   exit 1
 fi
 
@@ -189,6 +189,6 @@ systemctl daemon-reload
 systemctl enable keyservice-sync.timer
 systemctl start keyservice-sync.timer
 
-echo "Done. KeyService: systemctl status keyservice"
+echo "Done. CNothing API: systemctl status keyservice.service"
 echo "HTTPS: certbot certificates; auto-renew: systemctl status certbot.timer"
 echo "Git sync: systemctl status keyservice-sync.timer; logs: journalctl -u keyservice-sync.service"

@@ -34,13 +34,13 @@ export function ConnectionPanel({
         <div>
           <h2 className="text-lg font-semibold">Connection</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Point the console at any deployed keyservice instance and optionally provide the
+            Point the console at any deployed CNothing instance and optionally provide the
             admin bearer token.
           </p>
         </div>
         <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_auto] lg:items-end">
           <div className="space-y-2">
-            <Label htmlFor="base-url">KeyService base URL</Label>
+            <Label htmlFor="base-url">CNothing base URL</Label>
             <Input
               id="base-url"
               value={draft.baseUrl}

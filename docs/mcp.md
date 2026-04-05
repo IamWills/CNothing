@@ -1,6 +1,6 @@
 # MCP Integration
 
-`keyservice` 提供公开 MCP 入口：
+`CNothing` 提供公开 MCP 入口：
 
 - `GET /mcp`
 - `POST /mcp`
@@ -18,9 +18,9 @@
 
 ## MCP Usage Pattern
 
-AI 通过 MCP 使用 `keyservice` 时，应遵守以下流程：
+AI 通过 MCP 使用 `CNothing` 时，应遵守以下流程：
 
-1. 调 `get_authai_public_key`，获取 keyservice 公钥信息
+1. 调 `get_authai_public_key`，获取 CNothing 公钥信息
 2. 调 `authai_register`，提交客户端公钥，拿到 `challenge_for_client`
 3. 将 `challenge_for_client` 交给客户端后端解密
 4. 由客户端后端构造：

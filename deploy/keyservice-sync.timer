@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodically sync KeyService from GitHub
+Description=Periodically sync CNothing from GitHub
 
 [Timer]
 # Four times per day; staggered to reduce thundering herd

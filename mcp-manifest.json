@@ -1,9 +1,9 @@
 {
   "schema_version": "v1",
-  "name_for_human": "KeyService AuthAI KV",
+  "name_for_human": "CNothing AuthAI KV",
   "name_for_model": "keyservice_authai_kv",
   "description_for_human": "Register a client public key, obtain one-time encrypted challenges, and read or write encrypted KV payloads without exposing plaintext to the AI.",
-  "description_for_model": "KeyService AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI should never request or handle private keys. Instead, it registers a client public key, receives an encrypted one-time challenge for the client backend, and then forwards auth and data envelopes produced by that backend for kv save/read operations.",
+  "description_for_model": "CNothing AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI should never request or handle private keys. Instead, it registers a client public key, receives an encrypted one-time challenge for the client backend, and then forwards auth and data envelopes produced by that backend for kv save/read operations.",
   "auth": {
     "type": "none"
   },
@@ -19,7 +19,7 @@
   "tools": [
     {
       "name": "get_authai_public_key",
-      "description": "Return the authai public key metadata used to encrypt auth and data envelopes toward keyservice.",
+      "description": "Return the authai public key metadata used to encrypt auth and data envelopes toward CNothing.",
       "input_schema": {
         "type": "object",
         "properties": {}

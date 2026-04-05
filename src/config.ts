@@ -101,7 +101,7 @@ const challengeTtlSeconds = (() => {
 const config: AppConfig = {
   port: Number(process.env.PORT ?? "3021"),
   databaseUrl: readRequiredEnv("DATABASE_URL"),
-  serviceName: "KeyService",
+  serviceName: "CNothing",
   protocolVersion: "2024-11-05",
   consoleUrl: process.env.KEYSERVICE_CONSOLE_URL?.trim() || undefined,
   masterKey,

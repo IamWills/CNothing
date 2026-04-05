@@ -44,7 +44,7 @@ const envContent = [
 writeFileSync(envPath, envContent, { encoding: "utf8", mode: 0o600 });
 
 // eslint-disable-next-line no-console
-console.log("Generated keyservice secrets:");
+console.log("Generated CNothing secrets:");
 // eslint-disable-next-line no-console
 console.log(`- master key written to: ${envPath}`);
 // eslint-disable-next-line no-console

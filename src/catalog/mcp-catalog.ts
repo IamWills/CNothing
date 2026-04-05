@@ -5,7 +5,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "get_authai_public_key",
     description:
-      "Return the keyservice authai public key metadata for encrypting auth and data envelopes.",
+      "Return the CNothing authai public key metadata for encrypting auth and data envelopes.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -67,19 +67,19 @@ const MCP_RESOURCES: McpResourceDescriptor[] = [
   {
     uri: "resource://keyservice/protocol",
     name: "Protocol Overview",
-    description: "AuthAI + KV protocol endpoints and flow summary.",
+    description: "CNothing AuthAI + KV protocol endpoints and flow summary.",
     mimeType: "application/json",
   },
   {
     uri: "resource://keyservice/mcp-manifest",
     name: "MCP Manifest",
-    description: "Manifest metadata for MCP-compatible hosts.",
+    description: "CNothing manifest metadata for MCP-compatible hosts.",
     mimeType: "application/json",
   },
   {
     uri: "resource://keyservice/openapi",
     name: "OpenAPI Summary",
-    description: "Location of the published OpenAPI document.",
+    description: "Location of the published CNothing OpenAPI document.",
     mimeType: "application/json",
   },
 ];

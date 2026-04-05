@@ -1,3 +1,5 @@
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Card } from "@/components/ui/card";
 import { PageFrame } from "@/components/layout/page-frame";
 
@@ -15,9 +17,87 @@ export function ReadmePage({ readme }: { readme: string }) {
             current contract directly from the console.
           </p>
         </div>
-        <pre className="overflow-x-auto whitespace-pre-wrap px-6 py-6 text-sm leading-7 text-slate-800">
-          {readme}
-        </pre>
+        <div className="px-6 py-6">
+          <article className="space-y-6 text-sm leading-7 text-slate-800">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                h1: ({ ...props }) => (
+                  <h1 className="text-4xl font-semibold tracking-tight text-slate-950" {...props} />
+                ),
+                h2: ({ ...props }) => (
+                  <h2
+                    className="mt-10 border-t border-[color:var(--border)] pt-8 text-2xl font-semibold tracking-tight text-slate-950"
+                    {...props}
+                  />
+                ),
+                h3: ({ ...props }) => (
+                  <h3 className="mt-8 text-xl font-semibold tracking-tight text-slate-950" {...props} />
+                ),
+                h4: ({ ...props }) => (
+                  <h4 className="mt-6 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500" {...props} />
+                ),
+                p: ({ ...props }) => <p className="text-sm leading-7 text-slate-700" {...props} />,
+                ul: ({ ...props }) => <ul className="list-disc space-y-2 pl-6 text-slate-700" {...props} />,
+                ol: ({ ...props }) => <ol className="list-decimal space-y-2 pl-6 text-slate-700" {...props} />,
+                li: ({ ...props }) => <li className="pl-1" {...props} />,
+                a: ({ ...props }) => (
+                  <a
+                    className="font-medium text-[color:var(--brand)] underline decoration-[color:var(--brand)]/35 underline-offset-4"
+                    target="_blank"
+                    rel="noreferrer"
+                    {...props}
+                  />
+                ),
+                blockquote: ({ ...props }) => (
+                  <blockquote
+                    className="rounded-r-[20px] border-l-4 border-[color:var(--brand)] bg-[color:var(--surface-muted)]/80 px-5 py-3 text-slate-600"
+                    {...props}
+                  />
+                ),
+                code: ({ className, children, ...props }) => {
+                  const isBlock = className?.includes("language-");
+
+                  if (isBlock) {
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    );
+                  }
+
+                  return (
+                    <code
+                      className="rounded-md bg-[color:var(--surface-muted)] px-1.5 py-0.5 font-mono text-[0.9em] text-slate-900"
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  );
+                },
+                pre: ({ ...props }) => (
+                  <pre
+                    className="overflow-x-auto rounded-[24px] bg-slate-950 px-5 py-4 text-xs leading-6 text-slate-100"
+                    {...props}
+                  />
+                ),
+                table: ({ ...props }) => (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-separate border-spacing-0 overflow-hidden rounded-[24px] border border-[color:var(--border)]" {...props} />
+                  </div>
+                ),
+                thead: ({ ...props }) => <thead className="bg-slate-950 text-slate-100" {...props} />,
+                tbody: ({ ...props }) => <tbody className="bg-white" {...props} />,
+                tr: ({ ...props }) => <tr className="even:bg-[color:var(--surface-muted)]/45" {...props} />,
+                th: ({ ...props }) => <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em]" {...props} />,
+                td: ({ ...props }) => <td className="border-t border-[color:var(--border)] px-4 py-3 align-top text-sm text-slate-700" {...props} />,
+                hr: ({ ...props }) => <hr className="border-none border-t border-[color:var(--border)]" {...props} />,
+              }}
+            >
+              {readme}
+            </ReactMarkdown>
+          </article>
+        </div>
       </Card>
     </PageFrame>
   );

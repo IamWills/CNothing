@@ -125,7 +125,7 @@ CNothing 的角色拆分非常简单：
 
 仓库现在也包含了一套可复用的 Node.js / Bun SDK，方便第三方后端直接接入 `https://cnothing.com`，而不用自己手写整套协议实现。
 
-发布到包仓库后的目标安装方式是：
+现在已经可以直接从 npm 安装：
 
 ```bash
 npm install cnothing

@@ -125,7 +125,7 @@ Notes:
 
 This repository now also includes a reusable Node.js and Bun SDK so third-party backends can integrate with `https://cnothing.com` without reimplementing the protocol by hand.
 
-After publishing the package, the intended installation flow is:
+Install it from npm:
 
 ```bash
 npm install cnothing

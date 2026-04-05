@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import type { Route } from "next";
 import { usePathname } from "next/navigation";
+import { ExternalLink, FileText, Github } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { brand } from "@/lib/brand";
 
-const navigation: Array<{ href: Route; label: string }> = [
+const navigation: Array<{ href: string; label: string }> = [
   { href: "/", label: "Home" },
+  { href: "/readme", label: "Readme" },
   { href: "/catalog", label: "Catalog" },
   { href: "/clients", label: "Clients" },
   { href: "/kv", label: "KV" },
@@ -33,6 +33,18 @@ export function SiteHeader() {
               </p>
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="https://github.com/IamWills/CNothing"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-400"
+            >
+              <Github className="h-4 w-4" />
+              GitHub
+              <ExternalLink className="h-4 w-4 text-slate-400" />
+            </a>
+          </div>
         </div>
 
         <nav className="flex flex-wrap gap-2">
@@ -43,7 +55,7 @@ export function SiteHeader() {
                 : pathname.startsWith(item.href);
 
             return (
-              <Link
+              <a
                 key={item.href}
                 href={item.href}
                 className={`rounded-full border px-4 py-2 text-sm transition ${
@@ -52,8 +64,11 @@ export function SiteHeader() {
                     : "border-[color:var(--border)] bg-white text-slate-700 hover:border-slate-400"
                 }`}
               >
+                {item.href === "/readme" ? (
+                  <FileText className="mr-2 inline h-4 w-4" />
+                ) : null}
                 {item.label}
-              </Link>
+              </a>
             );
           })}
         </nav>

@@ -1,9 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import type { Route } from "next";
-import { ArrowRight, BookKey, Fingerprint, KeyRound, RefreshCcw, Shield, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, RefreshCcw, Shield, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Badge } from "@/components/ui/badge";
@@ -14,11 +12,17 @@ import { fetchAuthaiPublicKey, fetchClients, fetchMcpCatalog, fetchSkills, type 
 import { brand } from "@/lib/brand";
 
 const sections: Array<{
-  href: Route;
+  href: string;
   title: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
+  {
+    href: "/readme",
+    title: "Readme",
+    description: "Review the project overview, privacy model, and SDK guidance from the repository document.",
+    icon: FileText,
+  },
   {
     href: "/catalog",
     title: "Catalog",
@@ -147,11 +151,11 @@ export function HomePage() {
               connection settings.
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {sections.map((section) => {
               const Icon = section.icon;
               return (
-                <Link
+                <a
                   key={section.href}
                   href={section.href}
                   className="group rounded-[28px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-5 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white"
@@ -164,7 +168,7 @@ export function HomePage() {
                   </div>
                   <h3 className="mt-4 text-lg font-semibold text-slate-950">{section.title}</h3>
                   <p className="mt-2 text-sm text-slate-600">{section.description}</p>
-                </Link>
+                </a>
               );
             })}
           </div>

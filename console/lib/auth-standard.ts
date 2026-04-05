@@ -364,6 +364,23 @@ export const authStandard = {
   ] satisfies StandardSection[],
 };
 
+export const publishedStandards = [
+  {
+    id: "authentication-1.0",
+    family: "Authentication",
+    title: authStandard.title,
+    version: authStandard.version,
+    status: authStandard.status,
+    publishedAt: authStandard.publishedAt,
+    canonicalPath: authStandard.canonicalPath,
+    summary: authStandard.intro,
+    exports: {
+      markdown: `${authStandard.canonicalPath}/markdown`,
+      html: `${authStandard.canonicalPath}/html`,
+    },
+  },
+] as const;
+
 export function renderAuthStandardMarkdown(): string {
   const lines: string[] = [
     `# ${authStandard.title}`,

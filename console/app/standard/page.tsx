@@ -1,5 +1,5 @@
-import { AuthStandardPage } from "@/components/console/auth-standard-page";
+import { redirect } from "next/navigation";
 
 export default function Standard() {
-  return <AuthStandardPage />;
+  redirect("/standards/authentication/1.0");
 }

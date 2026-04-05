@@ -51,6 +51,16 @@
         }
       }
     },
+    "/v1/authai/rotate-key": {
+      "post": {
+        "summary": "Rotate the client public key while keeping the same client identity",
+        "responses": {
+          "200": {
+            "description": "Key rotation result plus next encrypted challenge for the new key"
+          }
+        }
+      }
+    },
     "/v1/kv/save": {
       "post": {
         "summary": "Store encrypted KV items for the authenticated client namespace",

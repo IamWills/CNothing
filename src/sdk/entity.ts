@@ -31,7 +31,7 @@ export type ChallengePayload = {
 export type AuthEnvelopePayload = {
   v: "ksp1";
   type: "auth";
-  action: "authai.refresh" | "kv.save" | "kv.read";
+  action: "authai.refresh" | "authai.rotate_key" | "kv.save" | "kv.read";
   client_uuid: string;
   challenge_id: string;
   nonce: string;
@@ -84,6 +84,18 @@ export type RegisterClientResponse = {
 export type RefreshChallengeResponse = {
   ok: true;
   client_uuid: string;
+  request_id: string;
+  authai_public_key: AuthaiPublicKey;
+  next_challenge_for_client: HybridEnvelope;
+  next_challenge_id: string;
+  next_challenge_expires_at: string;
+};
+
+export type RotateKeyResponse = {
+  ok: true;
+  client_uuid: string;
+  old_client_key_fingerprint: string;
+  new_client_key_fingerprint: string;
   request_id: string;
   authai_public_key: AuthaiPublicKey;
   next_challenge_for_client: HybridEnvelope;

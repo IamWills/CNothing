@@ -29,6 +29,7 @@ export type {
   ReadResultPayload,
   RefreshChallengeResponse,
   RegisterClientResponse,
+  RotateKeyResponse,
   SaveEnvelopePayload,
   SaveKvResponse,
 } from "./entity";

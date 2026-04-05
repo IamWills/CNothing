@@ -81,6 +81,8 @@ For deeper protocol details, see:
   - Register or reuse a client public key and return an encrypted one-time challenge
 - `POST /v1/authai/refresh`
   - Issue the next challenge using a valid auth envelope
+- `POST /v1/authai/rotate-key`
+  - Rotate the client public key while keeping the same `client_uuid`
 - `POST /v1/kv/save`
   - Save KV items using `auth_envelope + data_envelope`
 - `POST /v1/kv/read`
@@ -201,6 +203,8 @@ The SDK exports:
   - High-level register / refresh / save / read workflow client
 - `generateClientKeyPair()`
   - Generate a local RSA key pair for development or first-time setup
+- `rotateKey()`
+  - Rotate to a new client key pair while preserving the same CNothing client identity
 - Envelope helpers
   - For teams that want lower-level control over how requests are built
 
@@ -226,6 +230,31 @@ That is because:
 In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. In the recommended blind mode, the CNothing service operator also does not receive the third-party plaintext value, plaintext metadata, or original namespace and key names.
 
 The operator can still observe high-level access patterns such as request timing, client identity, and the existence of stable protected identifiers. This is operator-blind for payload and structure content, not an attempt at traffic-analysis resistance.
+
+## Key Rotation
+
+CNothing now supports rotating a client public key without changing the `client_uuid`.
+
+The intended flow is:
+
+1. The client authenticates with the current key using a valid `auth_envelope`.
+2. The client submits a new public key to `POST /v1/authai/rotate-key`.
+3. CNothing updates the existing client record in place.
+4. Existing active challenges for that client are invalidated.
+5. CNothing returns the next challenge encrypted to the new public key.
+6. The client continues using the same `client_uuid`, namespaces, and stored records.
+
+From the SDK, the high-level method is:
+
+```ts
+const nextKeys = generateClientKeyPair();
+
+await client.rotateKey({
+  newClientPrivateKeyPem: nextKeys.privateKeyPem,
+  newClientPublicKeyPem: nextKeys.publicKeyPem,
+  newClientKeyId: "rotation-2026-04",
+});
+```
 
 ## Security Properties
 

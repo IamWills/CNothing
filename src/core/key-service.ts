@@ -38,7 +38,7 @@ type RegisterRequest = {
 type AuthEnvelopePayload = {
   v: "ksp1";
   type: "auth";
-  action: "authai.refresh" | "kv.save" | "kv.read";
+  action: "authai.refresh" | "authai.rotate_key" | "kv.save" | "kv.read";
   client_uuid: string;
   challenge_id: string;
   nonce: string;
@@ -63,6 +63,15 @@ type ReadEnvelopePayload = {
   type: "kv.read";
   namespace: string;
   keys: string[];
+};
+
+type RotateKeyRequest = {
+  auth_envelope?: unknown;
+  new_client_public_key?: unknown;
+  new_client_key_alg?: unknown;
+  new_client_key_id?: unknown;
+  new_client_label?: unknown;
+  metadata?: unknown;
 };
 
 export class KeyService {
@@ -251,6 +260,78 @@ export class KeyService {
     return {
       ok: true,
       client_uuid: client.client_uuid,
+      request_id: auth.request_id,
+      authai_public_key: this.getAuthaiPublicKey(),
+      next_challenge_for_client: challenge.challenge_for_client,
+      next_challenge_id: challenge.challenge_id,
+      next_challenge_expires_at: challenge.expires_at,
+    };
+  }
+
+  async rotateClientKey(input: RotateKeyRequest) {
+    const { client, auth } = await this.validateAuthEnvelope(input.auth_envelope, "authai.rotate_key");
+    const publicKeyPem = normalizeClientPublicKey(input.new_client_public_key);
+    const keyAlg = normalizeOptionalString(input.new_client_key_alg, 64) ?? CLIENT_KEY_ALG;
+    const keyId = normalizeOptionalString(input.new_client_key_id, 128);
+    const clientLabel = normalizeOptionalString(input.new_client_label, 160) ?? client.client_label ?? undefined;
+    const metadata = normalizeJsonObject(input.metadata);
+    const publicKeyFingerprint = getPublicKeyInfo({
+      publicKeyPem,
+      keyId: keyId ?? "external",
+    }).public_key_fingerprint;
+
+    const rotatedClient = await this.repo.withTransaction(async (tx) => {
+      const fingerprintOwner = await this.repo.findClientByFingerprint(tx, publicKeyFingerprint);
+      if (fingerprintOwner && fingerprintOwner.client_uuid !== client.client_uuid) {
+        throw new ConflictError("New public key is already bound to another client", {
+          error_code: "public_key_already_registered",
+          client_uuid: fingerprintOwner.client_uuid,
+        });
+      }
+
+      const updatedClient = await this.repo.rotateClientKey(tx, {
+        clientUuid: client.client_uuid,
+        publicKeyPem,
+        publicKeyFingerprint,
+        keyAlg,
+        keyId,
+        clientLabel,
+        metadata,
+      });
+
+      await this.repo.appendClientKeyRotation(tx, {
+        clientUuid: client.client_uuid,
+        oldPublicKeyFingerprint: client.public_key_fingerprint,
+        newPublicKeyFingerprint: publicKeyFingerprint,
+        oldKeyId: client.key_id,
+        newKeyId: keyId,
+        requestId: auth.request_id,
+        metadata,
+      });
+
+      await this.repo.appendAuditEvent(tx, {
+        clientUuid: client.client_uuid,
+        action: "authai.rotate_key",
+        status: "success",
+        requestId: auth.request_id,
+        metadata: {
+          old_public_key_fingerprint: client.public_key_fingerprint,
+          new_public_key_fingerprint: publicKeyFingerprint,
+        },
+      });
+
+      return updatedClient;
+    });
+
+    const challenge = await this.issueChallenge(rotatedClient, auth.request_id, {
+      source: "authai.rotate_key",
+    });
+
+    return {
+      ok: true,
+      client_uuid: rotatedClient.client_uuid,
+      old_client_key_fingerprint: client.public_key_fingerprint,
+      new_client_key_fingerprint: rotatedClient.public_key_fingerprint,
       request_id: auth.request_id,
       authai_public_key: this.getAuthaiPublicKey(),
       next_challenge_for_client: challenge.challenge_for_client,

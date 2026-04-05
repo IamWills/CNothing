@@ -26,6 +26,7 @@ import type {
   ReadResultPayload,
   RefreshChallengeResponse,
   RegisterClientResponse,
+  RotateKeyResponse,
   SaveEnvelopePayload,
   SaveKvResponse,
 } from "./entity";
@@ -68,11 +69,11 @@ async function requestJson<T>(
 
 export class CNothingClient {
   private readonly baseUrl: string;
-  private readonly clientPrivateKeyPem: string;
-  private readonly clientPublicKeyPem: string;
-  private readonly clientKeyId?: string;
-  private readonly clientLabel?: string;
-  private readonly metadata?: JsonObject;
+  private clientPrivateKeyPem: string;
+  private clientPublicKeyPem: string;
+  private clientKeyId?: string;
+  private clientLabel?: string;
+  private metadata?: JsonObject;
   private readonly privacyKey?: Buffer;
   private readonly fetchImpl: typeof fetch;
 
@@ -170,6 +171,55 @@ export class CNothingClient {
       nextChallengeEnvelope: response.next_challenge_for_client,
     });
     return this.session;
+  }
+
+  async rotateKey(input: {
+    newClientPrivateKeyPem: string;
+    newClientPublicKeyPem?: string;
+    newClientKeyId?: string;
+    newClientLabel?: string;
+    metadata?: JsonObject;
+  }): Promise<CNothingSession & { rotation: RotateKeyResponse }> {
+    const session = this.requireSession();
+    const nextPublicKeyPem =
+      input.newClientPublicKeyPem ?? derivePublicKeyPem(input.newClientPrivateKeyPem);
+    const authPayload = this.buildAuthPayload(session, "authai.rotate_key");
+
+    const response = await requestJson<RotateKeyResponse>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v1/authai/rotate-key",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          auth_envelope: buildAuthEnvelope({
+            authaiPublicKey: session.authaiPublicKey,
+            payload: authPayload,
+          }),
+          new_client_public_key: nextPublicKeyPem,
+          new_client_key_id: input.newClientKeyId,
+          new_client_label: input.newClientLabel ?? this.clientLabel,
+          metadata: input.metadata ?? this.metadata,
+        }),
+      },
+    );
+
+    this.clientPrivateKeyPem = input.newClientPrivateKeyPem;
+    this.clientPublicKeyPem = nextPublicKeyPem;
+    this.clientKeyId = input.newClientKeyId;
+    this.clientLabel = input.newClientLabel ?? this.clientLabel;
+    this.metadata = input.metadata ?? this.metadata;
+
+    this.session = this.advanceSession({
+      clientUuid: response.client_uuid,
+      authaiPublicKey: response.authai_public_key,
+      nextChallengeEnvelope: response.next_challenge_for_client,
+    });
+
+    return {
+      ...this.session,
+      rotation: response,
+    };
   }
 
   async saveJson(input: {

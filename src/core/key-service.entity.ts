@@ -80,6 +80,18 @@ export type AuditEventRecord = {
   created_at: string;
 };
 
+export type ClientKeyRotationRecord = {
+  id: string;
+  client_uuid: string;
+  old_public_key_fingerprint: string;
+  new_public_key_fingerprint: string;
+  old_key_id: string | null;
+  new_key_id: string | null;
+  request_id: string | null;
+  metadata: JsonObject;
+  created_at: string;
+};
+
 export type AuthaiPublicKeyView = {
   algorithm: string;
   key_id: string;

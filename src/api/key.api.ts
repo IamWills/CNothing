@@ -21,6 +21,11 @@ export async function handleKeyRequest(request: Request): Promise<Response> {
     return Response.json(await service.refreshChallenge(body));
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/authai/rotate-key") {
+    const body = await parseJsonBody(request);
+    return Response.json(await service.rotateClientKey(body));
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/kv/save") {
     const body = await parseJsonBody(request);
     return Response.json(await service.saveKv(body));

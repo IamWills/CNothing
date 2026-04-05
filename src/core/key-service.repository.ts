@@ -5,6 +5,7 @@ import type {
   AuditEventRecord,
   ChallengeRecord,
   ClientRecord,
+  ClientKeyRotationRecord,
   ClientSummary,
   JsonObject,
   KvRecord,
@@ -112,6 +113,20 @@ function mapAuditRow(row: Record<string, unknown>): AuditEventRecord {
     status: String(row.status),
     request_id: row.request_id ? String(row.request_id) : null,
     error_code: row.error_code ? String(row.error_code) : null,
+    metadata: normalizeMetadata(row.metadata),
+    created_at: asIso(row.created_at),
+  };
+}
+
+function mapClientKeyRotationRow(row: Record<string, unknown>): ClientKeyRotationRecord {
+  return {
+    id: String(row.id),
+    client_uuid: String(row.client_uuid),
+    old_public_key_fingerprint: String(row.old_public_key_fingerprint),
+    new_public_key_fingerprint: String(row.new_public_key_fingerprint),
+    old_key_id: row.old_key_id ? String(row.old_key_id) : null,
+    new_key_id: row.new_key_id ? String(row.new_key_id) : null,
+    request_id: row.request_id ? String(row.request_id) : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
   };
@@ -258,6 +273,85 @@ export class KeyServiceRepository {
       ],
     );
     return mapClientRow(result.rows[0] as Record<string, unknown>);
+  }
+
+  async rotateClientKey(
+    client: PoolClient,
+    input: {
+      clientUuid: string;
+      publicKeyPem: string;
+      publicKeyFingerprint: string;
+      keyAlg: string;
+      keyId?: string;
+      clientLabel?: string;
+      metadata: JsonObject;
+    },
+  ): Promise<ClientRecord> {
+    const result = await client.query(
+      `
+        UPDATE authai_clients
+        SET
+          public_key_pem = $2,
+          public_key_fingerprint = $3,
+          key_alg = $4,
+          key_id = $5,
+          client_label = $6,
+          metadata = $7::jsonb
+        WHERE client_uuid = $1
+        RETURNING *
+      `,
+      [
+        input.clientUuid,
+        input.publicKeyPem,
+        input.publicKeyFingerprint,
+        input.keyAlg,
+        input.keyId ?? null,
+        input.clientLabel ?? null,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapClientRow(result.rows[0] as Record<string, unknown>);
+  }
+
+  async appendClientKeyRotation(
+    client: PoolClient,
+    input: {
+      clientUuid: string;
+      oldPublicKeyFingerprint: string;
+      newPublicKeyFingerprint: string;
+      oldKeyId?: string | null;
+      newKeyId?: string | null;
+      requestId?: string;
+      metadata: JsonObject;
+    },
+  ): Promise<ClientKeyRotationRecord> {
+    const result = await client.query(
+      `
+        INSERT INTO authai_client_key_rotations (
+          id,
+          client_uuid,
+          old_public_key_fingerprint,
+          new_public_key_fingerprint,
+          old_key_id,
+          new_key_id,
+          request_id,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.clientUuid,
+        input.oldPublicKeyFingerprint,
+        input.newPublicKeyFingerprint,
+        input.oldKeyId ?? null,
+        input.newKeyId ?? null,
+        input.requestId ?? null,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapClientKeyRotationRow(result.rows[0] as Record<string, unknown>);
   }
 
   async createChallenge(

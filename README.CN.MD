@@ -81,6 +81,8 @@ CNothing 的角色拆分非常简单：
   - 注册或复用客户端公钥，并返回一次性 challenge
 - `POST /v1/authai/refresh`
   - 使用合法的 auth envelope 续签下一次 challenge
+- `POST /v1/authai/rotate-key`
+  - 在保持同一个 `client_uuid` 的前提下轮换客户端公钥
 - `POST /v1/kv/save`
   - 使用 `auth_envelope + data_envelope` 写入 KV
 - `POST /v1/kv/read`
@@ -201,6 +203,8 @@ SDK 当前主要导出：
   - 高层 register / refresh / save / read 工作流客户端
 - `generateClientKeyPair()`
   - 生成本地 RSA 密钥对，适合开发或初始配置
+- `rotateKey()`
+  - 在保留同一个 CNothing 客户端身份的前提下轮换新 key pair
 - 一组 envelope helpers
   - 给想要自己控制底层请求构造方式的团队使用
 
@@ -226,6 +230,31 @@ SDK 当前主要导出：
 换句话说，AI 可以参与流程编排，但它并不会成为第三方明文 secrets 的持有者。在推荐的 blind 模式下，CNothing 服务运营方也拿不到第三方 value、metadata，以及原始 namespace / key 名的明文，因为 CNothing 实际看到的是第三方先做过保护后的结果。
 
 当然，运营方仍然可以观察到请求时间、客户端身份以及“存在某些稳定受保护标识”这一事实。所以这是一种对 payload 和结构内容的 operator-blind 设计，不是对流量分析完全隐身的设计。
+
+## Key Rotation
+
+CNothing 现在支持在不改变 `client_uuid` 的前提下轮换客户端公钥。
+
+完整流程是：
+
+1. 客户端先用当前 key 通过合法的 `auth_envelope` 完成认证。
+2. 客户端调用 `POST /v1/authai/rotate-key`，提交新的公钥。
+3. CNothing 就地更新原有客户端记录。
+4. 该客户端当前仍处于 active 的旧 challenge 会被作废。
+5. CNothing 返回一个加密给新公钥的下一次 challenge。
+6. 客户端继续沿用原来的 `client_uuid`、namespace 和存量数据。
+
+在 SDK 中，高层调用方式是：
+
+```ts
+const nextKeys = generateClientKeyPair();
+
+await client.rotateKey({
+  newClientPrivateKeyPem: nextKeys.privateKeyPem,
+  newClientPublicKeyPem: nextKeys.publicKeyPem,
+  newClientKeyId: "rotation-2026-04",
+});
+```
 
 ## 安全属性
 

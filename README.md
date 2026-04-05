@@ -2,20 +2,73 @@
 
 For Chinese documentation, see [README.CN.MD](./README.CN.MD).
 
-`CNothing` implements a production-oriented `AuthAI + Encrypted KV` protocol for AI automation systems.
+`CNothing` is a production-oriented `AuthAI + Encrypted KV` service for AI automation systems that need to use secrets without exposing plaintext to the model.
 
-Goals:
+It is designed for a specific problem: an AI agent needs to help orchestrate work, choose tools, and route requests, but the sensitive values used by that workflow must stay inside a trusted backend boundary. CNothing gives you a way to let the AI participate in the flow while keeping private keys and decrypted secrets out of the model.
 
-- Keep plaintext secrets away from AI models
-- Treat the client backend, which holds the private key, as the trusted boundary
-- Use one-time challenges for authentication
-- Isolate KV data by `client_uuid + namespace + key`
-- Keep data encrypted at rest with envelope encryption
-- Expose a consistent protocol across HTTP, MCP, and Skill entry points
-- GitHub repository:
-  - [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
+## Why CNothing
 
-Detailed protocol references:
+CNothing is valuable when you want all of the following at the same time:
+
+- The AI can coordinate a workflow that depends on secrets
+- The AI never sees secret plaintext
+- The client backend remains the trust boundary because it holds the private key
+- Secret reads and writes can still be standardized through HTTP, MCP, and Skill interfaces
+- Stored data remains encrypted at rest with per-record envelope encryption
+
+In practice, CNothing sits between an AI-facing orchestration layer and a backend that is allowed to handle cryptographic material. The model can discover available capabilities, forward ciphertext envelopes, and work with non-sensitive routing metadata, while the backend performs decryption and signing-sensitive operations.
+
+GitHub repository:
+
+- [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
+
+## When To Use It
+
+CNothing is a strong fit when:
+
+- You are building AI agents or copilots that need to trigger authenticated integrations
+- You want AI to drive flow control, but not directly hold API tokens, access tokens, or user secrets
+- You need a reusable secret-access protocol instead of one custom backend adapter per tool
+- You want both human operators and AI systems to browse capabilities through a shared control plane
+
+CNothing is probably not the right primary abstraction when:
+
+- AI is not involved in the workflow at all
+- Your backend can talk directly to upstream systems without any AI-facing layer
+- A standard secrets manager alone already solves your problem because you do not need challenge-based client authentication or encrypted envelope forwarding
+
+## Core Model
+
+CNothing is built around a few simple roles:
+
+- `CNothing`
+  - Holds the AuthAI private key, validates challenge usage, and stores encrypted KV records
+- `Client backend`
+  - Holds the client private key and acts as the trusted cryptographic boundary
+- `AI`
+  - Orchestrates the workflow, calls HTTP or MCP APIs, and forwards ciphertext envelopes without decrypting them
+
+That split is the main value proposition: the AI is operationally useful, but cryptographically blind.
+
+## End-To-End Flow
+
+The shortest mental model for CNothing is:
+
+1. The client registers a public key with `CNothing`.
+2. `CNothing` returns a one-time challenge encrypted to that client public key.
+3. The client backend decrypts the challenge locally.
+4. The client backend creates an `auth_envelope` plus either a `data_envelope` or `query_envelope`, then encrypts them to `CNothing`.
+5. The AI forwards those ciphertext envelopes to CNothing using HTTP or MCP.
+6. CNothing validates the challenge, performs the read or write, and returns the next challenge.
+7. For reads, the result is encrypted back to the client public key so only the client backend can decrypt it.
+
+This means:
+
+- The AI never receives plaintext secrets
+- The AI never needs a private key
+- Challenge replay is limited because challenges are single-use and short-lived
+
+For deeper protocol details, see:
 
 - [docs/protocol.md](./docs/protocol.md)
 - [docs/mcp.md](./docs/mcp.md)
@@ -23,11 +76,11 @@ Detailed protocol references:
 ## Main Endpoints
 
 - `GET /v1/authai/public-key`
-  - Return the CNothing AuthAI public key
+  - Return the CNothing AuthAI public key metadata
 - `POST /v1/authai/register`
-  - Register or reuse a client public key and return a one-time challenge encrypted for that client
+  - Register or reuse a client public key and return an encrypted one-time challenge
 - `POST /v1/authai/refresh`
-  - Renew the next challenge with a valid auth envelope
+  - Issue the next challenge using a valid auth envelope
 - `POST /v1/kv/save`
   - Save KV items using `auth_envelope + data_envelope`
 - `POST /v1/kv/read`
@@ -35,94 +88,115 @@ Detailed protocol references:
 
 ## Console And Browse APIs
 
-This repository also includes a standalone `CNothing Console` application:
+This repository also includes a standalone `CNothing Console`:
 
 - `console/`
-  - A Next.js console for browsing MCP tools and resources, skills, clients, namespaces, key names, and values
+  - A Next.js console for browsing MCP tools and resources, skills, clients, namespaces, key names, and decrypted values through backend APIs
 
-The console relies on backend APIs that are also available to AI and automation systems:
+Browsable APIs:
 
 - `GET /v1/catalog/mcp`
   - List MCP tools and resources
 - `GET /v1/catalog/skills`
   - List bundled skills in the repository
+
+Admin APIs:
+
 - `GET /v1/admin/clients`
   - List registered clients
 - `POST /v1/admin/clients/register`
-  - Manually register a client by pasting in a public key
+  - Manually register a client by pasting a public key
 - `GET /v1/admin/clients/:client_uuid/namespaces`
   - List namespaces under a client
 - `GET /v1/admin/clients/:client_uuid/kv?namespace=...`
   - List key names under a namespace
 - `GET /v1/admin/clients/:client_uuid/kv/value?namespace=...&key=...`
-  - View the decrypted value for a key
+  - View a decrypted value
 - `POST /v1/admin/clients/:client_uuid/kv/save`
   - Manually write JSON values through the admin API
 
 Notes:
 
-- The `catalog` APIs are public by default and work well for browsing and AI discovery
+- The `catalog` APIs are public by default and are suitable for discovery
 - The `admin` APIs reuse `KEYSERVICE_BEARER_TOKEN` for Bearer authentication
-- If `KEYSERVICE_BEARER_TOKEN` is not configured, the console and admin APIs do not add extra blocking
+- If `KEYSERVICE_BEARER_TOKEN` is unset, the console and admin APIs do not add extra blocking
 
-## Security Model
+## Security Properties
 
 - Clients only submit public keys during registration
 - `challenge_for_client` is always encrypted to the client public key
 - `auth_envelope` and `data/query_envelope` are always encrypted to `CNothing`
-- Each challenge is single-use, with TTL controlled by environment variables and defaulting to 300 seconds
+- Challenges are single-use and short-lived
 - Server-side records use per-record random DEKs wrapped by the master key
 
 Important constraints:
 
 - AI should never request private keys
-- AI should never decrypt any envelope
-- AI should only forward ciphertext envelopes and non-sensitive key names or namespaces
-- If the key name itself is sensitive, the caller backend should add a mapping or hashing layer
+- AI should never decrypt envelopes
+- AI should only forward ciphertext envelopes and non-sensitive metadata
+- If key names are sensitive, the caller backend should add a mapping or hashing layer
 
-## Environment
+## Quick Start
+
+### 1. Prepare infrastructure
+
+You need:
+
+- Bun
+- PostgreSQL
+- A `.env` file with the required CNothing settings
+
+Required environment variables:
+
+- `DATABASE_URL`
+- `KEYSERVICE_MASTER_KEY`
+- `KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH`
+- `KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH` (optional if derived from the private key)
+
+Optional but commonly useful:
 
 - `PORT`
-  - Defaults to `3021`
-- `DATABASE_URL`
-  - PostgreSQL connection string
-- `KEYSERVICE_MASTER_KEY`
-  - A 32-byte master key encoded in Base64 or Base64URL
-- `KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH`
-  - Path to the CNothing RSA private key used to decrypt auth, data, and query envelopes
-- `KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH`
-  - Optional AuthAI public key path; if unset, the service derives the public key from the private key
 - `KEYSERVICE_CHALLENGE_TTL_SECONDS`
-  - Challenge TTL, default `300`
 - `KEYSERVICE_BEARER_TOKEN`
-  - Not required by the current protocol; retained for admin and compatibility scenarios
+- `KEYSERVICE_CONSOLE_URL`
 
-You can generate a master key and AuthAI RSA key pair explicitly instead of generating them automatically at service startup:
-
-```bash
-cd CNothing
-bun run generate-secrets
-```
-
-This command creates the following files in `.local-keys/`:
-
-- `authai-private-key.pem`
-- `authai-public-key.pem`
-- `generated.env`
-
-That matches the preferred production pattern of explicit initialization: service identity does not silently change on restart, and key rotation stays intentional and operationally visible.
-
-## Run
+### 2. Generate local secrets for development
 
 ```bash
 cd CNothing
 bun install
 bun run generate-secrets
+```
+
+This creates:
+
+- `.local-keys/authai-private-key.pem`
+- `.local-keys/authai-public-key.pem`
+- `.local-keys/generated.env`
+
+That explicit initialization step is intentional: service identity does not silently change on restart, and key rotation remains operationally visible.
+
+### 3. Configure the environment
+
+Create a `.env` file and set at least:
+
+```env
+DATABASE_URL=postgresql://user:password@127.0.0.1:5432/cnothing
+KEYSERVICE_MASTER_KEY=...
+KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH=./.local-keys/authai-private-key.pem
+KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH=./.local-keys/authai-public-key.pem
+PORT=3021
+```
+
+### 4. Run migrations and start the API
+
+```bash
+cd CNothing
 bun run migrate
 bun run dev
 ```
 
-Start the console:
+### 5. Start the console
 
 ```bash
 cd CNothing/console
@@ -137,16 +211,36 @@ cd CNothing
 bun run console:dev
 ```
 
-## Publish As Standalone Repo
+### 6. Verify the deployment
+
+Once the service is running, verify:
+
+- `GET /health`
+- `GET /v1/authai/public-key`
+- `GET /mcp`
+- `GET /skill.md`
+
+On a default local setup, that usually means:
+
+```bash
+curl http://127.0.0.1:3021/health
+curl http://127.0.0.1:3021/v1/authai/public-key
+curl http://127.0.0.1:3021/mcp
+```
+
+## Deployment Notes
 
 `CNothing` works well as an independently published and deployed repository. For a public repository:
 
 - Keep `.env.example`
 - Do not commit `.env`
 - Do not commit `.local-keys/`
-- Provide production secrets through environment variables or a separate secrets directory in deployment
+- Provide production secrets through environment variables or a separate secrets directory
+- Keep production private keys outside paths that may be overwritten by code sync
 
-## Files
+This repository already includes deployment helpers under [deploy/](./deploy).
+
+## File Guide
 
 - [src/core/key-service.ts](./src/core/key-service.ts)
   - Core protocol orchestration

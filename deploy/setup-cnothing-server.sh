@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Run on the server as root after DNS for cnothing.com / www / ai points to this host.
 # Usage:
-#   export DATABASE_URL='postgresql://user:pass@127.0.0.1:5432/keyservice'
+#   export DATABASE_URL='postgresql://user:pass@127.0.0.1:5432/cnothing'
 #   export CERTBOT_EMAIL='you@example.com'
 #   bash deploy/setup-cnothing-server.sh
 #
 # Optional: export BOTGROCER_PARENT=/path/to/parent   (if auto-detect fails)
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/IamWills/keyservice.git}"
+REPO_URL="${REPO_URL:-https://github.com/IamWills/CNothing.git}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 DATABASE_URL="${DATABASE_URL:-}"
 
@@ -18,8 +18,8 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 if [[ -z "${DATABASE_URL}" ]]; then
-  echo "Set DATABASE_URL (PostgreSQL) for keyservice, e.g.:" >&2
-  echo "  export DATABASE_URL='postgresql://keyservice:SECRET@127.0.0.1:5432/keyservice'" >&2
+  echo "Set DATABASE_URL (PostgreSQL) for CNothing, e.g.:" >&2
+  echo "  export DATABASE_URL='postgresql://cnothing:SECRET@127.0.0.1:5432/cnothing'" >&2
   exit 1
 fi
 

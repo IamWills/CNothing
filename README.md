@@ -22,6 +22,13 @@ GitHub repository:
 
 - [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
 
+Formal public standards:
+
+- Standards index: [https://cnothing.com/standards](https://cnothing.com/standards)
+- Authentication Standard 1.0: [https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
+- Markdown export: [https://cnothing.com/standards/authentication/1.0/markdown](https://cnothing.com/standards/authentication/1.0/markdown)
+- HTML export: [https://cnothing.com/standards/authentication/1.0/html](https://cnothing.com/standards/authentication/1.0/html)
+
 ## When To Use It
 
 CNothing is a strong fit when:
@@ -72,6 +79,10 @@ For deeper protocol details, see:
 
 - [docs/protocol.md](./docs/protocol.md)
 - [docs/mcp.md](./docs/mcp.md)
+
+For the fixed, public, versioned protocol publication that third-party systems can cite in implementation reviews and audits, see:
+
+- [CNothing Authentication Standard 1.0](https://cnothing.com/standards/authentication/1.0)
 
 ## Main Endpoints
 
@@ -126,6 +137,11 @@ Notes:
 ## Third-Party Server SDK
 
 This repository now also includes a reusable Node.js and Bun SDK so third-party backends can integrate with `https://cnothing.com` without reimplementing the protocol by hand.
+
+Before building against the SDK in production, review the fixed public standard:
+
+- [CNothing Authentication Standard 1.0](https://cnothing.com/standards/authentication/1.0)
+- [Markdown export](https://cnothing.com/standards/authentication/1.0/markdown)
 
 Install it from npm:
 
@@ -255,6 +271,10 @@ await client.rotateKey({
   newClientKeyId: "rotation-2026-04",
 });
 ```
+
+The normative public specification for this flow is:
+
+- [https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
 
 ## Security Properties
 

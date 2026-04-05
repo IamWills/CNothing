@@ -6,6 +6,6 @@
     "start": "node index.mjs"
   },
   "dependencies": {
-    "cnothing": "^0.1.2"
+    "cnothing": "^0.1.5"
   }
 }

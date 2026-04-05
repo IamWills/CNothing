@@ -22,6 +22,13 @@ GitHub 仓库：
 
 - [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
 
+正式公开标准：
+
+- 标准目录：[https://cnothing.com/standards](https://cnothing.com/standards)
+- Authentication Standard 1.0：[https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
+- Markdown 导出：[https://cnothing.com/standards/authentication/1.0/markdown](https://cnothing.com/standards/authentication/1.0/markdown)
+- HTML 导出：[https://cnothing.com/standards/authentication/1.0/html](https://cnothing.com/standards/authentication/1.0/html)
+
 ## 适合什么场景
 
 CNothing 适合：
@@ -72,6 +79,10 @@ CNothing 的角色拆分非常简单：
 
 - [docs/protocol.md](./docs/protocol.md)
 - [docs/mcp.md](./docs/mcp.md)
+
+如果你需要一份可被第三方系统、审计或合规评审稳定引用的固定版本规范，请直接参考：
+
+- [CNothing Authentication Standard 1.0](https://cnothing.com/standards/authentication/1.0)
 
 ## 主要接口
 
@@ -126,6 +137,11 @@ CNothing 的角色拆分非常简单：
 ## 第三方服务端 SDK
 
 仓库现在也包含了一套可复用的 Node.js / Bun SDK，方便第三方后端直接接入 `https://cnothing.com`，而不用自己手写整套协议实现。
+
+第三方生产接入前，建议先阅读固定版本的公开标准：
+
+- [CNothing Authentication Standard 1.0](https://cnothing.com/standards/authentication/1.0)
+- [Markdown 导出](https://cnothing.com/standards/authentication/1.0/markdown)
 
 现在已经可以直接从 npm 安装：
 
@@ -255,6 +271,10 @@ await client.rotateKey({
   newClientKeyId: "rotation-2026-04",
 });
 ```
+
+这条流程对应的正式公开规范在：
+
+- [https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
 
 ## 安全属性
 

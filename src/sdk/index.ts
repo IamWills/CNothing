@@ -8,6 +8,9 @@ export {
   derivePublicKeyPem,
   generateClientKeyPair,
   isClientSealedValue,
+  normalizePrivacyKey,
+  protectNamespace,
+  protectRecordKey,
   sealValueForClient,
   unsealValueForClient,
 } from "./crypto";
@@ -20,6 +23,7 @@ export type {
   CNothingSession,
   JsonObject,
   JsonValue,
+  ProtectedMetadata,
   ReadEnvelopePayload,
   ReadKvResponse,
   ReadResultPayload,

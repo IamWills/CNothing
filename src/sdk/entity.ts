@@ -123,6 +123,7 @@ export type CNothingClientConfig = {
   clientKeyId?: string;
   clientLabel?: string;
   metadata?: JsonObject;
+  privacyKey?: string | Uint8Array;
   fetch?: typeof fetch;
 };
 
@@ -131,3 +132,5 @@ export type CNothingSession = {
   challenge: ChallengePayload;
   authaiPublicKey: AuthaiPublicKey;
 };
+
+export type ProtectedMetadata = ClientSealedValue;

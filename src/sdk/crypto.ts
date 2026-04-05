@@ -1,4 +1,10 @@
-import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+} from "node:crypto";
 import {
   decryptWithPrivateKey,
   encryptForPublicKey,
@@ -16,6 +22,9 @@ import type {
   ReadResultPayload,
   SaveEnvelopePayload,
 } from "./entity";
+
+const PROTECTED_NAMESPACE_PREFIX = "cnns.";
+const PROTECTED_KEY_PREFIX = "cnkey.";
 
 export function generateClientKeyPair(input?: {
   modulusLength?: number;
@@ -149,4 +158,49 @@ export function isClientSealedValue(value: unknown): value is ClientSealedValue 
     record.kind === "client-sealed-json" &&
     Boolean(record.envelope && typeof record.envelope === "object")
   );
+}
+
+export function normalizePrivacyKey(input: string | Uint8Array): Buffer {
+  const raw = typeof input === "string" ? Buffer.from(input, "utf8") : Buffer.from(input);
+  return createHash("sha256").update("cnothing-privacy-key:").update(raw).digest();
+}
+
+function protectName(input: {
+  kind: "namespace" | "key";
+  privacyKey: Buffer;
+  namespace?: string;
+  value: string;
+}): string {
+  const hmac = createHmac("sha256", input.privacyKey);
+  hmac.update(`kind:${input.kind}\n`);
+  if (input.namespace) {
+    hmac.update(`namespace:${input.namespace}\n`);
+  }
+  hmac.update(`value:${input.value}`);
+  const digest = hmac.digest("base64url");
+  return `${input.kind === "namespace" ? PROTECTED_NAMESPACE_PREFIX : PROTECTED_KEY_PREFIX}${digest}`;
+}
+
+export function protectNamespace(input: {
+  privacyKey: Buffer;
+  namespace: string;
+}): string {
+  return protectName({
+    kind: "namespace",
+    privacyKey: input.privacyKey,
+    value: input.namespace,
+  });
+}
+
+export function protectRecordKey(input: {
+  privacyKey: Buffer;
+  namespace: string;
+  key: string;
+}): string {
+  return protectName({
+    kind: "key",
+    privacyKey: input.privacyKey,
+    namespace: input.namespace,
+    value: input.key,
+  });
 }

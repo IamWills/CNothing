@@ -145,12 +145,19 @@ The SDK is designed for backend use. A third-party service can:
 - Save and read encrypted KV values through `https://cnothing.com`
 - Let AI use the CNothing protocol without ever seeing plaintext secrets
 
-For third-party production use against `https://cnothing.com`, the recommended path is to use the client-sealed methods:
+For third-party production use against `https://cnothing.com`, the most privacy-preserving path is to use the structure-protected methods:
+
+- `saveBlindJson()`
+- `readBlindJson()`
+
+These methods protect `namespace`, `key`, `metadata`, and `value` on the third-party backend before anything is sent to CNothing.
+
+If you only need to hide the value plaintext but are comfortable exposing namespace and key names to the service, you can use:
 
 - `savePrivateJson()`
 - `readPrivateJson()`
 
-These methods add a second encryption layer on the third-party backend before values are ever sent to CNothing. That means `cnothing.com` stores and returns ciphertext blobs that only the third-party backend can decrypt locally.
+Those methods only add a second encryption layer for the value itself.
 
 Minimal example:
 
@@ -164,21 +171,23 @@ const client = new CNothingClient({
   clientPrivateKeyPem: privateKeyPem,
   clientPublicKeyPem: publicKeyPem,
   clientLabel: "third-party-service",
+  privacyKey: process.env.CNOTHING_PRIVACY_KEY!,
 });
 
 await client.register();
 
-await client.savePrivateJson({
+await client.saveBlindJson({
   namespace: "thirdparty.example.production",
   items: [
     {
       key: "provider/openai/api-key",
       value: { apiKey: "sk-..." },
+      metadata: { provider: "openai" },
     },
   ],
 });
 
-const readResult = await client.readPrivateJson({
+const readResult = await client.readBlindJson({
   namespace: "thirdparty.example.production",
   keys: ["provider/openai/api-key"],
 });
@@ -204,11 +213,14 @@ That is because:
 - The third-party backend keeps the client private key locally
 - `CNothing` encrypts challenges to the third-party public key
 - The backend decrypts those challenges locally and creates ciphertext envelopes for CNothing
-- In the recommended SDK flow, the backend also encrypts the value itself before it is ever handed to CNothing
+- In the recommended SDK flow, the backend also protects namespace and key names with a deterministic privacy mapping
+- The backend seals metadata and value plaintext before they are ever handed to CNothing
 - AI only forwards ciphertext envelopes and non-sensitive metadata
 - Read results are encrypted back to the third-party public key, and the inner value stays client-sealed, so only that backend can decrypt it
 
-In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. In the recommended client-sealed mode, the CNothing service operator also does not receive the plaintext value, because CNothing only stores a client-encrypted blob.
+In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. In the recommended blind mode, the CNothing service operator also does not receive the third-party plaintext value, plaintext metadata, or original namespace and key names.
+
+The operator can still observe high-level access patterns such as request timing, client identity, and the existence of stable protected identifiers. This is operator-blind for payload and structure content, not an attempt at traffic-analysis resistance.
 
 ## Security Properties
 
@@ -275,12 +287,13 @@ const client = new CNothingClient({
   clientPrivateKeyPem: process.env.CNOTHING_CLIENT_PRIVATE_KEY_PEM!,
   clientPublicKeyPem: process.env.CNOTHING_CLIENT_PUBLIC_KEY_PEM!,
   clientLabel: "my-service",
+  privacyKey: process.env.CNOTHING_PRIVACY_KEY!,
 });
 
 await client.register();
-await client.savePrivateJson({
+await client.saveBlindJson({
   namespace: "my.service.production",
-  items: [{ key: "secret/example", value: { token: "..." } }],
+  items: [{ key: "secret/example", value: { token: "..." }, metadata: { kind: "token" } }],
 });
 ```
 

@@ -7,6 +7,9 @@ import {
   decryptReadResultForClient,
   derivePublicKeyPem,
   isClientSealedValue,
+  normalizePrivacyKey,
+  protectNamespace,
+  protectRecordKey,
   sealValueForClient,
   unsealValueForClient,
 } from "./crypto";
@@ -70,6 +73,7 @@ export class CNothingClient {
   private readonly clientKeyId?: string;
   private readonly clientLabel?: string;
   private readonly metadata?: JsonObject;
+  private readonly privacyKey?: Buffer;
   private readonly fetchImpl: typeof fetch;
 
   private session: CNothingSession | null = null;
@@ -82,6 +86,7 @@ export class CNothingClient {
     this.clientKeyId = config.clientKeyId;
     this.clientLabel = config.clientLabel;
     this.metadata = config.metadata;
+    this.privacyKey = config.privacyKey ? normalizePrivacyKey(config.privacyKey) : undefined;
     this.fetchImpl = config.fetch ?? fetch;
   }
 
@@ -321,6 +326,128 @@ export class CNothingClient {
     };
   }
 
+  async saveBlindJson(input: {
+    namespace: string;
+    items: Array<{ key: string; value: JsonValue; metadata?: JsonObject }>;
+  }): Promise<
+    SaveKvResponse & {
+      session: CNothingSession;
+      protectedNamespace: string;
+      protectedKeys: Record<string, string>;
+    }
+  > {
+    const privacyKey = this.requirePrivacyKey();
+    const protectedNamespace = protectNamespace({
+      privacyKey,
+      namespace: input.namespace,
+    });
+    const protectedKeys = Object.fromEntries(
+      input.items.map((item) => [
+        item.key,
+        protectRecordKey({
+          privacyKey,
+          namespace: input.namespace,
+          key: item.key,
+        }),
+      ]),
+    );
+
+    const response = await this.saveJson({
+      namespace: protectedNamespace,
+      items: input.items.map((item) => ({
+        key: protectedKeys[item.key]!,
+        value: sealValueForClient({
+          clientPublicKeyPem: this.clientPublicKeyPem,
+          keyId: this.clientKeyId,
+          value: item.value,
+        }),
+        metadata: item.metadata
+          ? ({
+              sealed_metadata: sealValueForClient({
+                clientPublicKeyPem: this.clientPublicKeyPem,
+                keyId: this.clientKeyId,
+                value: item.metadata,
+              }),
+            } as JsonObject)
+          : undefined,
+      })),
+    });
+
+    return {
+      ...response,
+      protectedNamespace,
+      protectedKeys,
+    };
+  }
+
+  async readBlindJson(input: {
+    namespace: string;
+    keys: string[];
+  }): Promise<
+    ReadKvResponse & {
+      session: CNothingSession;
+      sealedResult: ReadResultPayload;
+      items: Record<string, JsonValue>;
+      protectedNamespace: string;
+      protectedKeys: Record<string, string>;
+    }
+  > {
+    const privacyKey = this.requirePrivacyKey();
+    const protectedNamespace = protectNamespace({
+      privacyKey,
+      namespace: input.namespace,
+    });
+    const protectedKeys = Object.fromEntries(
+      input.keys.map((key) => [
+        key,
+        protectRecordKey({
+          privacyKey,
+          namespace: input.namespace,
+          key,
+        }),
+      ]),
+    );
+
+    const response = await this.readJson({
+      namespace: protectedNamespace,
+      keys: Object.values(protectedKeys),
+    });
+
+    const reverseKeys = new Map(
+      Object.entries(protectedKeys).map(([plainKey, protectedKey]) => [protectedKey, plainKey]),
+    );
+
+    const items = Object.fromEntries(
+      Object.entries(response.result.items).map(([protectedKey, value]) => {
+        const plainKey = reverseKeys.get(protectedKey);
+        if (!plainKey) {
+          throw new Error(`Received unexpected protected key ${protectedKey}`);
+        }
+        if (!isClientSealedValue(value)) {
+          throw new Error(
+            `Key ${plainKey} is not stored as a client-sealed value. Use readJson() for plain protocol values.`,
+          );
+        }
+        return [
+          plainKey,
+          unsealValueForClient({
+            clientPrivateKeyPem: this.clientPrivateKeyPem,
+            sealedValue: value,
+            expectedKeyId: this.clientKeyId,
+          }),
+        ];
+      }),
+    );
+
+    return {
+      ...response,
+      sealedResult: response.result,
+      items,
+      protectedNamespace,
+      protectedKeys,
+    };
+  }
+
   private buildAuthPayload(
     session: CNothingSession,
     action: AuthEnvelopePayload["action"],
@@ -363,6 +490,15 @@ export class CNothingClient {
       );
     }
     return this.session;
+  }
+
+  private requirePrivacyKey(): Buffer {
+    if (!this.privacyKey) {
+      throw new Error(
+        "CNothing privacyKey is not configured. Provide privacyKey in the client config to protect namespace, key, and metadata.",
+      );
+    }
+    return this.privacyKey;
   }
 }
 

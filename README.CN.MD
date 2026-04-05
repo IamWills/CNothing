@@ -145,12 +145,19 @@ bun add cnothing
 - 通过 `https://cnothing.com` 读写加密 KV
 - 让 AI 使用 CNothing 协议参与流程，但仍然看不到明文 secrets
 
-对于第三方以生产方式接入 `https://cnothing.com`，推荐优先使用下面两个方法：
+对于第三方以生产方式接入 `https://cnothing.com`，最推荐的是使用下面这组“结构保护”方法：
+
+- `saveBlindJson()`
+- `readBlindJson()`
+
+这两个方法会在第三方后端本地同时保护 `namespace`、`key`、`metadata` 和 `value`，然后才发给 CNothing。
+
+如果你只想隐藏 value 明文，而不介意暴露 namespace 和 key 名，那么也可以使用：
 
 - `savePrivateJson()`
 - `readPrivateJson()`
 
-这两个方法会在第三方后端先对 value 做第二层加密，然后才发送给 CNothing。也就是说，`cnothing.com` 保存和返回的都是只有第三方后端自己才能解开的密文对象。
+这两个方法只会给 value 增加第二层加密。
 
 最小示例：
 
@@ -164,21 +171,23 @@ const client = new CNothingClient({
   clientPrivateKeyPem: privateKeyPem,
   clientPublicKeyPem: publicKeyPem,
   clientLabel: "third-party-service",
+  privacyKey: process.env.CNOTHING_PRIVACY_KEY!,
 });
 
 await client.register();
 
-await client.savePrivateJson({
+await client.saveBlindJson({
   namespace: "thirdparty.example.production",
   items: [
     {
       key: "provider/openai/api-key",
       value: { apiKey: "sk-..." },
+      metadata: { provider: "openai" },
     },
   ],
 });
 
-const readResult = await client.readPrivateJson({
+const readResult = await client.readBlindJson({
   namespace: "thirdparty.example.production",
   keys: ["provider/openai/api-key"],
 });
@@ -204,11 +213,14 @@ SDK 当前主要导出：
 - 第三方后端会把客户端私钥保留在本地
 - `CNothing` 返回的 challenge 永远加密给第三方的公钥
 - 第三方后端在本地解密 challenge，并在本地生成加密给 CNothing 的 envelope
-- 在推荐的 SDK 用法里，第三方后端还会先把 value 本身加密，再交给 CNothing
+- 在推荐的 SDK 用法里，第三方后端还会先把 namespace 和 key 做稳定映射保护
+- 第三方后端还会先把 metadata 和 value 本身加密，再交给 CNothing
 - AI 只会转发密文 envelope 和非敏感元数据
 - 读取结果会重新加密给第三方公钥，而其中的 value 仍然保持第三方自加密状态，因此只有第三方后端能解密
 
-换句话说，AI 可以参与流程编排，但它并不会成为第三方明文 secrets 的持有者。在推荐的 client-sealed 模式下，CNothing 服务运营方也拿不到第三方 value 的明文，因为 CNothing 实际存储的只是第三方自己先加密过的一层密文。
+换句话说，AI 可以参与流程编排，但它并不会成为第三方明文 secrets 的持有者。在推荐的 blind 模式下，CNothing 服务运营方也拿不到第三方 value、metadata，以及原始 namespace / key 名的明文，因为 CNothing 实际看到的是第三方先做过保护后的结果。
+
+当然，运营方仍然可以观察到请求时间、客户端身份以及“存在某些稳定受保护标识”这一事实。所以这是一种对 payload 和结构内容的 operator-blind 设计，不是对流量分析完全隐身的设计。
 
 ## 安全属性
 
@@ -275,12 +287,13 @@ const client = new CNothingClient({
   clientPrivateKeyPem: process.env.CNOTHING_CLIENT_PRIVATE_KEY_PEM!,
   clientPublicKeyPem: process.env.CNOTHING_CLIENT_PUBLIC_KEY_PEM!,
   clientLabel: "my-service",
+  privacyKey: process.env.CNOTHING_PRIVACY_KEY!,
 });
 
 await client.register();
-await client.savePrivateJson({
+await client.saveBlindJson({
   namespace: "my.service.production",
-  items: [{ key: "secret/example", value: { token: "..." } }],
+  items: [{ key: "secret/example", value: { token: "..." }, metadata: { kind: "token" } }],
 });
 ```
 

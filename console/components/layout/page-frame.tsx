@@ -1,0 +1,31 @@
+import type { ReactNode } from "react";
+
+export function PageFrame({
+  title,
+  description,
+  actions,
+  children,
+}: {
+  title: string;
+  description: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <main className="mx-auto flex min-h-[calc(100vh-140px)] w-full max-w-[1440px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <section className="flex flex-col gap-4 rounded-[32px] border border-white/70 bg-[linear-gradient(135deg,rgba(12,18,28,0.92),rgba(34,60,80,0.82)_42%,rgba(244,246,248,0.92)_100%)] px-6 py-8 text-white shadow-[0_24px_90px_rgba(15,23,42,0.16)] sm:px-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl space-y-3">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              {title}
+            </h1>
+            <p className="text-sm text-slate-200 sm:text-base">{description}</p>
+          </div>
+          {actions ? <div className="flex items-center gap-3">{actions}</div> : null}
+        </div>
+      </section>
+
+      {children}
+    </main>
+  );
+}

@@ -1,5 +1,5 @@
-import { KeyServiceConsole } from "@/components/console/keyservice-console";
+import { HomePage } from "@/components/console/home-page";
 
 export default function Home() {
-  return <KeyServiceConsole />;
+  return <HomePage />;
 }

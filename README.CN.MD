@@ -145,6 +145,13 @@ bun add cnothing
 - 通过 `https://cnothing.com` 读写加密 KV
 - 让 AI 使用 CNothing 协议参与流程，但仍然看不到明文 secrets
 
+对于第三方以生产方式接入 `https://cnothing.com`，推荐优先使用下面两个方法：
+
+- `savePrivateJson()`
+- `readPrivateJson()`
+
+这两个方法会在第三方后端先对 value 做第二层加密，然后才发送给 CNothing。也就是说，`cnothing.com` 保存和返回的都是只有第三方后端自己才能解开的密文对象。
+
 最小示例：
 
 ```ts
@@ -161,7 +168,7 @@ const client = new CNothingClient({
 
 await client.register();
 
-await client.saveJson({
+await client.savePrivateJson({
   namespace: "thirdparty.example.production",
   items: [
     {
@@ -171,12 +178,12 @@ await client.saveJson({
   ],
 });
 
-const readResult = await client.readJson({
+const readResult = await client.readPrivateJson({
   namespace: "thirdparty.example.production",
   keys: ["provider/openai/api-key"],
 });
 
-console.log(readResult.result.items["provider/openai/api-key"]);
+console.log(readResult.items["provider/openai/api-key"]);
 ```
 
 SDK 当前主要导出：
@@ -197,10 +204,11 @@ SDK 当前主要导出：
 - 第三方后端会把客户端私钥保留在本地
 - `CNothing` 返回的 challenge 永远加密给第三方的公钥
 - 第三方后端在本地解密 challenge，并在本地生成加密给 CNothing 的 envelope
+- 在推荐的 SDK 用法里，第三方后端还会先把 value 本身加密，再交给 CNothing
 - AI 只会转发密文 envelope 和非敏感元数据
-- 读取结果也会重新加密给第三方公钥，因此只有第三方后端能解密
+- 读取结果会重新加密给第三方公钥，而其中的 value 仍然保持第三方自加密状态，因此只有第三方后端能解密
 
-换句话说，AI 可以参与流程编排，但它并不会成为第三方明文 secrets 的持有者。真正的可信边界依然是第三方后端和 CNothing 协议本身，而不是模型上下文。
+换句话说，AI 可以参与流程编排，但它并不会成为第三方明文 secrets 的持有者。在推荐的 client-sealed 模式下，CNothing 服务运营方也拿不到第三方 value 的明文，因为 CNothing 实际存储的只是第三方自己先加密过的一层密文。
 
 ## 安全属性
 
@@ -270,6 +278,10 @@ const client = new CNothingClient({
 });
 
 await client.register();
+await client.savePrivateJson({
+  namespace: "my.service.production",
+  items: [{ key: "secret/example", value: { token: "..." } }],
+});
 ```
 
 ### 3. 配置环境变量

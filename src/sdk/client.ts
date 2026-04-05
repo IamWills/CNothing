@@ -6,10 +6,14 @@ import {
   decryptChallengeForClient,
   decryptReadResultForClient,
   derivePublicKeyPem,
+  isClientSealedValue,
+  sealValueForClient,
+  unsealValueForClient,
 } from "./crypto";
 import type {
   AuthEnvelopePayload,
   AuthaiPublicKey,
+  ClientSealedValue,
   CNothingClientConfig,
   CNothingSession,
   JsonObject,
@@ -260,6 +264,60 @@ export class CNothingClient {
       ...response,
       result,
       session: this.session,
+    };
+  }
+
+  async savePrivateJson(input: {
+    namespace: string;
+    items: Array<{ key: string; value: JsonValue; metadata?: JsonObject }>;
+  }): Promise<SaveKvResponse & { session: CNothingSession }> {
+    return this.saveJson({
+      namespace: input.namespace,
+      items: input.items.map((item) => ({
+        key: item.key,
+        metadata: item.metadata,
+        value: sealValueForClient({
+          clientPublicKeyPem: this.clientPublicKeyPem,
+          keyId: this.clientKeyId,
+          value: item.value,
+        }),
+      })),
+    });
+  }
+
+  async readPrivateJson(input: {
+    namespace: string;
+    keys: string[];
+  }): Promise<
+    ReadKvResponse & {
+      session: CNothingSession;
+      sealedResult: ReadResultPayload;
+      items: Record<string, JsonValue>;
+    }
+  > {
+    const response = await this.readJson(input);
+    const items = Object.fromEntries(
+      Object.entries(response.result.items).map(([key, value]) => {
+        if (!isClientSealedValue(value)) {
+          throw new Error(
+            `Key ${key} is not stored as a client-sealed value. Use readJson() for plain protocol values.`,
+          );
+        }
+        return [
+          key,
+          unsealValueForClient({
+            clientPrivateKeyPem: this.clientPrivateKeyPem,
+            sealedValue: value,
+            expectedKeyId: this.clientKeyId,
+          }),
+        ];
+      }),
+    );
+
+    return {
+      ...response,
+      sealedResult: response.result,
+      items,
     };
   }
 

@@ -145,6 +145,13 @@ The SDK is designed for backend use. A third-party service can:
 - Save and read encrypted KV values through `https://cnothing.com`
 - Let AI use the CNothing protocol without ever seeing plaintext secrets
 
+For third-party production use against `https://cnothing.com`, the recommended path is to use the client-sealed methods:
+
+- `savePrivateJson()`
+- `readPrivateJson()`
+
+These methods add a second encryption layer on the third-party backend before values are ever sent to CNothing. That means `cnothing.com` stores and returns ciphertext blobs that only the third-party backend can decrypt locally.
+
 Minimal example:
 
 ```ts
@@ -161,7 +168,7 @@ const client = new CNothingClient({
 
 await client.register();
 
-await client.saveJson({
+await client.savePrivateJson({
   namespace: "thirdparty.example.production",
   items: [
     {
@@ -171,12 +178,12 @@ await client.saveJson({
   ],
 });
 
-const readResult = await client.readJson({
+const readResult = await client.readPrivateJson({
   namespace: "thirdparty.example.production",
   keys: ["provider/openai/api-key"],
 });
 
-console.log(readResult.result.items["provider/openai/api-key"]);
+console.log(readResult.items["provider/openai/api-key"]);
 ```
 
 The SDK exports:
@@ -197,10 +204,11 @@ That is because:
 - The third-party backend keeps the client private key locally
 - `CNothing` encrypts challenges to the third-party public key
 - The backend decrypts those challenges locally and creates ciphertext envelopes for CNothing
+- In the recommended SDK flow, the backend also encrypts the value itself before it is ever handed to CNothing
 - AI only forwards ciphertext envelopes and non-sensitive metadata
-- Read results are encrypted back to the third-party public key, so only that backend can decrypt them
+- Read results are encrypted back to the third-party public key, and the inner value stays client-sealed, so only that backend can decrypt it
 
-In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. The trust boundary remains the third-party backend and the CNothing protocol, not the model context.
+In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. In the recommended client-sealed mode, the CNothing service operator also does not receive the plaintext value, because CNothing only stores a client-encrypted blob.
 
 ## Security Properties
 
@@ -270,6 +278,10 @@ const client = new CNothingClient({
 });
 
 await client.register();
+await client.savePrivateJson({
+  namespace: "my.service.production",
+  items: [{ key: "secret/example", value: { token: "..." } }],
+});
 ```
 
 ### 3. Configure the environment

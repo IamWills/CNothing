@@ -8,8 +8,10 @@ import {
 import type {
   AuthEnvelopePayload,
   AuthaiPublicKey,
+  ClientSealedValue,
   ChallengePayload,
   JsonObject,
+  JsonValue,
   ReadEnvelopePayload,
   ReadResultPayload,
   SaveEnvelopePayload,
@@ -106,4 +108,45 @@ export function normalizeMetadata(input: JsonObject | undefined): JsonObject | u
     return undefined;
   }
   return input;
+}
+
+export function sealValueForClient(input: {
+  clientPublicKeyPem: string;
+  keyId?: string;
+  value: JsonValue;
+}): ClientSealedValue {
+  return {
+    v: "cnsk1",
+    kind: "client-sealed-json",
+    envelope: encryptForPublicKey({
+      publicKeyPem: input.clientPublicKeyPem,
+      keyId: input.keyId,
+      payload: input.value,
+    }),
+  };
+}
+
+export function unsealValueForClient(input: {
+  clientPrivateKeyPem: string;
+  sealedValue: ClientSealedValue;
+  expectedKeyId?: string;
+}): JsonValue {
+  return decryptWithPrivateKey<JsonValue>({
+    privateKeyPem: input.clientPrivateKeyPem,
+    envelope: input.sealedValue.envelope,
+    expectedKeyId: input.expectedKeyId,
+  });
+}
+
+export function isClientSealedValue(value: unknown): value is ClientSealedValue {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    record.v === "cnsk1" &&
+    record.kind === "client-sealed-json" &&
+    Boolean(record.envelope && typeof record.envelope === "object")
+  );
 }

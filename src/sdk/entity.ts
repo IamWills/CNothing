@@ -65,6 +65,12 @@ export type ReadResultPayload = {
   items: Record<string, JsonValue>;
 };
 
+export type ClientSealedValue = {
+  v: "cnsk1";
+  kind: "client-sealed-json";
+  envelope: HybridEnvelope;
+};
+
 export type RegisterClientResponse = {
   ok: true;
   client_uuid: string;

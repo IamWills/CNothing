@@ -7,10 +7,14 @@ export {
   decryptReadResultForClient,
   derivePublicKeyPem,
   generateClientKeyPair,
+  isClientSealedValue,
+  sealValueForClient,
+  unsealValueForClient,
 } from "./crypto";
 export type {
   AuthEnvelopePayload,
   AuthaiPublicKey,
+  ClientSealedValue,
   ChallengePayload,
   CNothingClientConfig,
   CNothingSession,

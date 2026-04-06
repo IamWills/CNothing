@@ -4,10 +4,10 @@
   --background: #f8f8fb;
   --foreground: #0f172a;
   --surface: #ffffff;
-  --surface-muted: #f1f2f6;
-  --border: #e8e8ee;
-  --brand: #ca279c;
-  --system-blue: #0a84ff;
+  --surface-muted: #f6efec;
+  --border: #f0d8d1;
+  --brand: #e94420;
+  --system-blue: #f1724f;
   --radius-view: 28px;
   --radius-control: 24px;
   --radius-tab-nav: 28px;
@@ -30,8 +30,9 @@
 
 html {
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--brand) 10%, transparent), transparent 36%),
-    linear-gradient(180deg, #ffffff 0%, #f7f7fb 44%, #eef1f7 100%);
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand) 14%, transparent), transparent 34%),
+    radial-gradient(circle at top right, rgba(233, 68, 32, 0.08), transparent 28%),
+    linear-gradient(180deg, #fffaf8 0%, #f9f2ef 44%, #f5f1ef 100%);
 }
 
 body {

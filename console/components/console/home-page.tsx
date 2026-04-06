@@ -151,7 +151,7 @@ export function HomePage() {
             <div className="flex items-center gap-4">
               <BrandMark size="lg" />
               <div className="space-y-2">
-                <Badge className="border-transparent bg-slate-900 text-white">{brand.tagline}</Badge>
+                <Badge className="border-transparent bg-[color:var(--brand)] text-white">{brand.tagline}</Badge>
                 <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
                   A calmer front door for CNothing
                 </h2>

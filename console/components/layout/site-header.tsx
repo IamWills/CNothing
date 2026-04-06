@@ -27,7 +27,7 @@ export function SiteHeader() {
             <div className="flex items-center gap-4">
               <BrandMark />
               <div className="space-y-2">
-                <Badge className="border-transparent bg-slate-900 text-white">
+                <Badge className="border-transparent bg-[color:var(--brand)] text-white">
                   {brand.name}
                 </Badge>
                 <p className="text-2xl font-semibold tracking-tight text-slate-950">
@@ -68,7 +68,7 @@ export function SiteHeader() {
                 href={item.href}
                 className={`rounded-full border px-4 py-2 text-sm transition ${
                   isActive
-                    ? "border-slate-900 bg-slate-900 text-white"
+                    ? "border-[color:var(--brand)] bg-[color:var(--brand)] text-white"
                     : "border-[color:var(--border)] bg-white text-slate-700 hover:border-slate-400"
                 }`}
               >

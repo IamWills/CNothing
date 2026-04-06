@@ -90,8 +90,8 @@ export function ClientsPage() {
       description="Onboard client identities manually, inspect the server key material, and move to the KV view from the same channel."
       actions={
         <>
-          <ChannelRouteTabs items={clientChannelTabs} />
           <ReloadIconButton onReload={() => void refreshClients()} disabled={loading} />
+          <ChannelRouteTabs items={clientChannelTabs} />
         </>
       }
     >

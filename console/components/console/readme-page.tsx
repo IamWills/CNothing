@@ -16,8 +16,8 @@ export function ReadmePage({ readme }: { readme: string }) {
       description="Review the repository guide, privacy model, SDK workflow, and deployment notes directly inside the Home channel."
       actions={
         <>
-          <ChannelRouteTabs items={homeChannelTabs} />
           <ReloadIconButton />
+          <ChannelRouteTabs items={homeChannelTabs} />
         </>
       }
     >

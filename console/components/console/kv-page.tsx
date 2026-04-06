@@ -173,8 +173,8 @@ export function KvPage() {
       description="Browse client namespaces, inspect saved key names and values, and add new KV records without leaving the Clients channel."
       actions={
         <>
-          <ChannelRouteTabs items={clientChannelTabs} />
           <ReloadIconButton onReload={() => void refreshClients()} disabled={loading} />
+          <ChannelRouteTabs items={clientChannelTabs} />
         </>
       }
     >

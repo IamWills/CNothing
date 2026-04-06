@@ -17,7 +17,7 @@ export function ChannelRouteTabs({
     <div
       role="tablist"
       className={cn(
-        "inline-flex w-fit flex-wrap items-center gap-1 self-end rounded-[var(--radius-tab-nav)] border border-white/20 bg-white/10 p-1 backdrop-blur-sm",
+        "inline-flex h-10 w-fit flex-wrap items-center gap-1 self-end rounded-[var(--radius-tab-nav)] border border-white/20 bg-white/10 p-1 backdrop-blur-sm",
         className,
       )}
     >
@@ -34,7 +34,7 @@ export function ChannelRouteTabs({
             key={item.href}
             href={item.href}
             className={cn(
-              "inline-flex h-9 items-center justify-center rounded-[var(--radius-tab-item)] px-3 text-sm font-medium transition-colors",
+              "inline-flex h-8 items-center justify-center rounded-[var(--radius-tab-item)] px-3 text-sm font-medium transition-colors",
               isActive
                 ? "bg-white text-slate-950"
                 : "text-white/78 hover:bg-white/10 hover:text-white",

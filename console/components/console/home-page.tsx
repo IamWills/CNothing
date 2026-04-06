@@ -106,8 +106,8 @@ export function HomePage() {
       description={`${brand.name} keeps the useful surface visible and the secrets behind it. Move between the overview and the repository guide from this channel.`}
       actions={
         <>
-          <ChannelRouteTabs items={homeChannelTabs} />
           <ReloadIconButton onReload={() => void refreshOverview()} disabled={loading} />
+          <ChannelRouteTabs items={homeChannelTabs} />
         </>
       }
     >

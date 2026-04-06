@@ -1,4 +1,5 @@
 import { ExternalLink, ShieldCheck } from "lucide-react";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,16 +15,19 @@ export function StandardsIndexPage() {
         {publishedStandards.map((standard) => (
           <Card key={standard.id} className="space-y-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 rounded-full bg-[color:var(--surface-muted)] px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                  <ShieldCheck className="h-4 w-4 text-[color:var(--brand)]" />
-                  {standard.family}
-                </div>
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                    {standard.title}
-                  </h2>
-                  <p className="mt-2 max-w-3xl text-sm text-slate-600">{standard.summary}</p>
+              <div className="flex items-center gap-4">
+                <BrandMark size="sm" />
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-[color:var(--surface-muted)] px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                    <ShieldCheck className="h-4 w-4 text-[color:var(--brand)]" />
+                    {standard.family}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                      {standard.title}
+                    </h2>
+                    <p className="mt-2 max-w-3xl text-sm text-slate-600">{standard.summary}</p>
+                  </div>
                 </div>
               </div>
               <div className="grid gap-2 text-sm text-slate-600">

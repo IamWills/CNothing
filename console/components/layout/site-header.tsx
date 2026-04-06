@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { ExternalLink, FileText, Github, ShieldCheck } from "lucide-react";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { brand } from "@/lib/brand";
 
@@ -25,16 +25,7 @@ export function SiteHeader() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-4">
-              <div className="overflow-hidden rounded-[28px] border border-[color:var(--border)] bg-white p-1 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
-                <Image
-                  src={brand.logoPath}
-                  alt={`${brand.name} logo`}
-                  width={64}
-                  height={64}
-                  className="h-16 w-16 rounded-[22px] object-cover"
-                  priority
-                />
-              </div>
+              <BrandMark />
               <div className="space-y-2">
                 <Badge className="border-transparent bg-slate-900 text-white">
                   {brand.name}

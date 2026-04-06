@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, RefreshCcw, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -146,16 +147,21 @@ export function HomePage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="space-y-5">
-          <div className="space-y-2">
-            <Badge className="border-transparent bg-slate-900 text-white">{brand.tagline}</Badge>
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-              A calmer front door for CNothing
-            </h2>
-            <p className="max-w-2xl text-sm text-slate-600">
-              The console now separates discovery, registration, and KV review into their own pages.
-              Each page stays focused on a single workflow while still sharing the same backend APIs and
-              connection settings.
-            </p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-center gap-4">
+              <BrandMark size="lg" />
+              <div className="space-y-2">
+                <Badge className="border-transparent bg-slate-900 text-white">{brand.tagline}</Badge>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  A calmer front door for CNothing
+                </h2>
+                <p className="max-w-2xl text-sm text-slate-600">
+                  The console now separates discovery, registration, and KV review into their own pages.
+                  Each page stays focused on a single workflow while still sharing the same backend APIs and
+                  connection settings.
+                </p>
+              </div>
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {sections.map((section) => {

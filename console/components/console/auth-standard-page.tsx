@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -32,6 +33,19 @@ export function AuthStandardPage() {
     >
       <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <Card className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <BrandMark size="sm" />
+              <div>
+                <p className="text-sm font-semibold tracking-[0.18em] text-slate-500">
+                  CNothing Standard
+                </p>
+                <p className="text-sm text-slate-600">
+                  Fixed publication and export endpoints
+                </p>
+              </div>
+            </div>
+          </div>
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Published</p>
             <p className="text-sm font-medium text-slate-700">{authStandard.publishedAt}</p>
@@ -52,9 +66,12 @@ export function AuthStandardPage() {
         </Card>
 
         <Card className="space-y-4">
-          <div className="rounded-[24px] bg-[color:var(--surface-muted)]/70 p-4 text-sm text-slate-600">
-            This publication is the public implementation profile currently followed by CNothing.
-            Each expandable section below is normative unless it is explicitly labeled as guidance.
+          <div className="flex items-center gap-4 rounded-[24px] bg-[color:var(--surface-muted)]/70 p-4 text-sm text-slate-600">
+            <BrandMark size="sm" className="shrink-0" />
+            <p>
+              This publication is the public implementation profile currently followed by CNothing.
+              Each expandable section below is normative unless it is explicitly labeled as guidance.
+            </p>
           </div>
           <div className="space-y-4">
             {authStandard.sections.map((section) => (

@@ -1,11 +1,32 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { SiteHeader } from "@/components/layout/site-header";
+import { brand } from "@/lib/brand";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://cnothing.com"),
   title: "CNothing",
   description: "CNothing console for browsing MCP capabilities, client registrations, and KV data.",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: brand.logoPath, type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", type: "image/png" }],
+    shortcut: ["/icon.png"],
+  },
+  openGraph: {
+    title: "CNothing",
+    description: "CNothing console for browsing MCP capabilities, client registrations, and KV data.",
+    images: [{ url: brand.logoPath, alt: "CNothing logo" }],
+  },
+  twitter: {
+    card: "summary",
+    title: "CNothing",
+    description: "CNothing console for browsing MCP capabilities, client registrations, and KV data.",
+    images: [brand.logoPath],
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

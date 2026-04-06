@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { ExternalLink, FileText, Github, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -22,14 +23,28 @@ export function SiteHeader() {
     <header className="border-b border-[color:var(--border)]/70 bg-white/70 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
-            <Badge className="border-transparent bg-slate-900 text-white">
-              {brand.name}
-            </Badge>
+          <div className="space-y-3">
+            <div className="flex items-center gap-4">
+              <div className="overflow-hidden rounded-[28px] border border-[color:var(--border)] bg-white p-1 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
+                <Image
+                  src={brand.logoPath}
+                  alt={`${brand.name} logo`}
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 rounded-[22px] object-cover"
+                  priority
+                />
+              </div>
+              <div className="space-y-2">
+                <Badge className="border-transparent bg-slate-900 text-white">
+                  {brand.name}
+                </Badge>
+                <p className="text-2xl font-semibold tracking-tight text-slate-950">
+                  {brand.tagline}
+                </p>
+              </div>
+            </div>
             <div>
-              <p className="text-2xl font-semibold tracking-tight text-slate-950">
-                {brand.tagline}
-              </p>
               <p className="max-w-3xl text-sm text-slate-600">
                 {brand.description}
               </p>

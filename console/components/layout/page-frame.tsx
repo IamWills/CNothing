@@ -21,7 +21,11 @@ export function PageFrame({
             </h1>
             <p className="text-sm text-slate-200 sm:text-base">{description}</p>
           </div>
-          {actions ? <div className="flex items-center gap-3">{actions}</div> : null}
+          {actions ? (
+            <div className="flex flex-wrap items-end justify-end gap-3 lg:max-w-[48%]">
+              {actions}
+            </div>
+          ) : null}
         </div>
       </section>
 

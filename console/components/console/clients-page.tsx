@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Fingerprint, KeyRound, RefreshCcw, Shield } from "lucide-react";
+import { Fingerprint, KeyRound, Shield } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
+import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { PageFrame } from "@/components/layout/page-frame";
+import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,6 +21,7 @@ import {
   type ClientSummary,
   type RegisterClientResponse,
 } from "@/lib/api";
+import { clientChannelTabs } from "@/lib/channel-tabs";
 import { formatDate, formatJson, parseOptionalJson } from "@/lib/console-utils";
 
 export function ClientsPage() {
@@ -84,12 +87,12 @@ export function ClientsPage() {
   return (
     <PageFrame
       title="Clients"
-      description="Register client public keys manually and review the identities that can access CNothing."
+      description="Onboard client identities manually, inspect the server key material, and move to the KV view from the same channel."
       actions={
-        <Button variant="secondary" onClick={() => void refreshClients()} disabled={loading}>
-          <RefreshCcw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <>
+          <ChannelRouteTabs items={clientChannelTabs} />
+          <ReloadIconButton onReload={() => void refreshClients()} disabled={loading} />
+        </>
       }
     >
       <ConnectionPanel

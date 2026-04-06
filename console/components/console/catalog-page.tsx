@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { BookKey, RefreshCcw, Sparkles, Wrench } from "lucide-react";
+import { BookKey, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { PageFrame } from "@/components/layout/page-frame";
+import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { fetchMcpCatalog, fetchSkills, type McpResource, type McpTool, type SkillEntry } from "@/lib/api";
@@ -48,10 +48,7 @@ export function CatalogPage() {
       title="Catalog"
       description="Browse the MCP tool contracts, public resources, and skill markdown that CNothing exposes to humans and AI agents."
       actions={
-        <Button variant="secondary" onClick={() => void refreshCatalog()} disabled={loading}>
-          <RefreshCcw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <ReloadIconButton onReload={() => void refreshCatalog()} disabled={loading} />
       }
     >
       <ConnectionPanel

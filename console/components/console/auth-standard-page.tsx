@@ -1,34 +1,43 @@
 import { ExternalLink } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageFrame } from "@/components/layout/page-frame";
-import { authStandard, type StandardSection } from "@/lib/auth-standard";
+import { authStandard, type StandardPublication, type StandardSection } from "@/lib/auth-standard";
+import { standardsChannelTabs } from "@/lib/channel-tabs";
 
 export function AuthStandardPage() {
+  return <StandardPublicationPage standard={authStandard} />;
+}
+
+export function StandardPublicationPage({ standard }: { standard: StandardPublication }) {
   return (
     <PageFrame
-      title={authStandard.title}
-      description={authStandard.intro}
+      title="Standards"
+      description="Browse the published CNothing standards catalog, then switch between formal specifications and architecture references from the same channel."
       actions={
-        <>
-          <Badge className="border-transparent bg-white/15 px-3 py-1 text-white">
-            {authStandard.status}
-          </Badge>
-          <a href={`${authStandard.canonicalPath}/markdown`}>
-            <Button variant="secondary">
-              Export Markdown
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          </a>
-          <a href={`${authStandard.canonicalPath}/html`}>
-            <Button variant="secondary">
-              Export HTML
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          </a>
-        </>
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Badge className="border-transparent bg-white/15 px-3 py-1 text-white">
+              {standard.status}
+            </Badge>
+            <a href={`${standard.canonicalPath}/markdown`}>
+              <Button variant="secondary">
+                Export Markdown
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </a>
+            <a href={`${standard.canonicalPath}/html`}>
+              <Button variant="secondary">
+                Export HTML
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </a>
+          </div>
+          <ChannelRouteTabs items={standardsChannelTabs} />
+        </div>
       }
     >
       <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
@@ -48,20 +57,20 @@ export function AuthStandardPage() {
           </div>
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Published</p>
-            <p className="text-sm font-medium text-slate-700">{authStandard.publishedAt}</p>
+            <p className="text-sm font-medium text-slate-700">{standard.publishedAt}</p>
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Version</p>
-            <p className="text-sm font-medium text-slate-700">{authStandard.version}</p>
+            <p className="text-sm font-medium text-slate-700">{standard.version}</p>
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Canonical path</p>
             <a
-              href={authStandard.canonicalPath}
+              href={standard.canonicalPath}
               className="break-all text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-4"
             >
-              {authStandard.canonicalPath}
+              {standard.canonicalPath}
             </a>
           </div>
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-slate-950">Section tree</h2>
-            <StandardTree sections={authStandard.sections} depth={0} />
+            <StandardTree sections={standard.sections} depth={0} />
           </div>
         </Card>
 
@@ -69,12 +78,17 @@ export function AuthStandardPage() {
           <div className="flex items-center gap-4 rounded-[24px] bg-[color:var(--surface-muted)]/70 p-4 text-sm text-slate-600">
             <BrandMark size="sm" className="shrink-0" />
             <p>
-              This publication is the public implementation profile currently followed by CNothing.
-              Each expandable section below is normative unless it is explicitly labeled as guidance.
+              This publication is part of CNothing's public standards library. Each expandable
+              section below is normative unless it is explicitly labeled as guidance.
             </p>
           </div>
           <div className="space-y-4">
-            {authStandard.sections.map((section) => (
+            <div className="space-y-3 rounded-[24px] bg-[color:var(--surface-muted)]/70 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Document</p>
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{standard.title}</h2>
+              <p className="text-sm text-slate-600">{standard.intro}</p>
+            </div>
+            {standard.sections.map((section) => (
               <StandardSectionView key={section.id} section={section} depth={0} />
             ))}
           </div>

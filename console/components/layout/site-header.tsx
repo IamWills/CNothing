@@ -1,19 +1,27 @@
 "use client";
 
+import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { ExternalLink, FileText, Github, ShieldCheck } from "lucide-react";
+import { ExternalLink, Github, LayoutGrid, ShieldCheck, Users } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { brand } from "@/lib/brand";
 
-const navigation: Array<{ href: string; label: string }> = [
-  { href: "/", label: "Home" },
-  { href: "/standards", label: "Standards" },
-  { href: "/standards/authentication/1.0", label: "Standard" },
-  { href: "/readme", label: "Readme" },
-  { href: "/catalog", label: "Catalog" },
-  { href: "/clients", label: "Clients" },
-  { href: "/kv", label: "KV" },
+const navigation: Array<{
+  href: string;
+  label: string;
+  icon?: ComponentType<{ className?: string }>;
+  matches: string[];
+}> = [
+  { href: "/", label: "Home", matches: ["/", "/readme"] },
+  { href: "/catalog", label: "Catalog", icon: LayoutGrid, matches: ["/catalog"] },
+  { href: "/clients", label: "Clients", icon: Users, matches: ["/clients", "/kv"] },
+  {
+    href: "/standards",
+    label: "Standards",
+    icon: ShieldCheck,
+    matches: ["/standards", "/standard"],
+  },
 ];
 
 export function SiteHeader() {
@@ -57,10 +65,10 @@ export function SiteHeader() {
 
         <nav className="flex flex-wrap gap-2">
           {navigation.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === item.href
-                : pathname.startsWith(item.href);
+            const isActive = item.matches.some((prefix) =>
+              prefix === "/" ? pathname === "/" : pathname === prefix || pathname.startsWith(`${prefix}/`),
+            );
+            const Icon = item.icon;
 
             return (
               <a
@@ -72,9 +80,7 @@ export function SiteHeader() {
                     : "border-[color:var(--border)] bg-white text-slate-700 hover:border-slate-400"
                 }`}
               >
-                {item.label === "Standards" ? <ShieldCheck className="mr-2 inline h-4 w-4" /> : null}
-                {item.label === "Standard" ? <ShieldCheck className="mr-2 inline h-4 w-4" /> : null}
-                {item.href === "/readme" ? <FileText className="mr-2 inline h-4 w-4" /> : null}
+                {Icon ? <Icon className="mr-2 inline h-4 w-4" /> : null}
                 {item.label}
               </a>
             );

@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { BookKey, Fingerprint, KeyRound, RefreshCcw, Sparkles } from "lucide-react";
+import { BookKey, Fingerprint, KeyRound, Sparkles } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
+import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { PageFrame } from "@/components/layout/page-frame";
+import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,6 +24,7 @@ import {
   type KvValueResponse,
   type NamespaceSummary,
 } from "@/lib/api";
+import { clientChannelTabs } from "@/lib/channel-tabs";
 import { formatDate, formatJson, parseOptionalJson } from "@/lib/console-utils";
 
 export function KvPage() {
@@ -166,13 +169,13 @@ export function KvPage() {
 
   return (
     <PageFrame
-      title="KV"
-      description="Review registered clients, browse namespaces and key names, then inspect decrypted JSON values or add new KV records through the admin API."
+      title="Clients"
+      description="Browse client namespaces, inspect saved key names and values, and add new KV records without leaving the Clients channel."
       actions={
-        <Button variant="secondary" onClick={() => void refreshClients()} disabled={loading}>
-          <RefreshCcw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <>
+          <ChannelRouteTabs items={clientChannelTabs} />
+          <ReloadIconButton onReload={() => void refreshClients()} disabled={loading} />
+        </>
       }
     >
       <ConnectionPanel

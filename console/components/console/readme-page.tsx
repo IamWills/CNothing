@@ -1,16 +1,25 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Card } from "@/components/ui/card";
 import { PageFrame } from "@/components/layout/page-frame";
+import { homeChannelTabs } from "@/lib/channel-tabs";
 
 const REPOSITORY_WEB_URL = "https://github.com/IamWills/CNothing";
 
 export function ReadmePage({ readme }: { readme: string }) {
   return (
     <PageFrame
-      title="README"
-      description="Read the project overview, third-party integration guidance, privacy model, and deployment notes without leaving CNothing."
+      title="Home"
+      description="Review the repository guide, privacy model, SDK workflow, and deployment notes directly inside the Home channel."
+      actions={
+        <>
+          <ChannelRouteTabs items={homeChannelTabs} />
+          <ReloadIconButton />
+        </>
+      }
     >
       <Card className="overflow-hidden">
         <div className="border-b border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 px-6 py-4">

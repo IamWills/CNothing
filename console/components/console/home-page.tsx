@@ -1,16 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, RefreshCcw, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { PageFrame } from "@/components/layout/page-frame";
+import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { fetchAuthaiPublicKey, fetchClients, fetchMcpCatalog, fetchSkills, type AuthaiPublicKey } from "@/lib/api";
 import { brand } from "@/lib/brand";
+import { homeChannelTabs } from "@/lib/channel-tabs";
 
 const sections: Array<{
   href: string;
@@ -20,7 +22,7 @@ const sections: Array<{
 }> = [
   {
     href: "/standards/authentication/1.0",
-    title: "Standard",
+    title: "Authentication",
     description: "Browse the published CNothing Authentication Standard 1.0 as an expandable implementation profile.",
     icon: ShieldCheck,
   },
@@ -43,9 +45,9 @@ const sections: Array<{
     icon: Fingerprint,
   },
   {
-    href: "/kv",
-    title: "KV",
-    description: "Inspect namespaces, saved key names, and decrypted JSON values through the admin API.",
+    href: "/standards/registration-hub",
+    title: "Registration Hub",
+    description: "Review the architecture standard for using CNothing as an AI-safe website registration control plane.",
     icon: KeyRound,
   },
 ];
@@ -100,13 +102,13 @@ export function HomePage() {
 
   return (
     <PageFrame
-      title={`${brand.name} keeps the useful surface visible and the secrets behind it.`}
-      description="Use the dedicated pages below to move between discovery, client onboarding, and KV inspection without stacking every workflow into one dense screen."
+      title="Home"
+      description={`${brand.name} keeps the useful surface visible and the secrets behind it. Move between the overview and the repository guide from this channel.`}
       actions={
-        <Button variant="secondary" onClick={() => void refreshOverview()} disabled={loading}>
-          <RefreshCcw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <>
+          <ChannelRouteTabs items={homeChannelTabs} />
+          <ReloadIconButton onReload={() => void refreshOverview()} disabled={loading} />
+        </>
       }
     >
       <ConnectionPanel

@@ -8,7 +8,22 @@ export type StandardSection = {
   children?: StandardSection[];
 };
 
-export const authStandard = {
+export type StandardPublication = {
+  id: string;
+  family: string;
+  title: string;
+  shortTitle: string;
+  status: string;
+  version: string;
+  publishedAt: string;
+  canonicalPath: string;
+  intro: string;
+  sections: StandardSection[];
+};
+
+export const authStandard: StandardPublication = {
+  id: "authentication-1.0",
+  family: "Authentication",
   title: "CNothing Authentication Standard 1.0",
   shortTitle: "Auth Standard",
   status: "Public Implementation Profile",
@@ -361,52 +376,231 @@ export const authStandard = {
         "Returns interoperable error codes for failed validation conditions.",
       ],
     },
-  ] satisfies StandardSection[],
+  ],
 };
 
-export const publishedStandards = [
-  {
-    id: "authentication-1.0",
-    family: "Authentication",
-    title: authStandard.title,
-    version: authStandard.version,
-    status: authStandard.status,
-    publishedAt: authStandard.publishedAt,
-    canonicalPath: authStandard.canonicalPath,
-    summary: authStandard.intro,
-    exports: {
-      markdown: `${authStandard.canonicalPath}/markdown`,
-      html: `${authStandard.canonicalPath}/html`,
+export const registrationHubStandard: StandardPublication = {
+  id: "registration-hub-1.0",
+  family: "AI Registration Hub",
+  title: "CNothing AI Registration Hub Standard 1.0",
+  shortTitle: "Registration Hub",
+  status: "Public Architecture Standard",
+  version: "1.0",
+  publishedAt: "2026-04-06",
+  canonicalPath: "/standards/registration-hub",
+  intro:
+    "This standard defines how CNothing is used as the authentication, credential-protection, and recovery center of an AI-operated website registration system in which agents can orchestrate signup flows without learning user secrets.",
+  sections: [
+    {
+      id: "registration-hub-scope",
+      title: "1. Scope and Purpose",
+      summary: "Defines the architecture problem this standard solves for AI-operated signup systems.",
+      paragraphs: [
+        "This standard specifies how CNothing participates in an AI-driven website registration system as the central trust service for client identity, protected onboarding data, issued credentials, and recovery-safe state transitions.",
+        "The purpose of the architecture is to let an AI agent coordinate user registration on third-party sites without exposing the user's raw secrets, recovery materials, or issued credentials to the AI orchestration layer.",
+      ],
+      bullets: [
+        "The standard covers registration profiles, workflow orchestration boundaries, secret retrieval, credential write-back, and post-registration lifecycle handling.",
+        "The standard does not replace browser automation, email handling, SMS handling, or anti-bot execution environments.",
+      ],
     },
-  },
+    {
+      id: "registration-hub-roles",
+      title: "2. Roles and Trust Boundaries",
+      summary: "Defines the actors in the registration hub model and what each actor may learn.",
+      bullets: [
+        "User: the account owner whose onboarding profile, recovery data, and resulting credentials are being managed.",
+        "Third-Party Integrator: the backend system that owns the CNothing client private key and decides which registration workflows are allowed to run.",
+        "CNothing: the trust center that authenticates client requests, stores protected records, and returns encrypted data only to the authorized client backend.",
+        "AI Agent: the orchestration layer that may decide next actions, navigate forms, and request protected records through CNothing-mediated flows, but MUST NOT possess decryptable user secrets.",
+        "Execution Workers: browser, email, or verification workers that perform concrete actions under the policy decisions of the integrator.",
+      ],
+    },
+    {
+      id: "registration-hub-value",
+      title: "3. Why CNothing Sits at the Center",
+      summary: "Explains the operational value of CNothing in a registration control plane.",
+      bullets: [
+        "CNothing gives the integrator a single protected place to register client identity, rotate keys, and bind every sensitive action to one-time challenge validation.",
+        "CNothing lets AI agents request signup data without receiving long-lived plaintext secrets when the integrator uses private or blind record storage.",
+        "CNothing centralizes post-registration credential storage so subsequent login, token refresh, and recovery operations can reuse the same protocol boundary.",
+        "CNothing makes registration automation auditable because registration, refresh, read, save, and key-rotation events all pass through a common authenticated service contract.",
+      ],
+    },
+    {
+      id: "registration-hub-model",
+      title: "4. Canonical Data Model",
+      summary: "Defines the minimum logical objects expected in a conforming deployment.",
+      children: [
+        {
+          id: "registration-hub-profile",
+          title: "4.1 Registration Profile",
+          summary: "Represents the user-supplied onboarding material needed to complete signup.",
+          bullets: [
+            "A registration profile SHOULD include the intended target site identifier, account identity hints, preferred channel bindings, and any required human-supplied enrollment fields.",
+            "Sensitive fields such as passwords, recovery answers, API keys, or invite tokens SHOULD be stored using `savePrivateJson()` or `saveBlindJson()`.",
+          ],
+        },
+        {
+          id: "registration-hub-target",
+          title: "4.2 Signup Target",
+          summary: "Represents the external website or application being registered.",
+          bullets: [
+            "A signup target SHOULD describe the registration entrypoint, required fields, expected verification channels, and any site-specific policy flags.",
+            "A signup target MAY include reusable automation hints for browser or agent workers, but MUST NOT include user private key material.",
+          ],
+        },
+        {
+          id: "registration-hub-credential-bundle",
+          title: "4.3 Credential Bundle",
+          summary: "Represents the result of a successful registration flow.",
+          bullets: [
+            "A credential bundle SHOULD contain the issued username, email binding, password reference, recovery artifacts, API credentials, and session bootstrap material relevant to the target system.",
+            "Credential bundles SHOULD be written back to CNothing immediately after successful registration so the integrator can continue lifecycle operations without replaying signup.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "registration-hub-flow",
+      title: "5. End-to-End Workflow",
+      summary: "Specifies the recommended end-to-end orchestration flow for AI-assisted registration.",
+      code: `1. Third-party backend registers or refreshes its CNothing client identity.
+2. Backend stores onboarding records in CNothing using blind or private mode.
+3. AI agent begins a signup run against a third-party website.
+4. When sensitive fields are needed, the agent requests the backend to fetch the protected record through CNothing.
+5. The backend decrypts the CNothing response locally and returns only the minimum next-step data to the execution worker.
+6. Verification artifacts and issued credentials are written back to CNothing after each milestone.
+7. Final credential bundle is sealed and retained for future login, recovery, or rotation flows.`,
+      bullets: [
+        "The AI layer SHOULD receive only the minimum action-scoped data required to complete the current step.",
+        "A conforming deployment SHOULD treat email codes, SMS codes, CAPTCHAs, and recovery paths as separate worker concerns, not as direct CNothing protocol features.",
+      ],
+    },
+    {
+      id: "registration-hub-patterns",
+      title: "6. Recommended Storage Patterns",
+      summary: "Defines how integrators should map onboarding artifacts into CNothing records.",
+      bullets: [
+        "Use separate namespaces for signup profiles, active runs, credential bundles, and recovery records.",
+        "Use `saveBlindJson()` for namespaces, keys, metadata, and values that should remain opaque to CNothing operators.",
+        "Use `savePrivateJson()` when only the value and metadata need to be hidden from CNothing operators while namespace and key names remain operationally visible.",
+        "Store run-local state independently from long-lived credentials so a failed workflow does not force credential record churn.",
+      ],
+    },
+    {
+      id: "registration-hub-agent-contract",
+      title: "7. AI Agent Contract",
+      summary: "Defines how the AI orchestration layer participates without becoming a secret holder.",
+      bullets: [
+        "The AI agent MAY decide which workflow step should execute next.",
+        "The AI agent MAY request that the third-party backend fetch protected records from CNothing.",
+        "The AI agent MUST NOT be treated as a holder of client private keys, recovery bundles, or reusable login credentials.",
+        "The AI agent SHOULD receive redacted or step-scoped values instead of full credential bundles whenever possible.",
+      ],
+    },
+    {
+      id: "registration-hub-lifecycle",
+      title: "8. Post-Registration Lifecycle",
+      summary: "Defines how CNothing continues to serve after account creation succeeds.",
+      bullets: [
+        "The same CNothing client identity SHOULD be reused for subsequent login, password rotation, token refresh, and recovery workflows.",
+        "Key rotation SHOULD be performed through the authenticated `rotateKey()` workflow instead of registering a replacement client identity.",
+        "Integrators SHOULD preserve a durable mapping between their local user identity and the CNothing record set that stores the resulting credentials.",
+      ],
+    },
+    {
+      id: "registration-hub-security",
+      title: "9. Security Requirements",
+      summary: "Captures the minimum security posture required for a conforming registration hub deployment.",
+      bullets: [
+        "Client private keys MUST remain under third-party backend control only.",
+        "Blind mode SHOULD be the default for values whose names, metadata, and payloads are all sensitive.",
+        "Execution logs SHOULD avoid storing raw user passwords, recovery codes, or decrypted credential bundles.",
+        "Workers that touch verification channels SHOULD operate with the least privilege required for the current step.",
+        "The integrator SHOULD maintain explicit operator approval or policy rules before an AI agent can initiate a new third-party signup run.",
+      ],
+    },
+    {
+      id: "registration-hub-conformance",
+      title: "10. Conformance Checklist",
+      summary: "Provides a quick checklist for independent implementers.",
+      bullets: [
+        "Uses CNothing as the authenticated storage and retrieval boundary for signup-sensitive records.",
+        "Keeps the client private key outside the AI orchestration layer.",
+        "Stores onboarding secrets and resulting credentials in private or blind mode.",
+        "Writes back issued credentials and recovery artifacts immediately after each successful step.",
+        "Separates browser, email, SMS, and recovery workers from CNothing protocol responsibilities.",
+        "Uses authenticated key rotation instead of replacing client identities when key material changes.",
+      ],
+    },
+  ],
+};
+
+function toPublishedStandard(standard: StandardPublication) {
+  return {
+    id: standard.id,
+    family: standard.family,
+    title: standard.title,
+    version: standard.version,
+    status: standard.status,
+    publishedAt: standard.publishedAt,
+    canonicalPath: standard.canonicalPath,
+    summary: standard.intro,
+    exports: {
+      markdown: `${standard.canonicalPath}/markdown`,
+      html: `${standard.canonicalPath}/html`,
+    },
+  };
+}
+
+export const publishedStandards = [
+  toPublishedStandard(authStandard),
+  toPublishedStandard(registrationHubStandard),
 ] as const;
 
 export function renderAuthStandardMarkdown(): string {
+  return renderStandardMarkdown(authStandard);
+}
+
+export function renderAuthStandardHtmlDocument(): string {
+  return renderStandardHtmlDocument(authStandard);
+}
+
+export function renderRegistrationHubStandardMarkdown(): string {
+  return renderStandardMarkdown(registrationHubStandard);
+}
+
+export function renderRegistrationHubStandardHtmlDocument(): string {
+  return renderStandardHtmlDocument(registrationHubStandard);
+}
+
+export function renderStandardMarkdown(standard: StandardPublication): string {
   const lines: string[] = [
-    `# ${authStandard.title}`,
+    `# ${standard.title}`,
     "",
-    `Status: ${authStandard.status}`,
-    `Published: ${authStandard.publishedAt}`,
-    `Canonical Path: ${authStandard.canonicalPath}`,
+    `Status: ${standard.status}`,
+    `Published: ${standard.publishedAt}`,
+    `Canonical Path: ${standard.canonicalPath}`,
     "",
-    authStandard.intro,
+    standard.intro,
     "",
   ];
 
-  for (const section of authStandard.sections) {
+  for (const section of standard.sections) {
     appendSectionMarkdown(lines, section, 2);
   }
 
   return lines.join("\n");
 }
 
-export function renderAuthStandardHtmlDocument(): string {
+export function renderStandardHtmlDocument(standard: StandardPublication): string {
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(authStandard.title)}</title>
+    <title>${escapeHtml(standard.title)}</title>
     <style>
       :root { color-scheme: light; }
       body {
@@ -453,12 +647,12 @@ export function renderAuthStandardHtmlDocument(): string {
   </head>
   <body>
     <main>
-      <h1>${escapeHtml(authStandard.title)}</h1>
-      <p><strong>Status:</strong> ${escapeHtml(authStandard.status)}</p>
-      <p><strong>Published:</strong> ${escapeHtml(authStandard.publishedAt)}</p>
-      <p><strong>Canonical Path:</strong> ${escapeHtml(authStandard.canonicalPath)}</p>
-      <p>${escapeHtml(authStandard.intro)}</p>
-${authStandard.sections.map((section) => renderSectionHtml(section, 2)).join("\n")}
+      <h1>${escapeHtml(standard.title)}</h1>
+      <p><strong>Status:</strong> ${escapeHtml(standard.status)}</p>
+      <p><strong>Published:</strong> ${escapeHtml(standard.publishedAt)}</p>
+      <p><strong>Canonical Path:</strong> ${escapeHtml(standard.canonicalPath)}</p>
+      <p>${escapeHtml(standard.intro)}</p>
+${standard.sections.map((section) => renderSectionHtml(section, 2)).join("\n")}
     </main>
   </body>
 </html>`;

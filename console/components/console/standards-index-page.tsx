@@ -1,15 +1,18 @@
 import { ExternalLink, ShieldCheck } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { publishedStandards } from "@/lib/auth-standard";
+import { standardsChannelTabs } from "@/lib/channel-tabs";
 
 export function StandardsIndexPage() {
   return (
     <PageFrame
-      title="CNothing Standards"
+      title="Standards"
       description="Browse the published CNothing standards catalog, then open a fixed version when you need a stable protocol reference for implementation, review, or audit."
+      actions={<ChannelRouteTabs items={standardsChannelTabs} />}
     >
       <section className="grid gap-4">
         {publishedStandards.map((standard) => (

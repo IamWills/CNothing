@@ -13,15 +13,15 @@ export function BrandMark({
 }) {
   const dimensions =
     size === "sm"
-      ? { frame: "h-14 w-14 rounded-[22px]", image: "h-12 w-12 rounded-[18px]", px: 48 }
+      ? { frame: "h-12 w-12 rounded-[18px]", image: "h-12 w-12 rounded-[18px]", px: 48 }
       : size === "lg"
-        ? { frame: "h-24 w-24 rounded-[34px]", image: "h-22 w-22 rounded-[28px]", px: 88 }
-        : { frame: "h-18 w-18 rounded-[28px]", image: "h-16 w-16 rounded-[22px]", px: 64 };
+        ? { frame: "h-22 w-22 rounded-[28px]", image: "h-22 w-22 rounded-[28px]", px: 88 }
+        : { frame: "h-16 w-16 rounded-[22px]", image: "h-16 w-16 rounded-[22px]", px: 64 };
 
   return (
     <div
       className={cn(
-        "flex items-center justify-center overflow-hidden border border-[color:var(--border)] bg-white p-1 shadow-[0_10px_30px_rgba(15,23,42,0.08)]",
+        "flex items-center justify-center overflow-hidden",
         dimensions.frame,
         className,
       )}

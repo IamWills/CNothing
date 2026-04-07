@@ -3,7 +3,7 @@
   "name_for_human": "CNothing AuthAI KV",
   "name_for_model": "keyservice_authai_kv",
   "description_for_human": "Register a client public key, obtain one-time encrypted challenges, and read or write encrypted KV payloads without exposing plaintext to the AI.",
-  "description_for_model": "CNothing AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI should never request or handle private keys. Instead, it registers a client public key, receives an encrypted one-time challenge for the client backend, and then forwards auth and data envelopes produced by that backend for kv save/read operations.",
+  "description_for_model": "CNothing AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI should never request or handle private keys. Instead, it registers a client public key, receives an encrypted one-time challenge for the client backend, and forwards opaque auth, data, or query envelopes produced by that backend for kv save/read operations. Public discovery links also exist at /.well-known/mcp, /skills/index.json, /skill.md, and /getting-started.md.",
   "auth": {
     "type": "none"
   },
@@ -19,60 +19,115 @@
   "tools": [
     {
       "name": "get_authai_public_key",
-      "description": "Return the authai public key metadata used to encrypt auth and data envelopes toward CNothing.",
+      "description": "Return the AuthAI public key metadata used by the trusted backend to encrypt auth, data, and query envelopes toward CNothing. Call this before registration or whenever the backend needs the active CNothing server key.",
       "input_schema": {
         "type": "object",
-        "properties": {}
+        "properties": {},
+        "examples": [{}]
       }
     },
     {
       "name": "authai_register",
-      "description": "Register a client public key and receive an encrypted one-time challenge for the client backend.",
+      "description": "Register a client public key and receive an encrypted one-time challenge for the client backend. The AI may relay challenge_for_client, but only the trusted backend should decrypt it.",
       "input_schema": {
         "type": "object",
         "required": ["client_public_key"],
         "properties": {
-          "client_public_key": { "type": "string" },
-          "client_key_alg": { "type": "string" },
-          "client_key_id": { "type": "string" },
-          "client_label": { "type": "string" },
-          "metadata": { "type": "object" }
-        }
+          "client_public_key": {
+            "type": "string",
+            "description": "PEM-encoded public key generated and held by the trusted backend."
+          },
+          "client_key_alg": {
+            "type": "string",
+            "description": "Optional key algorithm profile such as RSA-OAEP-256/A256GCM."
+          },
+          "client_key_id": {
+            "type": "string",
+            "description": "Optional backend-defined key identifier."
+          },
+          "client_label": {
+            "type": "string",
+            "description": "Optional human label for the client identity."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional non-secret metadata about the client."
+          }
+        },
+        "examples": [
+          {
+            "client_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+            "client_label": "signup-control-plane",
+            "metadata": { "team": "growth-ops", "environment": "prod" }
+          }
+        ]
       }
     },
     {
       "name": "authai_refresh",
-      "description": "Consume a valid auth envelope and issue the next encrypted challenge for the client backend.",
+      "description": "Consume a valid auth envelope and issue the next encrypted challenge for the client backend. Use this to continue a protected workflow without re-registering the client.",
       "input_schema": {
         "type": "object",
         "required": ["auth_envelope"],
         "properties": {
-          "auth_envelope": { "type": "object" }
-        }
+          "auth_envelope": {
+            "type": "object",
+            "description": "Opaque auth envelope produced by the trusted backend."
+          }
+        },
+        "examples": [
+          {
+            "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
+          }
+        ]
       }
     },
     {
       "name": "kv_save",
-      "description": "Save one or more encrypted KV items for the authenticated client namespace.",
+      "description": "Save one or more encrypted KV items for the authenticated client namespace. Recommended third-party integrations use private or blind mode so CNothing operators and AI layers do not see application plaintext.",
       "input_schema": {
         "type": "object",
         "required": ["auth_envelope", "data_envelope"],
         "properties": {
-          "auth_envelope": { "type": "object" },
-          "data_envelope": { "type": "object" }
-        }
+          "auth_envelope": {
+            "type": "object",
+            "description": "Opaque action-bound auth envelope for kv.save."
+          },
+          "data_envelope": {
+            "type": "object",
+            "description": "Opaque ciphertext envelope containing the kv.save payload."
+          }
+        },
+        "examples": [
+          {
+            "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
+            "data_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
+          }
+        ]
       }
     },
     {
       "name": "kv_read",
-      "description": "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key.",
+      "description": "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key. The AI should relay the result ciphertext back to the backend for decryption.",
       "input_schema": {
         "type": "object",
         "required": ["auth_envelope", "query_envelope"],
         "properties": {
-          "auth_envelope": { "type": "object" },
-          "query_envelope": { "type": "object" }
-        }
+          "auth_envelope": {
+            "type": "object",
+            "description": "Opaque action-bound auth envelope for kv.read."
+          },
+          "query_envelope": {
+            "type": "object",
+            "description": "Opaque ciphertext envelope containing the kv.read query."
+          }
+        },
+        "examples": [
+          {
+            "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
+            "query_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
+          }
+        ]
       }
     }
   ]

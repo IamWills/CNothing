@@ -57,11 +57,16 @@ export function listSkillCatalogEntries(): SkillCatalogEntry[] {
     .map((filePath) => {
       const markdown = readFileSync(filePath, "utf8");
       const frontmatter = parseFrontmatter(markdown);
+      const relativePath = path.relative(skillsDir, filePath).replace(/\\/g, "/");
+      const slug = relativePath.replace(/\/SKILL\.md$/, "");
       return {
-        id: path.relative(skillsDir, filePath).replace(/\\/g, "/"),
+        id: relativePath,
         name: frontmatter.name,
         description: frontmatter.description,
+        slug,
         file_path: path.relative(process.cwd(), filePath).replace(/\\/g, "/"),
+        public_path: `/skills#${slug}`,
+        markdown_path: `/skills/markdown/${slug}`,
         body_markdown: markdown,
       };
     });

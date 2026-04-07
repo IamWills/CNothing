@@ -129,6 +129,16 @@ export function handleMcpInfo(baseUrl: string) {
       sse: `${baseUrl}/mcp/sse`,
       message: `${baseUrl}/mcp/message`,
     },
+    discovery: {
+      manifest: `${baseUrl}/mcp/manifest`,
+      skills_index: `${baseUrl}/skills/index.json`,
+      skills_text: `${baseUrl}/skills.txt`,
+      getting_started: `${baseUrl}/getting-started.md`,
+      primary_skill: `${baseUrl}/skill.md`,
+      standards: `${baseUrl}/standards`,
+      authentication_standard: `${baseUrl}/standards/authentication/1.0`,
+      registration_hub_standard: `${baseUrl}/standards/registration-hub`,
+    },
   };
 }
 

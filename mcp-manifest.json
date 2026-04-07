@@ -16,6 +16,16 @@
     "type": "http",
     "base_url": "http://localhost:3021"
   },
+  "documentation": {
+    "homepage": "https://cnothing.com",
+    "skills_index": "https://cnothing.com/skills/index.json",
+    "skills_text": "https://cnothing.com/skills.txt",
+    "getting_started": "https://cnothing.com/getting-started.md",
+    "primary_skill": "https://cnothing.com/skill.md",
+    "standards": "https://cnothing.com/standards",
+    "authentication_standard": "https://cnothing.com/standards/authentication/1.0",
+    "registration_hub_standard": "https://cnothing.com/standards/registration-hub"
+  },
   "tools": [
     {
       "name": "get_authai_public_key",

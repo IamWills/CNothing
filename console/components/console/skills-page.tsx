@@ -17,6 +17,7 @@ export function SkillsPage({ skills }: { skills: PublicSkillEntry[] }) {
           </div>
           <div className="space-y-3 text-sm text-slate-700">
             <EndpointRow href="/skills/index.json" label="Public skills JSON index" />
+            <EndpointRow href="/skills.txt" label="Plain-text skills directory" />
             <EndpointRow href="/getting-started.md" label="Quick-start skill markdown" />
             <EndpointRow href="/skill.md" label="Primary protocol skill markdown" />
             <EndpointRow href="/.well-known/mcp" label="MCP discovery endpoint" />

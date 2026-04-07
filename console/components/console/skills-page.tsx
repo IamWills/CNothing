@@ -1,4 +1,4 @@
-import { BookOpenText, ExternalLink, FileJson, Sparkles } from "lucide-react";
+import { BookOpenText, ChevronDown, ExternalLink, FileJson, Sparkles } from "lucide-react";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Card } from "@/components/ui/card";
 import type { PublicSkillEntry } from "@/lib/public-skills";
@@ -31,26 +31,33 @@ export function SkillsPage({ skills }: { skills: PublicSkillEntry[] }) {
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
             {skills.map((skill) => (
-              <div
+              <details
                 key={skill.id}
                 id={skill.slug}
-                className="min-w-0 rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4"
+                className="group min-w-0 rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <h3 className="text-base font-semibold text-slate-950">{skill.name}</h3>
-                    <p className="mt-1 text-sm text-slate-600">{skill.description}</p>
-                    <p className="mt-2 break-all text-xs text-slate-500">{skill.filePath}</p>
+                <summary className="list-none">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-semibold text-slate-950">{skill.name}</h3>
+                      <p className="mt-1 text-sm text-slate-600">{skill.description}</p>
+                      <p className="mt-2 break-all text-xs text-slate-500">{skill.filePath}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap gap-2 text-sm">
+                        <SkillLink href={skill.markdownPath} label="Markdown" />
+                        <SkillLink href={skill.publicPath} label="Anchor" />
+                      </div>
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)] bg-white text-slate-500 transition group-open:rotate-180">
+                        <ChevronDown className="h-4 w-4" />
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <SkillLink href={skill.markdownPath} label="Markdown" />
-                    <SkillLink href={skill.publicPath} label="Anchor" />
-                  </div>
-                </div>
+                </summary>
                 <pre className="mt-4 max-w-full overflow-x-auto rounded-[20px] bg-slate-950 px-4 py-3 text-xs leading-6 text-slate-100">
                   {skill.markdown}
                 </pre>
-              </div>
+              </details>
             ))}
           </div>
         </Card>

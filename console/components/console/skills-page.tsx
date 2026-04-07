@@ -9,8 +9,8 @@ export function SkillsPage({ skills }: { skills: PublicSkillEntry[] }) {
       title="Skills"
       description="Public CNothing skill discovery for AI agents and integrators, including markdown URLs, a JSON index, and a quick-start guide."
     >
-      <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-        <Card className="space-y-4">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+        <Card className="min-w-0 space-y-4">
           <div className="flex items-center gap-2">
             <FileJson className="h-4 w-4 text-[color:var(--brand)]" />
             <h2 className="text-lg font-semibold">Discovery endpoints</h2>
@@ -24,30 +24,30 @@ export function SkillsPage({ skills }: { skills: PublicSkillEntry[] }) {
           </div>
         </Card>
 
-        <Card className="space-y-4">
+        <Card className="min-w-0 space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[color:var(--brand)]" />
             <h2 className="text-lg font-semibold">Bundled skills</h2>
           </div>
-          <div className="grid gap-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
             {skills.map((skill) => (
               <div
                 key={skill.id}
                 id={skill.slug}
-                className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4"
+                className="min-w-0 rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-base font-semibold text-slate-950">{skill.name}</h3>
                     <p className="mt-1 text-sm text-slate-600">{skill.description}</p>
-                    <p className="mt-2 text-xs text-slate-500">{skill.filePath}</p>
+                    <p className="mt-2 break-all text-xs text-slate-500">{skill.filePath}</p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-sm">
                     <SkillLink href={skill.markdownPath} label="Markdown" />
                     <SkillLink href={skill.publicPath} label="Anchor" />
                   </div>
                 </div>
-                <pre className="mt-4 overflow-x-auto rounded-[20px] bg-slate-950 px-4 py-3 text-xs leading-6 text-slate-100">
+                <pre className="mt-4 max-w-full overflow-x-auto rounded-[20px] bg-slate-950 px-4 py-3 text-xs leading-6 text-slate-100">
                   {skill.markdown}
                 </pre>
               </div>

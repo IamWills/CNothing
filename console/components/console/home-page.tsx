@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, BookKey, FileText, Fingerprint, KeyRound, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, Bot, BookKey, FileText, Fingerprint, KeyRound, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
@@ -207,6 +207,49 @@ export function HomePage() {
           </div>
         </Card>
       </section>
+
+      <Card className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-[color:var(--brand)]" />
+          <h2 className="text-lg font-semibold">For AI Agents</h2>
+        </div>
+        <p className="max-w-3xl text-sm text-slate-600">
+          Start from the discovery endpoints below when another agent or host needs to understand
+          what CNothing exposes, how to integrate safely, and where to find skills and standards.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <DiscoveryLink
+            href="/.well-known/mcp"
+            title="MCP Discovery"
+            description="Machine-readable MCP entry with cross-links to skills, guides, and standards."
+          />
+          <DiscoveryLink
+            href="/mcp/manifest"
+            title="MCP Manifest"
+            description="Manifest metadata for MCP-compatible hosts and tool discovery."
+          />
+          <DiscoveryLink
+            href="/skills/index.json"
+            title="Skills JSON"
+            description="Public JSON index of all bundled skills and markdown URLs."
+          />
+          <DiscoveryLink
+            href="/skills.txt"
+            title="Skills Text"
+            description="Plain-text skills directory for simpler crawlers and basic agents."
+          />
+          <DiscoveryLink
+            href="/getting-started.md"
+            title="Getting Started"
+            description="Quick-start skill for safe first-time CNothing integrations."
+          />
+          <DiscoveryLink
+            href="/standards"
+            title="Standards"
+            description="Published authentication and registration-hub standards."
+          />
+        </div>
+      </Card>
     </PageFrame>
   );
 }
@@ -231,5 +274,31 @@ function MetricCard({
       <p className="break-all text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
       <p className="text-xs text-slate-500">{helper}</p>
     </Card>
+  );
+}
+
+function DiscoveryLink({
+  href,
+  title,
+  description,
+}: {
+  href: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="group rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-950">{title}</h3>
+          <p className="mt-2 text-sm text-slate-600">{description}</p>
+          <p className="mt-3 text-xs text-slate-500">{href}</p>
+        </div>
+        <ArrowRight className="mt-0.5 h-4 w-4 text-slate-400 transition group-hover:text-slate-900" />
+      </div>
+    </a>
   );
 }

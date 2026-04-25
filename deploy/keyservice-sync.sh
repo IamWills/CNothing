@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Pull latest code from GitHub, install deps, build the console, migrate DB, restart services.
-# Intended for root + systemd timer. Configure branch with KEYSERVICE_GIT_REF (default: origin/main).
+# Pull latest code from GitHub, run lightweight update steps, migrate DB, restart services.
+# Low-memory mode is default: skip console build unless explicitly enabled.
 set -euo pipefail
 
 KEYSERVICE_ROOT="${KEYSERVICE_ROOT:-/var/www/keyservice}"
 KEYSERVICE_CONSOLE_ROOT="${KEYSERVICE_CONSOLE_ROOT:-${KEYSERVICE_ROOT}/console}"
 GIT_REF="${KEYSERVICE_GIT_REF:-origin/main}"
+# 1 (default): low-memory mode; skip heavy console build
+KEYSERVICE_LOW_MEMORY="${KEYSERVICE_LOW_MEMORY:-1}"
+# 1: force console build even in low-memory mode
+KEYSERVICE_SYNC_CONSOLE_BUILD="${KEYSERVICE_SYNC_CONSOLE_BUILD:-0}"
+# Memory cap for optional console build
+KEYSERVICE_CONSOLE_BUILD_MAX_OLD_SPACE_MB="${KEYSERVICE_CONSOLE_BUILD_MAX_OLD_SPACE_MB:-256}"
 LOG_TAG="keyservice-sync"
 
 log() {
@@ -45,12 +51,25 @@ log "updated ${before} -> ${after}"
 
 /usr/local/bin/bun install
 if [[ -d "${KEYSERVICE_CONSOLE_ROOT}" ]]; then
-  (
-    cd "${KEYSERVICE_CONSOLE_ROOT}"
-    /usr/local/bin/bun install
-    /usr/local/bin/bun run build
-  )
-  log "console dependencies installed and build completed"
+  if [[ "${KEYSERVICE_SYNC_CONSOLE_BUILD}" == "1" ]]; then
+    (
+      cd "${KEYSERVICE_CONSOLE_ROOT}"
+      /usr/local/bin/bun install
+      export NODE_OPTIONS="--max-old-space-size=${KEYSERVICE_CONSOLE_BUILD_MAX_OLD_SPACE_MB}"
+      export NEXT_DISABLE_ESLINT=1
+      /usr/local/bin/bun run build
+    )
+    log "console build completed with constrained memory"
+  elif [[ "${KEYSERVICE_LOW_MEMORY}" == "1" ]]; then
+    log "low-memory mode: skip console build"
+  else
+    (
+      cd "${KEYSERVICE_CONSOLE_ROOT}"
+      /usr/local/bin/bun install
+      /usr/local/bin/bun run build
+    )
+    log "console dependencies installed and build completed"
+  fi
 fi
 /usr/local/bin/bun run migrate
 

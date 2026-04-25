@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Script from "next/script";
+import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { brand } from "@/lib/brand";
 import "./globals.css";
@@ -97,6 +98,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(188,220,255,0.45),transparent_28%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.08),transparent_24%),linear-gradient(180deg,#f7f8fa_0%,#eef2f6_100%)]">
           <SiteHeader />
           {children}
+          <SiteFooter />
         </div>
       </body>
     </html>

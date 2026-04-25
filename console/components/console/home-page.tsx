@@ -151,7 +151,7 @@ export function HomePage() {
         <Card className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-center gap-4">
-              <BrandMark size="lg" />
+              <BrandMark size="md" className="shrink-0" />
               <div className="space-y-2">
                 <Badge className="border-transparent bg-[color:var(--brand)] text-white">{brand.tagline}</Badge>
                 <h2 className="text-2xl font-semibold tracking-tight text-slate-950">

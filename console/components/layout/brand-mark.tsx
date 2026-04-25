@@ -13,10 +13,10 @@ export function BrandMark({
 }) {
   const dimensions =
     size === "sm"
-      ? { frame: "h-12 w-12 rounded-full", image: "h-12 w-12 rounded-full", px: 48 }
+      ? { frame: "h-12 w-12", image: "h-12 w-12", px: 48 }
       : size === "lg"
-        ? { frame: "h-22 w-22 rounded-full", image: "h-22 w-22 rounded-full", px: 88 }
-        : { frame: "h-16 w-16 rounded-full", image: "h-16 w-16 rounded-full", px: 64 };
+        ? { frame: "h-22 w-22", image: "h-22 w-22", px: 88 }
+        : { frame: "h-16 w-16", image: "h-16 w-16", px: 64 };
 
   return (
     <div
@@ -25,6 +25,7 @@ export function BrandMark({
         dimensions.frame,
         className,
       )}
+      style={{ clipPath: "circle(50% at 50% 50%)" }}
     >
       <Image
         src={brand.logoPath}
@@ -32,6 +33,7 @@ export function BrandMark({
         width={dimensions.px}
         height={dimensions.px}
         className={cn("object-cover", dimensions.image, imageClassName)}
+        style={{ clipPath: "circle(50% at 50% 50%)" }}
         priority
       />
     </div>

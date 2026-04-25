@@ -118,7 +118,7 @@
     },
     {
       "name": "kv_read",
-      "description": "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key. The AI should relay the result ciphertext back to the backend for decryption.",
+      "description": "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key by default, or to an optional recipient_public_key when provided.",
       "input_schema": {
         "type": "object",
         "required": ["auth_envelope", "query_envelope"],
@@ -130,12 +130,17 @@
           "query_envelope": {
             "type": "object",
             "description": "Opaque ciphertext envelope containing the kv.read query."
+          },
+          "recipient_public_key": {
+            "type": "string",
+            "description": "Optional PEM public key. If provided, kv.read.result is encrypted to this key instead of the registered client public key."
           }
         },
         "examples": [
           {
             "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
-            "query_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
+            "query_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
+            "recipient_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
           }
         ]
       }

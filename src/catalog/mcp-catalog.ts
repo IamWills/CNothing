@@ -133,7 +133,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "kv_read",
     description:
-      "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key. The AI should only relay the resulting ciphertext back to the trusted backend for decryption.",
+      "Read encrypted KV items for the authenticated client namespace and return ciphertext encrypted to the client public key by default, or to a provided recipient_public_key.",
     inputSchema: {
       type: "object",
       properties: {
@@ -145,12 +145,19 @@ const MCP_TOOLS: McpToolDescriptor[] = [
           type: "object",
           description: "Opaque ciphertext envelope containing the kv.read query built by the trusted backend.",
         },
+        recipient_public_key: {
+          type: "string",
+          description:
+            "Optional PEM public key. When set, result_envelope_for_client is encrypted to this key instead of the registered client key.",
+          examples: ["-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"],
+        },
       },
       required: ["auth_envelope", "query_envelope"],
       examples: [
         {
           auth_envelope: { v: "ksp1", encrypted_key: "...", iv: "...", ciphertext: "...", tag: "..." },
           query_envelope: { v: "ksp1", encrypted_key: "...", iv: "...", ciphertext: "...", tag: "..." },
+          recipient_public_key: "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
         },
       ],
     },

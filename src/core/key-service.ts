@@ -65,6 +65,17 @@ type ReadEnvelopePayload = {
   keys: string[];
 };
 
+function normalizeOptionalRecipientPublicKey(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const pem = typeof value === "string" ? value.trim() : "";
+  if (!pem) {
+    return undefined;
+  }
+  return normalizeClientPublicKey(pem);
+}
+
 type RotateKeyRequest = {
   auth_envelope?: unknown;
   new_client_public_key?: unknown;
@@ -411,7 +422,11 @@ export class KeyService {
     };
   }
 
-  async readKv(input: { auth_envelope?: unknown; query_envelope?: unknown }) {
+  async readKv(input: {
+    auth_envelope?: unknown;
+    query_envelope?: unknown;
+    recipient_public_key?: unknown;
+  }) {
     const { client, auth } = await this.validateAuthEnvelope(input.auth_envelope, "kv.read");
     const payload = decryptWithPrivateKey<ReadEnvelopePayload>({
       privateKeyPem: config.authaiPrivateKeyPem,
@@ -457,9 +472,10 @@ export class KeyService {
       rows.map((row) => [row.record_key, decryptKvRecordValue(row)]),
     );
 
+    const recipientPublicKeyPem = normalizeOptionalRecipientPublicKey(input.recipient_public_key);
     const resultEnvelope = encryptForPublicKey({
-      publicKeyPem: client.public_key_pem,
-      keyId: client.key_id ?? undefined,
+      publicKeyPem: recipientPublicKeyPem ?? client.public_key_pem,
+      keyId: recipientPublicKeyPem ? undefined : (client.key_id ?? undefined),
       payload: {
         v: "ksp1",
         type: "kv.read.result",

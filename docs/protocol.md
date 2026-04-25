@@ -175,7 +175,8 @@
 ```json
 {
   "auth_envelope": { "...": "..." },
-  "query_envelope": { "...": "..." }
+  "query_envelope": { "...": "..." },
+  "recipient_public_key": "-----BEGIN PUBLIC KEY----- ... (optional)"
 }
 ```
 
@@ -190,7 +191,12 @@
 }
 ```
 
-响应中的 `result_envelope_for_client` 会再次使用客户端公钥加密。解密后明文结构：
+`recipient_public_key` 为可选参数：
+
+- 提供时：`result_envelope_for_client` 改为使用该公钥加密
+- 未提供时：保持现有行为，使用已注册的客户端公钥加密
+
+响应中的 `result_envelope_for_client` 解密后明文结构：
 
 ```json
 {

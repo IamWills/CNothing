@@ -67,7 +67,7 @@ CNothing 的角色拆分非常简单：
 4. 客户端后端基于 challenge 生成 `auth_envelope`，再根据需要生成 `data_envelope` 或 `query_envelope`，并加密给 `CNothing`。
 5. AI 通过 HTTP 或 MCP 将这些密文 envelope 转发给 CNothing。
 6. CNothing 校验 challenge，执行读写，并返回下一次 challenge。
-7. 对于读取操作，结果会再次加密给客户端公钥，因此只有客户端后端能解密。
+7. 对于读取操作，结果默认会再次加密给客户端公钥；如果请求里提供 `recipient_public_key`，则改为加密给该第三方公钥。
 
 这意味着：
 
@@ -97,7 +97,7 @@ CNothing 的角色拆分非常简单：
 - `POST /v1/kv/save`
   - 使用 `auth_envelope + data_envelope` 写入 KV
 - `POST /v1/kv/read`
-  - 使用 `auth_envelope + query_envelope` 读取 KV，并将结果重新加密给客户端公钥
+  - 使用 `auth_envelope + query_envelope` 读取 KV；可选传 `recipient_public_key`，将结果改为加密给第三方公钥（未传则默认加密给客户端公钥）
 
 ## Console 与浏览接口
 

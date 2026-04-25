@@ -269,6 +269,7 @@ export class CNothingClient {
   async readJson(input: {
     namespace: string;
     keys: string[];
+    recipientPublicKeyPem?: string;
   }): Promise<
     ReadKvResponse & {
       session: CNothingSession;
@@ -299,6 +300,7 @@ export class CNothingClient {
             authaiPublicKey: session.authaiPublicKey,
             payload: queryPayload,
           }),
+          recipient_public_key: input.recipientPublicKeyPem,
         }),
       },
     );

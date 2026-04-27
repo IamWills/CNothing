@@ -88,6 +88,12 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
           case "authai_refresh":
             result = await service.refreshChallenge(args);
             break;
+          case "authai_key_holder_challenge":
+            result = await service.createKeyHolderChallenge(args);
+            break;
+          case "authai_key_holder_verify":
+            result = await service.verifyKeyHolderChallenge(args);
+            break;
           case "kv_save":
             result = await service.saveKv(args);
             break;

@@ -61,6 +61,26 @@
         }
       }
     },
+    "/v1/authai/key-holder/challenge": {
+      "post": {
+        "summary": "Create a two-ciphertext challenge to verify target public-key holder identity",
+        "responses": {
+          "200": {
+            "description": "Verification challenge pair including challenge_for_target (A) and challenge_for_authai (B)"
+          }
+        }
+      }
+    },
+    "/v1/authai/key-holder/verify": {
+      "post": {
+        "summary": "Verify target key holder by comparing responder secret S2 with S1 decrypted from challenge_for_authai",
+        "responses": {
+          "200": {
+            "description": "Verification result with verified=true/false and challenge state"
+          }
+        }
+      }
+    },
     "/v1/kv/save": {
       "post": {
         "summary": "Store encrypted KV items for the authenticated client namespace",

@@ -94,6 +94,10 @@ For the fixed, public, versioned protocol publication that third-party systems c
   - Issue the next challenge using a valid auth envelope
 - `POST /v1/authai/rotate-key`
   - Rotate the client public key while keeping the same `client_uuid`
+- `POST /v1/authai/key-holder/challenge`
+  - Create challenge pair `A/B` for verifying whether the target really owns the private key behind a provided public key
+- `POST /v1/authai/key-holder/verify`
+  - Submit `verification_id + S2 + B`; CNothing decrypts `B` with its private key to recover `S1` and compares `S1 === S2`
 - `POST /v1/kv/save`
   - Save KV items using `auth_envelope + data_envelope`
 - `POST /v1/kv/read`
@@ -280,6 +284,8 @@ The normative public specification for this flow is:
 
 - Clients only submit public keys during registration
 - `challenge_for_client` is always encrypted to the client public key
+- Key-holder verification challenge pairs are generated server-side and single-use with TTL
+- `challenge_for_target` (A) and `challenge_for_authai` (B) carry the same secret S1 but are encrypted to different recipients
 - `auth_envelope` and `data/query_envelope` are always encrypted to `CNothing`
 - Challenges are single-use and short-lived
 - Server-side records use per-record random DEKs wrapped by the master key

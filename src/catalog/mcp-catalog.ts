@@ -102,6 +102,82 @@ const MCP_TOOLS: McpToolDescriptor[] = [
     ],
   },
   {
+    name: "authai_key_holder_challenge",
+    description:
+      "Create a two-ciphertext key-holder verification challenge. CNothing generates the same secret S1 into challenge_for_target (encrypted to target public key) and challenge_for_authai (encrypted to CNothing public key).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target_public_key: {
+          type: "string",
+          description: "PEM-encoded target public key to be challenged for private-key possession.",
+          examples: ["-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"],
+        },
+        target_key_id: {
+          type: "string",
+          description: "Optional target-side key identifier.",
+          examples: ["partner-key-2026-04"],
+        },
+        metadata: {
+          type: "object",
+          description: "Optional non-secret challenge metadata for tracing.",
+          examples: [{ channel: "partner-onboarding", environment: "prod" }],
+        },
+      },
+      required: ["target_public_key"],
+      examples: [
+        {
+          target_public_key: "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+          target_key_id: "partner-key-2026-04",
+        },
+      ],
+    },
+    useCases: [
+      "Verify that a partner really controls the private key for a provided public key.",
+      "Issue cross-system cryptographic possession proof without exposing S1 plaintext to AI.",
+    ],
+  },
+  {
+    name: "authai_key_holder_verify",
+    description:
+      "Finalize key-holder verification by comparing responder_secret (S2 from target) against S1 decrypted from challenge_for_authai with CNothing private key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        verification_id: {
+          type: "string",
+          description: "Verification challenge identifier returned from authai_key_holder_challenge.",
+        },
+        responder_secret: {
+          type: "string",
+          description: "S2 provided by the challenged party after decrypting challenge_for_target.",
+        },
+        challenge_for_authai: {
+          type: "object",
+          description: "Opaque ciphertext B that CNothing decrypts to recover S1 for comparison.",
+        },
+      },
+      required: ["verification_id", "responder_secret", "challenge_for_authai"],
+      examples: [
+        {
+          verification_id: "c14f04a1-0a17-4b70-83df-df4f0c09e303",
+          responder_secret: "base64url-secret-from-target",
+          challenge_for_authai: {
+            v: "ksp1",
+            encrypted_key: "...",
+            iv: "...",
+            ciphertext: "...",
+            tag: "...",
+          },
+        },
+      ],
+    },
+    useCases: [
+      "Complete the S1/S2 compare step for key-holder proof.",
+      "Return a deterministic verified boolean and immutable audit trace.",
+    ],
+  },
+  {
     name: "kv_save",
     description:
       "Store one or more encrypted KV items for the authenticated client namespace. Recommended third-party integrations use private or blind mode so CNothing operators and AI layers do not see application plaintext.",
@@ -291,6 +367,8 @@ export function readMcpResource(uri: string): { uri: string; mimeType: string; t
         public_key_endpoint: "/v1/authai/public-key",
         register_endpoint: "/v1/authai/register",
         refresh_endpoint: "/v1/authai/refresh",
+        key_holder_challenge_endpoint: "/v1/authai/key-holder/challenge",
+        key_holder_verify_endpoint: "/v1/authai/key-holder/verify",
         save_endpoint: "/v1/kv/save",
         read_endpoint: "/v1/kv/read",
         skills_index: "/skills/index.json",

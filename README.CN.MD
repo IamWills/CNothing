@@ -94,6 +94,10 @@ CNothing 的角色拆分非常简单：
   - 使用合法的 auth envelope 续签下一次 challenge
 - `POST /v1/authai/rotate-key`
   - 在保持同一个 `client_uuid` 的前提下轮换客户端公钥
+- `POST /v1/authai/key-holder/challenge`
+  - 创建 `A/B` 双密文挑战，用于验证“对方是否真的持有某公钥对应私钥”
+- `POST /v1/authai/key-holder/verify`
+  - 提交 `verification_id + S2 + B`；CNothing 用私钥解密 `B` 得到 `S1` 并比对 `S1 === S2`
 - `POST /v1/kv/save`
   - 使用 `auth_envelope + data_envelope` 写入 KV
 - `POST /v1/kv/read`
@@ -280,6 +284,8 @@ await client.rotateKey({
 
 - 注册阶段客户端只提交公钥
 - `challenge_for_client` 永远加密给客户端公钥
+- 公钥持有者验证挑战由服务端生成，具备 TTL 且单次使用
+- `challenge_for_target`（A）与 `challenge_for_authai`（B）包含同一 `S1`，但分别加密给不同接收方
 - `auth_envelope` 和 `data/query_envelope` 永远加密给 `CNothing`
 - challenge 单次使用且短时有效
 - 服务端记录使用按条目随机生成的 DEK，并由主密钥包裹

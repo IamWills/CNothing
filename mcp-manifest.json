@@ -93,6 +93,63 @@
       }
     },
     {
+      "name": "authai_key_holder_challenge",
+      "description": "Create a key-holder verification challenge pair. CNothing generates the same secret S1 into challenge_for_target (encrypted to target public key) and challenge_for_authai (encrypted to CNothing public key).",
+      "input_schema": {
+        "type": "object",
+        "required": ["target_public_key"],
+        "properties": {
+          "target_public_key": {
+            "type": "string",
+            "description": "PEM-encoded target public key to be verified."
+          },
+          "target_key_id": {
+            "type": "string",
+            "description": "Optional target key identifier."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional non-secret metadata for verification tracing."
+          }
+        },
+        "examples": [
+          {
+            "target_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+            "target_key_id": "partner-key-2026-04"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authai_key_holder_verify",
+      "description": "Finalize verification by comparing responder_secret (S2) with S1 decrypted from challenge_for_authai using the CNothing private key.",
+      "input_schema": {
+        "type": "object",
+        "required": ["verification_id", "responder_secret", "challenge_for_authai"],
+        "properties": {
+          "verification_id": {
+            "type": "string",
+            "description": "Verification challenge id returned by authai_key_holder_challenge."
+          },
+          "responder_secret": {
+            "type": "string",
+            "description": "S2 value from the target party after decrypting challenge_for_target."
+          },
+          "challenge_for_authai": {
+            "type": "object",
+            "description": "Ciphertext B encrypted with the CNothing public key."
+          }
+        },
+        "examples": [
+          {
+            "verification_id": "c14f04a1-0a17-4b70-83df-df4f0c09e303",
+            "responder_secret": "base64url-secret-from-target",
+            "challenge_for_authai": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
+          }
+        ]
+      }
+    },
+    {
       "name": "kv_save",
       "description": "Save one or more encrypted KV items for the authenticated client namespace. Recommended third-party integrations use private or blind mode so CNothing operators and AI layers do not see application plaintext.",
       "input_schema": {

@@ -8,6 +8,7 @@ import type {
   ClientKeyRotationRecord,
   ClientSummary,
   JsonObject,
+  KeyHolderChallengeRecord,
   KvRecord,
   KvRecordSummary,
   NamespaceSummary,
@@ -47,6 +48,21 @@ function mapChallengeRow(row: Record<string, unknown>): ChallengeRecord {
     expires_at: asIso(row.expires_at),
     used_at: row.used_at ? asIso(row.used_at) : null,
     status: String(row.status) as ChallengeRecord["status"],
+    request_id: row.request_id ? String(row.request_id) : null,
+    metadata: normalizeMetadata(row.metadata),
+  };
+}
+
+function mapKeyHolderChallengeRow(row: Record<string, unknown>): KeyHolderChallengeRecord {
+  return {
+    verification_id: String(row.verification_id),
+    target_public_key_fingerprint: String(row.target_public_key_fingerprint),
+    purpose: String(row.purpose),
+    secret_hash: String(row.secret_hash),
+    issued_at: asIso(row.issued_at),
+    expires_at: asIso(row.expires_at),
+    used_at: row.used_at ? asIso(row.used_at) : null,
+    status: String(row.status) as KeyHolderChallengeRecord["status"],
     request_id: row.request_id ? String(row.request_id) : null,
     metadata: normalizeMetadata(row.metadata),
   };
@@ -450,6 +466,86 @@ export class KeyServiceRepository {
           AND challenge_id <> $3
       `,
       [clientUuid, purpose, challengeId],
+    );
+  }
+
+  async createKeyHolderChallenge(
+    client: PoolClient,
+    input: {
+      targetPublicKeyFingerprint: string;
+      purpose: string;
+      secretHash: string;
+      issuedAt: Date;
+      expiresAt: Date;
+      requestId?: string;
+      metadata: JsonObject;
+    },
+  ): Promise<KeyHolderChallengeRecord> {
+    const result = await client.query(
+      `
+        INSERT INTO authai_key_holder_challenges (
+          verification_id,
+          target_public_key_fingerprint,
+          purpose,
+          secret_hash,
+          issued_at,
+          expires_at,
+          status,
+          request_id,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8::jsonb)
+        RETURNING *
+      `,
+      [
+        randomUUID(),
+        input.targetPublicKeyFingerprint,
+        input.purpose,
+        input.secretHash,
+        input.issuedAt.toISOString(),
+        input.expiresAt.toISOString(),
+        input.requestId ?? null,
+        JSON.stringify(input.metadata),
+      ],
+    );
+    return mapKeyHolderChallengeRow(result.rows[0] as Record<string, unknown>);
+  }
+
+  async findKeyHolderChallengeById(
+    client: PoolClient,
+    verificationId: string,
+  ): Promise<KeyHolderChallengeRecord | null> {
+    return queryRow(
+      client,
+      `
+        SELECT *
+        FROM authai_key_holder_challenges
+        WHERE verification_id = $1
+        LIMIT 1
+      `,
+      [verificationId],
+      mapKeyHolderChallengeRow,
+    );
+  }
+
+  async markKeyHolderChallengeUsed(
+    client: PoolClient,
+    verificationId: string,
+    requestId?: string,
+  ): Promise<KeyHolderChallengeRecord | null> {
+    return queryRow(
+      client,
+      `
+        UPDATE authai_key_holder_challenges
+        SET
+          status = 'used',
+          used_at = NOW(),
+          request_id = COALESCE($2, request_id)
+        WHERE verification_id = $1
+        RETURNING *
+      `,
+      [verificationId, requestId ?? null],
+      mapKeyHolderChallengeRow,
     );
   }
 

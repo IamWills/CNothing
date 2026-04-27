@@ -31,6 +31,19 @@ export type ChallengeRecord = {
   metadata: JsonObject;
 };
 
+export type KeyHolderChallengeRecord = {
+  verification_id: string;
+  target_public_key_fingerprint: string;
+  purpose: string;
+  secret_hash: string;
+  issued_at: string;
+  expires_at: string;
+  used_at: string | null;
+  status: "active" | "used" | "expired" | "revoked";
+  request_id: string | null;
+  metadata: JsonObject;
+};
+
 export type KvRecord = {
   id: string;
   client_uuid: string;

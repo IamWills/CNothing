@@ -25,6 +25,7 @@ import type {
 import { KeyServiceRepository } from "./key-service.repository";
 
 const ACTIVE_CHALLENGE_PURPOSE = "authai.operation";
+const KEY_HOLDER_CHALLENGE_PURPOSE = "authai.key_holder.verify";
 const CLIENT_KEY_ALG = "RSA-OAEP-256/A256GCM";
 
 type RegisterRequest = {
@@ -83,6 +84,18 @@ type RotateKeyRequest = {
   new_client_key_id?: unknown;
   new_client_label?: unknown;
   metadata?: unknown;
+};
+
+type CreateKeyHolderChallengeRequest = {
+  target_public_key?: unknown;
+  target_key_id?: unknown;
+  metadata?: unknown;
+};
+
+type VerifyKeyHolderRequest = {
+  verification_id?: unknown;
+  responder_secret?: unknown;
+  challenge_for_authai?: unknown;
 };
 
 export class KeyService {
@@ -348,6 +361,197 @@ export class KeyService {
       next_challenge_for_client: challenge.challenge_for_client,
       next_challenge_id: challenge.challenge_id,
       next_challenge_expires_at: challenge.expires_at,
+    };
+  }
+
+  async createKeyHolderChallenge(input: CreateKeyHolderChallengeRequest) {
+    const targetPublicKeyPem = normalizeClientPublicKey(input.target_public_key);
+    const targetKeyId = normalizeOptionalString(input.target_key_id, 128);
+    const metadata = normalizeJsonObject(input.metadata);
+    const requestId = randomUUID();
+    const issuedAt = now();
+    const expiresAt = addSeconds(issuedAt, config.challengeTtlSeconds);
+    const secretS1 = createNonce();
+    const targetPublicKeyInfo = getPublicKeyInfo({
+      publicKeyPem: targetPublicKeyPem,
+      keyId: targetKeyId ?? "target",
+    });
+
+    const challenge = await this.repo.withTransaction((tx) =>
+      this.repo.createKeyHolderChallenge(tx, {
+        targetPublicKeyFingerprint: targetPublicKeyInfo.public_key_fingerprint,
+        purpose: KEY_HOLDER_CHALLENGE_PURPOSE,
+        secretHash: createSha256Fingerprint(secretS1),
+        issuedAt,
+        expiresAt,
+        requestId,
+        metadata,
+      }),
+    );
+
+    const challengeForTarget = encryptForPublicKey({
+      publicKeyPem: targetPublicKeyPem,
+      keyId: targetKeyId ?? undefined,
+      payload: {
+        v: "ksp1",
+        type: "key-holder.challenge",
+        purpose: KEY_HOLDER_CHALLENGE_PURPOSE,
+        verification_id: challenge.verification_id,
+        secret: secretS1,
+        issued_at: challenge.issued_at,
+        expires_at: challenge.expires_at,
+      },
+    });
+    const challengeForAuthai = encryptForPublicKey({
+      publicKeyPem: config.authaiPublicKeyPem,
+      keyId: config.authaiKeyId,
+      payload: {
+        v: "ksp1",
+        type: "key-holder.challenge",
+        purpose: KEY_HOLDER_CHALLENGE_PURPOSE,
+        verification_id: challenge.verification_id,
+        target_public_key_fingerprint: targetPublicKeyInfo.public_key_fingerprint,
+        secret: secretS1,
+        issued_at: challenge.issued_at,
+        expires_at: challenge.expires_at,
+      },
+    });
+
+    await this.repo.withTransaction((tx) =>
+      this.repo.appendAuditEvent(tx, {
+        action: "authai.key_holder.create_challenge",
+        status: "success",
+        requestId,
+        metadata: {
+          verification_id: challenge.verification_id,
+          target_public_key_fingerprint: targetPublicKeyInfo.public_key_fingerprint,
+        },
+      }),
+    );
+
+    return {
+      ok: true,
+      request_id: requestId,
+      verification_id: challenge.verification_id,
+      target_public_key_fingerprint: targetPublicKeyInfo.public_key_fingerprint,
+      challenge_for_target: challengeForTarget,
+      challenge_for_authai: challengeForAuthai,
+      challenge_expires_at: challenge.expires_at,
+      authai_public_key: this.getAuthaiPublicKey(),
+    };
+  }
+
+  async verifyKeyHolderChallenge(input: VerifyKeyHolderRequest) {
+    const verificationId = normalizeOptionalString(input.verification_id, 128);
+    const responderSecret = normalizeOptionalString(input.responder_secret, 256);
+    if (!verificationId) {
+      throw new ValidationError("verification_id is required", { error_code: "missing_field" });
+    }
+    if (!responderSecret) {
+      throw new ValidationError("responder_secret is required", { error_code: "missing_field" });
+    }
+
+    const authaiPayload = decryptWithPrivateKey<{
+      v: "ksp1";
+      type: "key-holder.challenge";
+      purpose: string;
+      verification_id: string;
+      target_public_key_fingerprint?: string;
+      secret: string;
+      issued_at: string;
+      expires_at: string;
+    }>({
+      privateKeyPem: config.authaiPrivateKeyPem,
+      envelope: input.challenge_for_authai,
+      expectedKeyId: config.authaiKeyId,
+    });
+
+    if (authaiPayload.v !== "ksp1" || authaiPayload.type !== "key-holder.challenge") {
+      throw new ValidationError("Invalid challenge_for_authai payload", {
+        error_code: "invalid_key_holder_challenge",
+      });
+    }
+    if (authaiPayload.purpose !== KEY_HOLDER_CHALLENGE_PURPOSE) {
+      throw new ValidationError("challenge_for_authai purpose mismatch", {
+        error_code: "challenge_purpose_mismatch",
+      });
+    }
+    if (authaiPayload.verification_id !== verificationId) {
+      throw new ValidationError("verification_id mismatch", {
+        error_code: "verification_id_mismatch",
+      });
+    }
+
+    const nowMs = Date.now();
+    if (new Date(authaiPayload.expires_at).getTime() < nowMs) {
+      throw new ValidationError("Challenge expired", { error_code: "challenge_expired" });
+    }
+
+    const requestId = randomUUID();
+
+    const verification = await this.repo.withTransaction(async (tx) => {
+      const row = await this.repo.findKeyHolderChallengeById(tx, verificationId);
+      if (!row) {
+        throw new NotFoundError(`Unknown verification_id: ${verificationId}`);
+      }
+      if (row.purpose !== KEY_HOLDER_CHALLENGE_PURPOSE) {
+        throw new ValidationError("Challenge purpose mismatch", {
+          error_code: "challenge_purpose_mismatch",
+        });
+      }
+      if (row.status !== "active") {
+        throw new ConflictError("Challenge already used or revoked", {
+          error_code: "challenge_already_used",
+        });
+      }
+      if (new Date(row.expires_at).getTime() < nowMs) {
+        throw new ValidationError("Challenge expired", {
+          error_code: "challenge_expired",
+        });
+      }
+      if (createSha256Fingerprint(authaiPayload.secret) !== row.secret_hash) {
+        throw new ValidationError("challenge_for_authai does not match issued challenge", {
+          error_code: "challenge_nonce_mismatch",
+        });
+      }
+      if (
+        authaiPayload.target_public_key_fingerprint &&
+        authaiPayload.target_public_key_fingerprint !== row.target_public_key_fingerprint
+      ) {
+        throw new ValidationError("Target public key fingerprint mismatch", {
+          error_code: "target_public_key_mismatch",
+        });
+      }
+
+      const holderVerified = authaiPayload.secret === responderSecret;
+      if (holderVerified) {
+        await this.repo.markKeyHolderChallengeUsed(tx, verificationId, requestId);
+      }
+
+      await this.repo.appendAuditEvent(tx, {
+        action: "authai.key_holder.verify",
+        status: holderVerified ? "success" : "failed",
+        requestId,
+        errorCode: holderVerified ? null : "key_holder_secret_mismatch",
+        metadata: {
+          verification_id: verificationId,
+          target_public_key_fingerprint: row.target_public_key_fingerprint,
+        },
+      });
+      return {
+        holderVerified,
+        targetPublicKeyFingerprint: row.target_public_key_fingerprint,
+        expiresAt: row.expires_at,
+      };
+    });
+
+    return {
+      ok: true,
+      request_id: requestId,
+      verification_id: verificationId,
+      verified: verification.holderVerified,
+      target_public_key_fingerprint: verification.targetPublicKeyFingerprint,
+      challenge_expires_at: verification.expiresAt,
     };
   }
 

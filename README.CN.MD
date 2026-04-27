@@ -86,6 +86,9 @@ CNothing 的角色拆分非常简单：
 
 ## 主要接口
 
+- 新接入推荐优先使用：**签名挑战验证**。
+- `A/B + S1/S2` 的密文比对方式继续保留为兼容方案。
+
 - `GET /v1/authai/public-key`
   - 返回 CNothing 的 AuthAI 公钥元数据
 - `POST /v1/authai/register`
@@ -95,9 +98,13 @@ CNothing 的角色拆分非常简单：
 - `POST /v1/authai/rotate-key`
   - 在保持同一个 `client_uuid` 的前提下轮换客户端公钥
 - `POST /v1/authai/key-holder/challenge`
-  - 创建 `A/B` 双密文挑战，用于验证“对方是否真的持有某公钥对应私钥”
+  - 兼容方案：创建 `A/B` 双密文挑战，用于验证“对方是否真的持有某公钥对应私钥”
 - `POST /v1/authai/key-holder/verify`
-  - 提交 `verification_id + S2 + B`；CNothing 用私钥解密 `B` 得到 `S1` 并比对 `S1 === S2`
+  - 兼容方案：提交 `verification_id + S2 + B`；CNothing 用私钥解密 `B` 得到 `S1` 并比对 `S1 === S2`
+- `POST /v1/authai/key-holder/sign-challenge`
+  - 推荐方案：生成 `challenge_text`，由对方私钥签名
+- `POST /v1/authai/key-holder/verify-signature`
+  - 推荐方案：提交 `verification_id + challenge_text + signature + target_public_key`，由 CNothing 做验签和指纹一致性校验
 - `POST /v1/kv/save`
   - 使用 `auth_envelope + data_envelope` 写入 KV
 - `POST /v1/kv/read`
@@ -285,6 +292,7 @@ await client.rotateKey({
 - 注册阶段客户端只提交公钥
 - `challenge_for_client` 永远加密给客户端公钥
 - 公钥持有者验证挑战由服务端生成，具备 TTL 且单次使用
+- 生产环境优先推荐基于签名的公钥持有者验证
 - `challenge_for_target`（A）与 `challenge_for_authai`（B）包含同一 `S1`，但分别加密给不同接收方
 - `auth_envelope` 和 `data/query_envelope` 永远加密给 `CNothing`
 - challenge 单次使用且短时有效

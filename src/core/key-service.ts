@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createPublicKey, createVerify, randomUUID } from "node:crypto";
 import config from "../config";
 import { encryptForPublicKey, decryptWithPrivateKey, getPublicKeyInfo } from "../crypto/hybrid-envelope";
 import { createSha256Fingerprint } from "../crypto/master-key";
@@ -26,6 +26,7 @@ import { KeyServiceRepository } from "./key-service.repository";
 
 const ACTIVE_CHALLENGE_PURPOSE = "authai.operation";
 const KEY_HOLDER_CHALLENGE_PURPOSE = "authai.key_holder.verify";
+const KEY_HOLDER_SIGN_CHALLENGE_PURPOSE = "authai.key_holder.sign_verify";
 const CLIENT_KEY_ALG = "RSA-OAEP-256/A256GCM";
 
 type RegisterRequest = {
@@ -97,6 +98,35 @@ type VerifyKeyHolderRequest = {
   responder_secret?: unknown;
   challenge_for_authai?: unknown;
 };
+
+type CreateKeyHolderSignChallengeRequest = {
+  target_public_key?: unknown;
+  target_key_id?: unknown;
+  metadata?: unknown;
+};
+
+type VerifyKeyHolderSignatureRequest = {
+  verification_id?: unknown;
+  challenge_text?: unknown;
+  signature?: unknown;
+  target_public_key?: unknown;
+};
+
+function decodeBase64Like(input: string, fieldName: string): Buffer {
+  const normalized = input.trim().replace(/-/g, "+").replace(/_/g, "/");
+  if (!normalized) {
+    throw new ValidationError(`${fieldName} is required`, { error_code: "missing_field" });
+  }
+  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+  try {
+    return Buffer.from(`${normalized}${padding}`, "base64");
+  } catch {
+    throw new ValidationError(`${fieldName} must be base64 or base64url`, {
+      error_code: "invalid_field",
+      field: fieldName,
+    });
+  }
+}
 
 export class KeyService {
   private readonly repo = new KeyServiceRepository();
@@ -550,6 +580,160 @@ export class KeyService {
       request_id: requestId,
       verification_id: verificationId,
       verified: verification.holderVerified,
+      target_public_key_fingerprint: verification.targetPublicKeyFingerprint,
+      challenge_expires_at: verification.expiresAt,
+    };
+  }
+
+  async createKeyHolderSignChallenge(input: CreateKeyHolderSignChallengeRequest) {
+    const targetPublicKeyPem = normalizeClientPublicKey(input.target_public_key);
+    const targetKeyId = normalizeOptionalString(input.target_key_id, 128);
+    const metadata = normalizeJsonObject(input.metadata);
+    const requestId = randomUUID();
+    const issuedAt = now();
+    const expiresAt = addSeconds(issuedAt, config.challengeTtlSeconds);
+    const targetPublicKeyInfo = getPublicKeyInfo({
+      publicKeyPem: targetPublicKeyPem,
+      keyId: targetKeyId ?? "target",
+    });
+
+    const challengeText = [
+      "cnothing-key-holder-signature-challenge",
+      `verification_id=${randomUUID()}`,
+      `target_public_key_fingerprint=${targetPublicKeyInfo.public_key_fingerprint}`,
+      `issued_at=${issuedAt.toISOString()}`,
+      `expires_at=${expiresAt.toISOString()}`,
+      `nonce=${createNonce()}`,
+    ].join("\n");
+
+    const challenge = await this.repo.withTransaction((tx) =>
+      this.repo.createKeyHolderChallenge(tx, {
+        targetPublicKeyFingerprint: targetPublicKeyInfo.public_key_fingerprint,
+        purpose: KEY_HOLDER_SIGN_CHALLENGE_PURPOSE,
+        secretHash: createSha256Fingerprint(challengeText),
+        issuedAt,
+        expiresAt,
+        requestId,
+        metadata: {
+          ...metadata,
+          challenge_type: "signature",
+          target_key_id: targetKeyId ?? null,
+        },
+      }),
+    );
+
+    await this.repo.withTransaction((tx) =>
+      this.repo.appendAuditEvent(tx, {
+        action: "authai.key_holder.create_sign_challenge",
+        status: "success",
+        requestId,
+        metadata: {
+          verification_id: challenge.verification_id,
+          target_public_key_fingerprint: targetPublicKeyInfo.public_key_fingerprint,
+        },
+      }),
+    );
+
+    return {
+      ok: true,
+      request_id: requestId,
+      verification_id: challenge.verification_id,
+      challenge_text: challengeText,
+      challenge_text_sha256: createSha256Fingerprint(challengeText),
+      signature_algorithm: "RSA-SHA256",
+      target_public_key_fingerprint: targetPublicKeyInfo.public_key_fingerprint,
+      challenge_expires_at: challenge.expires_at,
+    };
+  }
+
+  async verifyKeyHolderSignature(input: VerifyKeyHolderSignatureRequest) {
+    const verificationId = normalizeOptionalString(input.verification_id, 128);
+    const challengeText = normalizeOptionalString(input.challenge_text, 4096);
+    const signatureBase64 = normalizeOptionalString(input.signature, 8192);
+    const targetPublicKeyPem = normalizeClientPublicKey(input.target_public_key);
+    if (!verificationId) {
+      throw new ValidationError("verification_id is required", { error_code: "missing_field" });
+    }
+    if (!challengeText) {
+      throw new ValidationError("challenge_text is required", { error_code: "missing_field" });
+    }
+    if (!signatureBase64) {
+      throw new ValidationError("signature is required", { error_code: "missing_field" });
+    }
+
+    const targetPublicKeyInfo = getPublicKeyInfo({
+      publicKeyPem: targetPublicKeyPem,
+      keyId: "target",
+    });
+    const signatureBytes = decodeBase64Like(signatureBase64, "signature");
+    const requestId = randomUUID();
+    const nowMs = Date.now();
+
+    const verification = await this.repo.withTransaction(async (tx) => {
+      const row = await this.repo.findKeyHolderChallengeById(tx, verificationId);
+      if (!row) {
+        throw new NotFoundError(`Unknown verification_id: ${verificationId}`);
+      }
+      if (row.purpose !== KEY_HOLDER_SIGN_CHALLENGE_PURPOSE) {
+        throw new ValidationError("Challenge purpose mismatch", {
+          error_code: "challenge_purpose_mismatch",
+        });
+      }
+      if (row.status !== "active") {
+        throw new ConflictError("Challenge already used or revoked", {
+          error_code: "challenge_already_used",
+        });
+      }
+      if (new Date(row.expires_at).getTime() < nowMs) {
+        throw new ValidationError("Challenge expired", {
+          error_code: "challenge_expired",
+        });
+      }
+      if (row.target_public_key_fingerprint !== targetPublicKeyInfo.public_key_fingerprint) {
+        throw new ValidationError("Target public key fingerprint mismatch", {
+          error_code: "target_public_key_mismatch",
+        });
+      }
+      if (createSha256Fingerprint(challengeText) !== row.secret_hash) {
+        throw new ValidationError("challenge_text does not match issued challenge", {
+          error_code: "challenge_nonce_mismatch",
+        });
+      }
+
+      const verifier = createVerify("RSA-SHA256");
+      verifier.update(challengeText, "utf8");
+      verifier.end();
+      const verified = verifier.verify(createPublicKey(targetPublicKeyPem), signatureBytes);
+
+      if (verified) {
+        await this.repo.markKeyHolderChallengeUsed(tx, verificationId, requestId);
+      }
+
+      await this.repo.appendAuditEvent(tx, {
+        action: "authai.key_holder.verify_signature",
+        status: verified ? "success" : "failed",
+        requestId,
+        errorCode: verified ? null : "key_holder_signature_invalid",
+        metadata: {
+          verification_id: verificationId,
+          target_public_key_fingerprint: row.target_public_key_fingerprint,
+        },
+      });
+
+      return {
+        verified,
+        targetPublicKeyFingerprint: row.target_public_key_fingerprint,
+        expiresAt: row.expires_at,
+      };
+    });
+
+    return {
+      ok: true,
+      request_id: requestId,
+      verification_id: verificationId,
+      verified: verification.verified,
+      verification_method: "signature",
+      signature_algorithm: "RSA-SHA256",
       target_public_key_fingerprint: verification.targetPublicKeyFingerprint,
       challenge_expires_at: verification.expiresAt,
     };

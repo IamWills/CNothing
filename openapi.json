@@ -63,7 +63,7 @@
     },
     "/v1/authai/key-holder/challenge": {
       "post": {
-        "summary": "Create a two-ciphertext challenge to verify target public-key holder identity",
+        "summary": "Compatibility flow: create a two-ciphertext challenge to verify target public-key holder identity",
         "responses": {
           "200": {
             "description": "Verification challenge pair including challenge_for_target (A) and challenge_for_authai (B)"
@@ -73,10 +73,30 @@
     },
     "/v1/authai/key-holder/verify": {
       "post": {
-        "summary": "Verify target key holder by comparing responder secret S2 with S1 decrypted from challenge_for_authai",
+        "summary": "Compatibility flow: verify target key holder by comparing responder secret S2 with S1 decrypted from challenge_for_authai",
         "responses": {
           "200": {
             "description": "Verification result with verified=true/false and challenge state"
+          }
+        }
+      }
+    },
+    "/v1/authai/key-holder/sign-challenge": {
+      "post": {
+        "summary": "Recommended flow: create a signature challenge for target key-holder verification",
+        "responses": {
+          "200": {
+            "description": "Signature challenge content (challenge_text) and verification metadata"
+          }
+        }
+      }
+    },
+    "/v1/authai/key-holder/verify-signature": {
+      "post": {
+        "summary": "Recommended flow: verify target key holder by validating signature on challenge_text",
+        "responses": {
+          "200": {
+            "description": "Signature verification result with verified=true/false"
           }
         }
       }

@@ -36,6 +36,16 @@ export async function handleKeyRequest(request: Request): Promise<Response> {
     return Response.json(await service.verifyKeyHolderChallenge(body));
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/authai/key-holder/sign-challenge") {
+    const body = await parseJsonBody(request);
+    return Response.json(await service.createKeyHolderSignChallenge(body));
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/authai/key-holder/verify-signature") {
+    const body = await parseJsonBody(request);
+    return Response.json(await service.verifyKeyHolderSignature(body));
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/kv/save") {
     const body = await parseJsonBody(request);
     return Response.json(await service.saveKv(body));

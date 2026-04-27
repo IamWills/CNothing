@@ -86,6 +86,9 @@ For the fixed, public, versioned protocol publication that third-party systems c
 
 ## Main Endpoints
 
+- Recommended key-holder verification flow for new integrations: **signature challenge**.
+- Ciphertext compare (`A/B + S1/S2`) remains available as a compatibility flow.
+
 - `GET /v1/authai/public-key`
   - Return the CNothing AuthAI public key metadata
 - `POST /v1/authai/register`
@@ -95,9 +98,13 @@ For the fixed, public, versioned protocol publication that third-party systems c
 - `POST /v1/authai/rotate-key`
   - Rotate the client public key while keeping the same `client_uuid`
 - `POST /v1/authai/key-holder/challenge`
-  - Create challenge pair `A/B` for verifying whether the target really owns the private key behind a provided public key
+  - Compatibility flow: create challenge pair `A/B` for verifying whether the target really owns the private key behind a provided public key
 - `POST /v1/authai/key-holder/verify`
-  - Submit `verification_id + S2 + B`; CNothing decrypts `B` with its private key to recover `S1` and compares `S1 === S2`
+  - Compatibility flow: submit `verification_id + S2 + B`; CNothing decrypts `B` with its private key to recover `S1` and compares `S1 === S2`
+- `POST /v1/authai/key-holder/sign-challenge`
+  - Recommended flow: create `challenge_text` that the target signs with its private key
+- `POST /v1/authai/key-holder/verify-signature`
+  - Recommended flow: submit `verification_id + challenge_text + signature + target_public_key`; CNothing verifies the signature and key fingerprint
 - `POST /v1/kv/save`
   - Save KV items using `auth_envelope + data_envelope`
 - `POST /v1/kv/read`
@@ -285,6 +292,7 @@ The normative public specification for this flow is:
 - Clients only submit public keys during registration
 - `challenge_for_client` is always encrypted to the client public key
 - Key-holder verification challenge pairs are generated server-side and single-use with TTL
+- Signature-based key-holder verification is the preferred production method
 - `challenge_for_target` (A) and `challenge_for_authai` (B) carry the same secret S1 but are encrypted to different recipients
 - `auth_envelope` and `data/query_envelope` are always encrypted to `CNothing`
 - Challenges are single-use and short-lived

@@ -13,6 +13,8 @@
 - `get_authai_public_key`
 - `authai_register`
 - `authai_refresh`
+- `authai_key_holder_sign_challenge`（推荐）
+- `authai_key_holder_verify_signature`（推荐）
 - `authai_key_holder_challenge`
 - `authai_key_holder_verify`
 - `kv_save`
@@ -42,6 +44,19 @@ AI 通过 MCP 使用 `CNothing` 时，应遵守以下流程：
 4. 调 `authai_key_holder_verify`，提交 `verification_id + responder_secret(S2) + challenge_for_authai(B)`
 5. CNothing 用自己的私钥解密 B 得到 `S1`，比对 `S1 === S2`
 6. 一致则 `verified=true`，该 challenge 标记为已使用
+
+推荐的公钥持有者签名验证流程：
+
+1. 调 `authai_key_holder_sign_challenge`，提交对方公钥，获得 `challenge_text` 与 `verification_id`
+2. 将 `challenge_text` 发给对方，由对方私钥对该文本做签名（`RSA-SHA256`）
+3. 对方返回签名（`base64` 或 `base64url`）
+4. 调 `authai_key_holder_verify_signature`，提交：
+   - `verification_id`
+   - `challenge_text`
+   - `signature`
+   - `target_public_key`
+5. CNothing 校验 challenge 哈希、目标公钥指纹与签名合法性
+6. 合法则 `verified=true`，challenge 标记为已使用
 
 ## Important Safety Rules
 

@@ -102,9 +102,85 @@ const MCP_TOOLS: McpToolDescriptor[] = [
     ],
   },
   {
+    name: "authai_key_holder_sign_challenge",
+    description:
+      "Recommended: create a signature-based key-holder challenge. The target should sign challenge_text with its private key and return a base64/base64url signature.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target_public_key: {
+          type: "string",
+          description: "PEM-encoded target public key to verify holder identity.",
+          examples: ["-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"],
+        },
+        target_key_id: {
+          type: "string",
+          description: "Optional target key identifier.",
+          examples: ["partner-key-2026-04"],
+        },
+        metadata: {
+          type: "object",
+          description: "Optional non-secret metadata for tracing.",
+          examples: [{ channel: "partner-onboarding", environment: "prod" }],
+        },
+      },
+      required: ["target_public_key"],
+      examples: [
+        {
+          target_public_key: "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+          target_key_id: "partner-key-2026-04",
+        },
+      ],
+    },
+    useCases: [
+      "Preferred production proof-of-possession flow based on signatures.",
+      "Interoperate with external systems that already expose signing APIs or HSM/KMS signing.",
+    ],
+  },
+  {
+    name: "authai_key_holder_verify_signature",
+    description:
+      "Recommended: verify signature proof by checking target public key fingerprint, challenge_text hash, and RSA-SHA256 signature validity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        verification_id: {
+          type: "string",
+          description: "Challenge id returned by authai_key_holder_sign_challenge.",
+        },
+        challenge_text: {
+          type: "string",
+          description: "The exact challenge_text returned by authai_key_holder_sign_challenge.",
+        },
+        signature: {
+          type: "string",
+          description: "Base64 or base64url signature over challenge_text.",
+        },
+        target_public_key: {
+          type: "string",
+          description: "PEM-encoded target public key used for signature verification.",
+          examples: ["-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"],
+        },
+      },
+      required: ["verification_id", "challenge_text", "signature", "target_public_key"],
+      examples: [
+        {
+          verification_id: "4f2f4048-b9e8-4d65-aa71-d500f0ef8578",
+          challenge_text: "cnothing-key-holder-signature-challenge\n...",
+          signature: "base64-or-base64url-signature",
+          target_public_key: "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+        },
+      ],
+    },
+    useCases: [
+      "Finalize the recommended signature-based key-holder verification.",
+      "Return verified=true/false with auditable result status.",
+    ],
+  },
+  {
     name: "authai_key_holder_challenge",
     description:
-      "Create a two-ciphertext key-holder verification challenge. CNothing generates the same secret S1 into challenge_for_target (encrypted to target public key) and challenge_for_authai (encrypted to CNothing public key).",
+      "Compatibility flow: create a two-ciphertext key-holder verification challenge. Prefer signature-based verification for new integrations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -140,7 +216,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "authai_key_holder_verify",
     description:
-      "Finalize key-holder verification by comparing responder_secret (S2 from target) against S1 decrypted from challenge_for_authai with CNothing private key.",
+      "Compatibility flow: compare responder_secret (S2) against S1 decrypted from challenge_for_authai. Prefer authai_key_holder_verify_signature for new integrations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -367,6 +443,8 @@ export function readMcpResource(uri: string): { uri: string; mimeType: string; t
         public_key_endpoint: "/v1/authai/public-key",
         register_endpoint: "/v1/authai/register",
         refresh_endpoint: "/v1/authai/refresh",
+        key_holder_sign_challenge_endpoint: "/v1/authai/key-holder/sign-challenge",
+        key_holder_verify_signature_endpoint: "/v1/authai/key-holder/verify-signature",
         key_holder_challenge_endpoint: "/v1/authai/key-holder/challenge",
         key_holder_verify_endpoint: "/v1/authai/key-holder/verify",
         save_endpoint: "/v1/kv/save",

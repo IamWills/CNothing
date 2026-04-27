@@ -93,8 +93,70 @@
       }
     },
     {
+      "name": "authai_key_holder_sign_challenge",
+      "description": "Recommended flow: create a signature-based key-holder challenge. The target signs challenge_text with its private key.",
+      "input_schema": {
+        "type": "object",
+        "required": ["target_public_key"],
+        "properties": {
+          "target_public_key": {
+            "type": "string",
+            "description": "PEM-encoded target public key."
+          },
+          "target_key_id": {
+            "type": "string",
+            "description": "Optional target key identifier."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional non-secret metadata for tracing."
+          }
+        },
+        "examples": [
+          {
+            "target_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+            "target_key_id": "partner-key-2026-04"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authai_key_holder_verify_signature",
+      "description": "Recommended flow: verify signature proof with verification_id + challenge_text + signature + target_public_key.",
+      "input_schema": {
+        "type": "object",
+        "required": ["verification_id", "challenge_text", "signature", "target_public_key"],
+        "properties": {
+          "verification_id": {
+            "type": "string",
+            "description": "Verification challenge id from authai_key_holder_sign_challenge."
+          },
+          "challenge_text": {
+            "type": "string",
+            "description": "Exact challenge text returned by authai_key_holder_sign_challenge."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64 or base64url signature over challenge_text."
+          },
+          "target_public_key": {
+            "type": "string",
+            "description": "PEM-encoded target public key used for signature verification."
+          }
+        },
+        "examples": [
+          {
+            "verification_id": "4f2f4048-b9e8-4d65-aa71-d500f0ef8578",
+            "challenge_text": "cnothing-key-holder-signature-challenge\n...",
+            "signature": "base64-or-base64url-signature",
+            "target_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+          }
+        ]
+      }
+    },
+    {
       "name": "authai_key_holder_challenge",
-      "description": "Create a key-holder verification challenge pair. CNothing generates the same secret S1 into challenge_for_target (encrypted to target public key) and challenge_for_authai (encrypted to CNothing public key).",
+      "description": "Compatibility flow: create a key-holder verification challenge pair using ciphertext compare. Prefer signature verification for new integrations.",
       "input_schema": {
         "type": "object",
         "required": ["target_public_key"],
@@ -122,7 +184,7 @@
     },
     {
       "name": "authai_key_holder_verify",
-      "description": "Finalize verification by comparing responder_secret (S2) with S1 decrypted from challenge_for_authai using the CNothing private key.",
+      "description": "Compatibility flow: finalize verification by comparing responder_secret (S2) with S1 decrypted from challenge_for_authai.",
       "input_schema": {
         "type": "object",
         "required": ["verification_id", "responder_secret", "challenge_for_authai"],

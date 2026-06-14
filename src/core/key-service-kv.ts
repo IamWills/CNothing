@@ -169,12 +169,28 @@ function decryptStoredKsp1EnvelopePlaintext(record: StoredValueShape, metadata: 
   });
 }
 
+function decryptJsonStoredValue(record: StoredValueShape): unknown {
+  const dek = decryptWithAes256Gcm({
+    ciphertext: record.wrapped_dek,
+    key: config.masterKey,
+    iv: record.wrapped_dek_iv,
+    tag: record.wrapped_dek_tag,
+  });
+  const plaintext = decryptWithAes256Gcm({
+    ciphertext: record.ciphertext,
+    key: dek,
+    iv: record.cipher_iv,
+    tag: record.cipher_tag,
+  });
+  return JSON.parse(plaintext.toString("utf8"));
+}
+
 export function readKvRecordValue(input: {
   record: StoredValueShape & { metadata?: JsonObject };
   recipientPublicKeyPem?: string;
 }): unknown {
   if (!isKvKsp1EnvelopeRecord(input.record)) {
-    return decryptKvRecordValue(input.record);
+    return decryptJsonStoredValue(input.record);
   }
 
   const plaintext = decryptStoredKsp1EnvelopePlaintext(input.record, input.record.metadata ?? {});
@@ -195,5 +211,8 @@ export function readKvRecordValue(input: {
 }
 
 export function decryptKvRecordValue(record: StoredValueShape & { metadata?: JsonObject }): unknown {
-  return readKvRecordValue({ record });
+  if (isKvKsp1EnvelopeRecord(record)) {
+    return decryptStoredKsp1EnvelopePlaintext(record, record.metadata ?? {});
+  }
+  return decryptJsonStoredValue(record);
 }

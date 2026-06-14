@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import config from "../config";
 import { KeyService } from "../core/key-service";
-import { decryptKvRecordValue, encryptJsonValue } from "../core/key-service-kv";
+import { decryptKvRecordValue, prepareKvStoredValue } from "../core/key-service-kv";
 import {
   assertJsonSerializable,
   normalizeJsonObject,
@@ -117,7 +118,15 @@ export class KeyServiceAdminService {
         const recordKey = normalizeRecordKey(rawItem?.key);
         assertJsonSerializable(rawItem?.value, `value for ${recordKey}`);
         const metadata = normalizeJsonObject(rawItem?.metadata);
-        const encryptedValue = encryptJsonValue(rawItem?.value);
+        const encryptedValue = prepareKvStoredValue({
+          value: rawItem?.value,
+          authaiPrivateKeyPem: config.authaiPrivateKeyPem,
+          authaiKeyId: config.authaiKeyId,
+        });
+        const mergedMetadata = normalizeJsonObject({
+          ...metadata,
+          ...encryptedValue.metadataPatch,
+        });
 
         await this.repo.upsertKvRecord(tx, {
           clientUuid,
@@ -132,7 +141,7 @@ export class KeyServiceAdminService {
           wrappedDekIv: encryptedValue.wrapped_dek_iv,
           wrappedDekTag: encryptedValue.wrapped_dek_tag,
           valueFingerprint: encryptedValue.value_fingerprint,
-          metadata,
+          metadata: mergedMetadata,
         });
         keys.push(recordKey);
       }

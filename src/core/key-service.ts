@@ -3,7 +3,7 @@ import config from "../config";
 import { encryptForPublicKey, decryptWithPrivateKey, getPublicKeyInfo } from "../crypto/hybrid-envelope";
 import { createSha256Fingerprint } from "../crypto/master-key";
 import { NotFoundError, ValidationError, ConflictError } from "../utils/errors";
-import { decryptKvRecordValue, encryptJsonValue } from "./key-service-kv";
+import { prepareKvStoredValue, readKvRecordValue } from "./key-service-kv";
 import {
   addSeconds,
   assertJsonSerializable,
@@ -770,7 +770,15 @@ export class KeyService {
         const recordKey = normalizeRecordKey(item?.key);
         assertJsonSerializable(item?.value, `value for ${recordKey}`);
         const metadata = normalizeJsonObject(item?.metadata);
-        const encryptedValue = encryptJsonValue(item?.value);
+        const encryptedValue = prepareKvStoredValue({
+          value: item?.value,
+          authaiPrivateKeyPem: config.authaiPrivateKeyPem,
+          authaiKeyId: config.authaiKeyId,
+        });
+        const mergedMetadata = normalizeJsonObject({
+          ...metadata,
+          ...encryptedValue.metadataPatch,
+        });
         await this.repo.upsertKvRecord(tx, {
           clientUuid: client.client_uuid,
           namespace,
@@ -784,7 +792,7 @@ export class KeyService {
           wrappedDekIv: encryptedValue.wrapped_dek_iv,
           wrappedDekTag: encryptedValue.wrapped_dek_tag,
           valueFingerprint: encryptedValue.value_fingerprint,
-          metadata,
+          metadata: mergedMetadata,
         });
         keys.push(recordKey);
       }
@@ -867,7 +875,13 @@ export class KeyService {
     });
 
     const resultItems = Object.fromEntries(
-      rows.map((row) => [row.record_key, decryptKvRecordValue(row)]),
+      rows.map((row) => [
+        row.record_key,
+        readKvRecordValue({
+          record: row,
+          recipientPublicKeyPem: recipientPublicKeyPem,
+        }),
+      ]),
     );
 
     const resultEnvelope = encryptForPublicKey({

@@ -166,6 +166,31 @@
 }
 ```
 
+### ksp1 信封格式（`api_key_envelope`）兼容存储
+
+除普通 JSON 值外，`items[].value` 也可直接存放第三方返回的 **`ksp1` 混合信封**（`api_key_envelope`）。CNothing 会自动识别并走专用存储路径：
+
+**写入时（`kv.save`）：**
+
+1. 识别 `value` 是否为 `ksp1` 信封（`v=ksp1` 且含 `encrypted_key/iv/ciphertext/tag`），或 `{ "api_key_envelope": { ...ksp1... } }` 包装形式。
+2. 用 **CNothing AuthAI 私钥** 解密信封中的 `encrypted_key`，得到 AES content key。
+3. 保留信封的 `iv/ciphertext/tag`（及可选 `aad`），将 content key 用 master key 包裹后落库；记录 `cipher_alg = ksp1-envelope/A256GCM`。
+4. 普通 JSON 值仍按原有 envelope encryption 路径存储，**完全向后兼容**。
+
+典型 `items[].value`（第三方用 CNothing AuthAI 公钥加密后的 API key 信封）：
+
+```json
+{
+  "v": "ksp1",
+  "alg": "RSA-OAEP-256",
+  "enc": "A256GCM",
+  "encrypted_key": "...",
+  "iv": "...",
+  "ciphertext": "...",
+  "tag": "..."
+}
+```
+
 ## Read
 
 接口：`POST /v1/kv/read`
@@ -211,6 +236,17 @@
   }
 }
 ```
+
+### ksp1 信封格式读取与重加密
+
+若某条 KV 记录以 `ksp1-envelope/A256GCM` 格式存储（见 Save 节），`kv.read` 对该 key 的处理如下：
+
+1. 取出落库时保存的 AES content key（master key 包裹）。
+2. 解密原信封 `ciphertext`，得到 **api_key 明文**（仅服务端内存中，不返回给 Agent）。
+3. 用请求中的 **`recipient_public_key`** 将 api_key 明文重新打包为 **新的 `ksp1` 信封**。
+4. 该 key 在 `kv.read.result.items` 中的值为 **ksp1 信封对象**（而非 JSON 明文）；外层 `result_envelope_for_client` 仍加密给 `recipient_public_key`。
+
+因此：第三方注册时把 API key 加密给 **CNothing AuthAI 公钥** 存入；读取时 CNothing 解密后 **再加密给第三方公钥** 返回，第三方用私钥解密即可鉴权。普通 JSON 值的读取行为不变。
 
 ## Refresh
 

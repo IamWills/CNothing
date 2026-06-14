@@ -80,8 +80,8 @@ CNothing 的角色拆分非常简单：
 `CNothing` 是储存第三方服务敏感信息的平台。除上述 AuthAI 协议 7 步外，业务上还有一条完整凭证链路：
 
 1. **接入 CNothing**：Agent 注册后取得 **CNothing AuthAI 公钥**（`GET /v1/authai/public-key`），并注册**客户端公钥**完成身份绑定。
-2. **向第三方注册**：Agent 向第三方提供 **CNothing AuthAI 公钥**（不是客户端公钥）；第三方返回用 CNothing 公钥加密的 API key；经 `kv.save` 写入后，CNothing 用私钥解密并存储。
-3. **调用第三方 API**：Agent 用**第三方标识符**和**第三方服务公钥**发起 `kv.read`，`recipient_public_key` 填第三方公钥；CNothing 返回加密给第三方的 API key；第三方用私钥解密后完成鉴权。
+2. **向第三方注册**：Agent 向第三方提供 **CNothing AuthAI 公钥**（不是客户端公钥）；第三方返回用 CNothing 公钥加密的 API key（`ksp1` 信封）；经 `kv.save` 写入时，可将整个 `api_key_envelope` 作为 `value` 存入，CNothing 解密 `encrypted_key` 后持久化。
+3. **调用第三方 API**：Agent 用**第三方标识符**和**第三方服务公钥**发起 `kv.read`，`recipient_public_key` 填第三方公钥；CNothing 解密已存凭证并用第三方公钥重新打包为新的 `ksp1` 信封返回；第三方用私钥解密后完成鉴权。
 
 三把公钥不可混用：CNothing AuthAI 公钥（协议 + 第三方回传加密）、客户端公钥（AuthAI 身份）、第三方服务公钥（读取时指定消费方）。详见 [docs/protocol.md](./docs/protocol.md) 中「第三方服务凭证：正确用法」。
 

@@ -30,8 +30,8 @@
 | 客户端公钥 | `authai_register` 提交 | AuthAI 身份注册；解密 challenge；仅当凭证由**客户端后端**使用时作为 `recipient_public_key` |
 | 第三方服务公钥 | `kv_read` 的 `recipient_public_key` | 读取凭证供**第三方服务**鉴权时必须使用 |
 
-**存凭证：** Agent 带 CNothing AuthAI 公钥向第三方注册 → 第三方返回加密 API key → 后端构造 envelope → `kv_save`。  
-**用凭证：** 指定第三方标识符 + 第三方公钥 → 后端构造 envelope → `kv_read`（`recipient_public_key` = 第三方公钥）→ 密文交给第三方 → 第三方私钥解密鉴权。
+**存凭证：** Agent 带 CNothing AuthAI 公钥向第三方注册 → 第三方返回 ksp1 加密 API key → 后端构造 envelope → `kv_save`（`value` 可为完整 `api_key_envelope`）。  
+**用凭证：** 指定第三方标识符 + 第三方公钥 → 后端构造 envelope → `kv_read`（`recipient_public_key` = 第三方公钥）→ CNothing 返回重加密后的 ksp1 信封 → 交给第三方解密鉴权。
 
 完整说明见 [protocol.md](./protocol.md) 中「第三方服务凭证：正确用法」。
 

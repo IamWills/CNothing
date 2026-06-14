@@ -26,7 +26,7 @@ export type HybridEnvelope = {
   aad?: string;
 };
 
-function decodeBase64Url(input: string, fieldName: string): Buffer {
+export function decodeBase64Url(input: string, fieldName: string): Buffer {
   const normalized = input.trim().replace(/-/g, "+").replace(/_/g, "/");
   if (!normalized) {
     throw new ValidationError(`${fieldName} is required`);
@@ -56,6 +56,98 @@ function normalizeEnvelope(input: unknown): HybridEnvelope {
     tag: typeof record.tag === "string" ? record.tag.trim() : "",
     aad: typeof record.aad === "string" && record.aad.trim() ? record.aad.trim() : undefined,
   };
+}
+
+export function isHybridEnvelope(input: unknown): input is HybridEnvelope {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return false;
+  }
+  const record = input as Record<string, unknown>;
+  return (
+    record.v === "ksp1" &&
+    record.alg === "RSA-OAEP-256" &&
+    record.enc === "A256GCM" &&
+    typeof record.encrypted_key === "string" &&
+    record.encrypted_key.trim().length > 0 &&
+    typeof record.iv === "string" &&
+    record.iv.trim().length > 0 &&
+    typeof record.ciphertext === "string" &&
+    record.ciphertext.trim().length > 0 &&
+    typeof record.tag === "string" &&
+    record.tag.trim().length > 0
+  );
+}
+
+export function extractApiKeyEnvelope(value: unknown): HybridEnvelope | null {
+  if (isHybridEnvelope(value)) {
+    return value;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (isHybridEnvelope(record.api_key_envelope)) {
+    return record.api_key_envelope;
+  }
+  return null;
+}
+
+export function unwrapEnvelopeContentKey(input: {
+  privateKeyPem: string;
+  envelope: unknown;
+  expectedKeyId?: string;
+}): Buffer {
+  const envelope = normalizeEnvelope(input.envelope);
+  if (input.expectedKeyId && envelope.key_id && envelope.key_id !== input.expectedKeyId) {
+    throw new ValidationError("Envelope key_id does not match the active server key");
+  }
+
+  const encryptedKey = decodeBase64Url(envelope.encrypted_key, "encrypted_key");
+  try {
+    const contentKey = privateDecrypt(
+      {
+        key: createPrivateKey(input.privateKeyPem),
+        oaepHash: "sha256",
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+      },
+      encryptedKey,
+    );
+    if (contentKey.length !== 32) {
+      throw new ValidationError("Decrypted content key must be 32 bytes");
+    }
+    return contentKey;
+  } catch (error) {
+    throw new ValidationError("Failed to decrypt encrypted_key", {
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export function decryptEnvelopePayloadWithContentKey(input: {
+  contentKey: Buffer;
+  iv: Buffer;
+  ciphertext: Buffer;
+  tag: Buffer;
+  aad?: Buffer;
+}): unknown {
+  try {
+    const payloadBytes = decryptWithAes256Gcm({
+      ciphertext: input.ciphertext,
+      key: input.contentKey,
+      iv: input.iv,
+      tag: input.tag,
+      aad: input.aad,
+    });
+    try {
+      return JSON.parse(payloadBytes.toString("utf8")) as unknown;
+    } catch {
+      return payloadBytes.toString("utf8");
+    }
+  } catch (error) {
+    throw new ValidationError("Failed to decrypt envelope payload", {
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export function getPublicKeyInfo(input: { publicKeyPem: string; keyId: string }) {
@@ -120,48 +212,22 @@ export function decryptWithPrivateKey<T = unknown>(input: {
   expectedKeyId?: string;
 }): T {
   const envelope = normalizeEnvelope(input.envelope);
-  if (input.expectedKeyId && envelope.key_id && envelope.key_id !== input.expectedKeyId) {
-    throw new ValidationError("Envelope key_id does not match the active server key");
-  }
+  const contentKey = unwrapEnvelopeContentKey({
+    privateKeyPem: input.privateKeyPem,
+    envelope,
+    expectedKeyId: input.expectedKeyId,
+  });
 
-  const encryptedKey = decodeBase64Url(envelope.encrypted_key, "encrypted_key");
   const iv = decodeBase64Url(envelope.iv, "iv");
   const ciphertext = decodeBase64Url(envelope.ciphertext, "ciphertext");
   const tag = decodeBase64Url(envelope.tag, "tag");
   const aad = envelope.aad ? decodeBase64Url(envelope.aad, "aad") : undefined;
 
-  let contentKey: Buffer;
-  try {
-    contentKey = privateDecrypt(
-      {
-        key: createPrivateKey(input.privateKeyPem),
-        oaepHash: "sha256",
-        padding: constants.RSA_PKCS1_OAEP_PADDING,
-      },
-      encryptedKey,
-    );
-  } catch (error) {
-    throw new ValidationError("Failed to decrypt encrypted_key", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  if (contentKey.length !== 32) {
-    throw new ValidationError("Decrypted content key must be 32 bytes");
-  }
-
-  try {
-    const payloadBytes = decryptWithAes256Gcm({
-      ciphertext,
-      key: contentKey,
-      iv,
-      tag,
-      aad,
-    });
-    return JSON.parse(payloadBytes.toString("utf8")) as T;
-  } catch (error) {
-    throw new ValidationError("Failed to decrypt envelope payload", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
-  }
+  return decryptEnvelopePayloadWithContentKey({
+    contentKey,
+    iv,
+    ciphertext,
+    tag,
+    aad,
+  }) as T;
 }

@@ -285,7 +285,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "kv_read",
     description:
-      "Read encrypted KV items for the authenticated client namespace and return ciphertext encrypted to the client public key by default, or to a provided recipient_public_key.",
+      "Read encrypted KV items for the authenticated client namespace. Requires recipient_public_key; ciphertext is encrypted to that reader key before transmission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -300,11 +300,11 @@ const MCP_TOOLS: McpToolDescriptor[] = [
         recipient_public_key: {
           type: "string",
           description:
-            "Optional PEM public key. When set, result_envelope_for_client is encrypted to this key instead of the registered client key.",
+            "Required PEM RSA public key of the reader. result_envelope_for_client is encrypted to this key so AI agents and other intermediaries cannot access plaintext.",
           examples: ["-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"],
         },
       },
-      required: ["auth_envelope", "query_envelope"],
+      required: ["auth_envelope", "query_envelope", "recipient_public_key"],
       examples: [
         {
           auth_envelope: { v: "ksp1", encrypted_key: "...", iv: "...", ciphertext: "...", tag: "..." },

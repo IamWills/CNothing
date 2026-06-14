@@ -237,10 +237,10 @@
     },
     {
       "name": "kv_read",
-      "description": "Read encrypted KV items for the authenticated client namespace and return the result encrypted to the client public key by default, or to an optional recipient_public_key when provided.",
+      "description": "Read encrypted KV items for the authenticated client namespace. Requires recipient_public_key; the result is encrypted to that reader public key before transmission.",
       "input_schema": {
         "type": "object",
-        "required": ["auth_envelope", "query_envelope"],
+        "required": ["auth_envelope", "query_envelope", "recipient_public_key"],
         "properties": {
           "auth_envelope": {
             "type": "object",
@@ -252,7 +252,7 @@
           },
           "recipient_public_key": {
             "type": "string",
-            "description": "Optional PEM public key. If provided, kv.read.result is encrypted to this key instead of the registered client public key."
+            "description": "Required PEM RSA public key of the reader. result_envelope_for_client is encrypted to this key so intermediaries cannot access plaintext."
           }
         },
         "examples": [

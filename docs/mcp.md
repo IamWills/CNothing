@@ -30,8 +30,9 @@ AI 通过 MCP 使用 `CNothing` 时，应遵守以下流程：
 4. 由客户端后端构造：
    - `auth_envelope`
    - `data_envelope` 或 `query_envelope`
+   - 读取时还需 `recipient_public_key`（读取者 RSA 公钥，必填）
 5. AI 再通过 `kv_save` 或 `kv_read` 转发这些 envelope
-6. `kv_read` 的结果由客户端后端解密
+6. `kv_read` 的结果由客户端后端解密（服务端 MUST 先加密给 `recipient_public_key`）
 
 公钥持有者挑战验证（A/B + S1/S2）流程：
 

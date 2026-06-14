@@ -176,7 +176,7 @@
 {
   "auth_envelope": { "...": "..." },
   "query_envelope": { "...": "..." },
-  "recipient_public_key": "-----BEGIN PUBLIC KEY----- ... (optional)"
+  "recipient_public_key": "-----BEGIN PUBLIC KEY----- ..."
 }
 ```
 
@@ -191,10 +191,11 @@
 }
 ```
 
-`recipient_public_key` 为可选参数：
+`recipient_public_key` 为**必填**参数：
 
-- 提供时：`result_envelope_for_client` 改为使用该公钥加密
-- 未提供时：保持现有行为，使用已注册的客户端公钥加密
+- 服务端 MUST 使用该 PEM 公钥加密 `result_envelope_for_client` 后再返回
+- 未提供或为空时，服务端 MUST 返回 `400`，`error_code` 为 `missing_recipient_public_key`
+- 典型用法：客户端后端传入自己的公钥，确保 AI 等中间方只能转发密文，无法读取敏感明文
 
 响应中的 `result_envelope_for_client` 解密后明文结构：
 

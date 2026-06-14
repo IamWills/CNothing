@@ -67,7 +67,7 @@ The shortest mental model for CNothing is:
 4. The client backend creates an `auth_envelope` plus either a `data_envelope` or `query_envelope`, then encrypts them to `CNothing`.
 5. The AI forwards those ciphertext envelopes to CNothing using HTTP or MCP.
 6. CNothing validates the challenge, performs the read or write, and returns the next challenge.
-7. For reads, the result is encrypted back to the client public key by default; if `recipient_public_key` is provided in the request, the result is encrypted to that third-party public key instead.
+7. For reads, the server MUST encrypt the result to the `recipient_public_key` provided in the request. Callers must supply the reader's RSA public key explicitly; omitting it is rejected with `missing_recipient_public_key`.
 
 This means:
 
@@ -108,7 +108,7 @@ For the fixed, public, versioned protocol publication that third-party systems c
 - `POST /v1/kv/save`
   - Save KV items using `auth_envelope + data_envelope`
 - `POST /v1/kv/read`
-  - Read KV items using `auth_envelope + query_envelope`; optionally provide `recipient_public_key` to encrypt the result for a third-party public key instead of the client key
+  - Read KV items using `auth_envelope + query_envelope + recipient_public_key`; the result is encrypted to the supplied reader public key (required)
 
 ## Console And Browse APIs
 

@@ -40,6 +40,7 @@ Use `kv_read` only when you already have:
 
 - `auth_envelope`
 - `query_envelope`
+- `recipient_public_key` (PEM RSA public key of the reader; required so the server encrypts the result before AI sees it)
 
 The response includes `result_envelope_for_client`, which must go back to the client backend for decryption.
 

@@ -114,9 +114,31 @@
     "/v1/kv/read": {
       "post": {
         "summary": "Read encrypted KV items for the authenticated client namespace",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["auth_envelope", "query_envelope", "recipient_public_key"],
+                "properties": {
+                  "auth_envelope": { "type": "object" },
+                  "query_envelope": { "type": "object" },
+                  "recipient_public_key": {
+                    "type": "string",
+                    "description": "Required PEM RSA public key of the reader. Results are encrypted to this key before transmission."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Read result plus next encrypted challenge"
+          },
+          "400": {
+            "description": "Missing recipient_public_key (error_code: missing_recipient_public_key)"
           }
         }
       }

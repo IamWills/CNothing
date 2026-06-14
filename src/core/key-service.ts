@@ -67,13 +67,22 @@ type ReadEnvelopePayload = {
   keys: string[];
 };
 
-function normalizeOptionalRecipientPublicKey(value: unknown): string | undefined {
+const RECIPIENT_PUBLIC_KEY_REQUIRED_MESSAGE =
+  "recipient_public_key is required. KV read results must be encrypted to the reader's RSA public key before transmission so intermediaries (such as AI agents) cannot access plaintext sensitive data. Provide a PEM-encoded RSA public key; only the holder of the matching private key can decrypt result_envelope_for_client.";
+
+function normalizeRequiredRecipientPublicKey(value: unknown): string {
   if (value === null || value === undefined) {
-    return undefined;
+    throw new ValidationError(RECIPIENT_PUBLIC_KEY_REQUIRED_MESSAGE, {
+      error_code: "missing_recipient_public_key",
+      field: "recipient_public_key",
+    });
   }
   const pem = typeof value === "string" ? value.trim() : "";
   if (!pem) {
-    return undefined;
+    throw new ValidationError(RECIPIENT_PUBLIC_KEY_REQUIRED_MESSAGE, {
+      error_code: "missing_recipient_public_key",
+      field: "recipient_public_key",
+    });
   }
   return normalizeClientPublicKey(pem);
 }
@@ -860,10 +869,10 @@ export class KeyService {
       rows.map((row) => [row.record_key, decryptKvRecordValue(row)]),
     );
 
-    const recipientPublicKeyPem = normalizeOptionalRecipientPublicKey(input.recipient_public_key);
+    const recipientPublicKeyPem = normalizeRequiredRecipientPublicKey(input.recipient_public_key);
     const resultEnvelope = encryptForPublicKey({
-      publicKeyPem: recipientPublicKeyPem ?? client.public_key_pem,
-      keyId: recipientPublicKeyPem ? undefined : (client.key_id ?? undefined),
+      publicKeyPem: recipientPublicKeyPem,
+      keyId: undefined,
       payload: {
         v: "ksp1",
         type: "kv.read.result",

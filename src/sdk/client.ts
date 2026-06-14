@@ -300,7 +300,7 @@ export class CNothingClient {
             authaiPublicKey: session.authaiPublicKey,
             payload: queryPayload,
           }),
-          recipient_public_key: input.recipientPublicKeyPem,
+          recipient_public_key: input.recipientPublicKeyPem ?? this.clientPublicKeyPem,
         }),
       },
     );

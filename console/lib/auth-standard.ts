@@ -271,24 +271,20 @@ export const authStandard: StandardPublication = {
         {
           id: "operations-read",
           title: "8.2 Authorized Read",
-          summary: "Reads one or more KV items and returns the result encrypted to the client.",
+          summary: "Reads one or more KV items and returns the result encrypted to the reader public key.",
           bullets: [
-            "The server MUST require both `auth_envelope` and `query_envelope`.",
+            "The server MUST require `auth_envelope`, `query_envelope`, and `recipient_public_key`.",
             "The authentication action MUST be `kv.read`.",
             "The query envelope plaintext MUST declare type `kv.read` and include one normalized namespace plus one or more keys.",
-            "The read result MUST be encrypted to the client's active public key before being returned.",
+            "The read result MUST be encrypted to `recipient_public_key` before being returned; omitting it MUST yield `missing_recipient_public_key`.",
             "On success, CNothing MUST issue the next challenge for the same client identity.",
           ],
           code: `POST /v1/kv/read
 
 {
   "auth_envelope": { "...": "..." },
-  "query_envelope": {
-    "v": "ksp1",
-    "type": "kv.read",
-    "namespace": "thirdparty.example.prod",
-    "keys": ["user/123/profile-token"]
-  }
+  "query_envelope": { "...": "..." },
+  "recipient_public_key": "-----BEGIN PUBLIC KEY----- ..."
 }`,
         },
       ],
@@ -337,6 +333,7 @@ export const authStandard: StandardPublication = {
       summary: "Defines the minimum interoperable error categories exposed by the implementation profile.",
       bullets: [
         "`missing_field` for absent required input members.",
+        "`missing_recipient_public_key` when `recipient_public_key` is absent on kv.read.",
         "`invalid_field` for syntactically malformed or semantically invalid input members.",
         "`invalid_public_key` for client key material that fails normalization or parsing.",
         "`invalid_auth_envelope` for unreadable or structurally invalid authentication envelopes.",

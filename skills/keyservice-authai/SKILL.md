@@ -25,6 +25,33 @@ Use this skill when working with the `keyservice` repository root.
 5. Forward those envelopes with `kv_save` or `kv_read`.
 6. Return `next_challenge_for_client` to the backend for the next operation.
 
+## Third-Party Credential Flow (CNothing as Secret Store)
+
+CNothing stores third-party API keys and tokens. Do not mix up the three public keys:
+
+| Key | When to use |
+| --- | --- |
+| **CNothing AuthAI public key** | Encrypt protocol envelopes to CNothing; **give this to third parties** when they issue an API key encrypted for CNothing |
+| **Client public key** | Register with `authai_register`; decrypt `challenge_for_client`; use as `recipient_public_key` only when the **client backend** consumes the secret |
+| **Third-party service public key** | Use as `recipient_public_key` on `kv_read` when the **third-party service** must decrypt the API key for auth |
+
+### Store a third-party API key
+
+1. After CNothing registration, you already have the **CNothing AuthAI public key**.
+2. When registering with a third party, provide the **CNothing AuthAI public key** (not the client public key).
+3. The third party returns an API key ciphertext encrypted to CNothing.
+4. Have the backend build `kv_save` envelopes and store the ciphertext with the third-party identifier (`namespace` / `key`).
+5. CNothing decrypts with its AuthAI private key and stores the credential.
+
+### Use a third-party API
+
+1. Identify the third-party identifier and its **service public key**.
+2. Have the backend build `kv_read` envelopes; set `recipient_public_key` to the **third-party service public key**.
+3. Forward the read request; return `result_envelope_for_client` ciphertext to the third-party service.
+4. The third party decrypts with its own private key and completes authentication.
+
+**Never:** give third parties the client public key for credential delivery; use CNothing or client keys as `recipient_public_key` when the consumer is the third-party service; decrypt envelopes or API keys yourself.
+
 ## Save
 
 Use `kv_save` only when you already have:

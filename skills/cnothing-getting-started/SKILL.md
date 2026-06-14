@@ -33,6 +33,19 @@ Use this skill when you are new to CNothing and need the shortest safe path to a
 6. Forward those envelopes with `kv.save` or `kv.read`.
 7. Return `next_challenge_for_client` or `result_envelope_for_client` to the backend.
 
+## Third-Party Secrets (Do Not Mix Up Keys)
+
+CNothing is the platform that stores third-party service credentials.
+
+- **CNothing AuthAI public key** (step 1): encrypt envelopes to CNothing; also give to third parties when they return an API key encrypted for CNothing.
+- **Client public key** (step 3): your AuthAI identity only—not for third-party credential encryption.
+- **Third-party service public key**: required as `recipient_public_key` on read when the third party (not your backend) will decrypt and use the API key.
+
+Store path: third party encrypts API key → CNothing → `kv.save`.  
+Use path: `kv.read` with third-party identifier + third-party public key → give ciphertext to third party → it decrypts and authenticates.
+
+See [protocol.md](../../docs/protocol.md) section「第三方服务凭证：正确用法」for the full workflow.
+
 ## Demo Mode
 
 Use demo mode when you want to validate that routing and discovery work before real secrets are involved.

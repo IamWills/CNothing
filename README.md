@@ -75,6 +75,16 @@ This means:
 - The AI never needs a private key
 - Challenge replay is limited because challenges are single-use and short-lived
 
+### Third-Party Credentials (Common Agent Mistakes)
+
+CNothing is the platform that stores sensitive credentials for third-party services. In addition to the AuthAI 7-step flow above, the business workflow has three phases:
+
+1. **Join CNothing**: After registration, the agent holds the **CNothing AuthAI public key** and registers a **client public key** for identity.
+2. **Register with a third party**: Provide the **CNothing AuthAI public key** (not the client public key) to the third party; the third party returns an API key encrypted to CNothing; store it with `kv.save` after CNothing decrypts and persists it.
+3. **Call the third-party API**: Use the **third-party identifier** and **third-party service public key** on `kv.read`; set `recipient_public_key` to the third-party public key; hand the ciphertext to the third party, which decrypts with its private key to authenticate.
+
+Do not mix up the three public keys: CNothing AuthAI (protocol envelopes and third-party credential delivery), client (AuthAI identity), and third-party service (read recipient when the third party consumes the secret). See [docs/protocol.md](./docs/protocol.md) section「第三方服务凭证：正确用法」.
+
 For deeper protocol details, see:
 
 - [docs/protocol.md](./docs/protocol.md)

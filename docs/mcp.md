@@ -20,6 +20,21 @@
 - `kv_save`
 - `kv_read`
 
+## 第三方凭证流程（Agent 必读）
+
+`CNothing` 用于储存第三方服务的 API key 等敏感信息。Agent 最常搞混三把公钥：
+
+| 公钥 | MCP / HTTP | 用途 |
+| --- | --- | --- |
+| CNothing AuthAI 公钥 | `get_authai_public_key` | 协议 envelope 加密目标；**提供给第三方**让其把 API key 加密给 CNothing |
+| 客户端公钥 | `authai_register` 提交 | AuthAI 身份注册；解密 challenge；仅当凭证由**客户端后端**使用时作为 `recipient_public_key` |
+| 第三方服务公钥 | `kv_read` 的 `recipient_public_key` | 读取凭证供**第三方服务**鉴权时必须使用 |
+
+**存凭证：** Agent 带 CNothing AuthAI 公钥向第三方注册 → 第三方返回加密 API key → 后端构造 envelope → `kv_save`。  
+**用凭证：** 指定第三方标识符 + 第三方公钥 → 后端构造 envelope → `kv_read`（`recipient_public_key` = 第三方公钥）→ 密文交给第三方 → 第三方私钥解密鉴权。
+
+完整说明见 [protocol.md](./protocol.md) 中「第三方服务凭证：正确用法」。
+
 ## MCP Usage Pattern
 
 AI 通过 MCP 使用 `CNothing` 时，应遵守以下流程：

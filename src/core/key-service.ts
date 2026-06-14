@@ -824,6 +824,7 @@ export class KeyService {
     query_envelope?: unknown;
     recipient_public_key?: unknown;
   }) {
+    const recipientPublicKeyPem = normalizeRequiredRecipientPublicKey(input.recipient_public_key);
     const { client, auth } = await this.validateAuthEnvelope(input.auth_envelope, "kv.read");
     const payload = decryptWithPrivateKey<ReadEnvelopePayload>({
       privateKeyPem: config.authaiPrivateKeyPem,
@@ -869,7 +870,6 @@ export class KeyService {
       rows.map((row) => [row.record_key, decryptKvRecordValue(row)]),
     );
 
-    const recipientPublicKeyPem = normalizeRequiredRecipientPublicKey(input.recipient_public_key);
     const resultEnvelope = encryptForPublicKey({
       publicKeyPem: recipientPublicKeyPem,
       keyId: undefined,

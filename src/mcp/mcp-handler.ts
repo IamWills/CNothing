@@ -1,4 +1,5 @@
 import config from "../config";
+import { MCP_SERVER_INSTRUCTIONS } from "../catalog/mcp-instructions";
 import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
 import { KeyService } from "../core/key-service";
 
@@ -48,6 +49,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
         result = {
           protocolVersion: config.protocolVersion,
           serverInfo: { name: config.serviceName, version: "2.0.0" },
+          instructions: MCP_SERVER_INSTRUCTIONS,
           capabilities: {
             resources: { subscribe: false, listChanged: false },
             tools: { listChanged: false },
@@ -132,6 +134,7 @@ export function handleMcpInfo(baseUrl: string) {
     name: config.serviceName,
     version: "2.0.0",
     protocolVersion: config.protocolVersion,
+    instructions: MCP_SERVER_INSTRUCTIONS,
     capabilities: {
       resources: { subscribe: false, listChanged: false },
       tools: { listChanged: false },

@@ -44,6 +44,8 @@ CNothing is the platform that stores third-party service credentials.
 Store path: third party encrypts API key → CNothing → `kv.save` (value may be the raw `ksp1` api_key_envelope).  
 Use path: `kv.read` with third-party identifier + third-party public key → CNothing re-encrypts api_key as a new `ksp1` envelope to recipient → give ciphertext to third party → it decrypts and authenticates.
 
+**Common mistakes (e.g. Searchengine):** wrong `recipient_public_key` on `kv_read` → third party `Failed to decrypt encrypted_key`; saving reader-encrypted `authenticate_agent` envelope without backend decrypt → same; passing `result_envelope_for_client` as search `api_key_envelope` → `Decrypted envelope missing api_key`. See `/docs/mcp.md`.
+
 See [protocol.md](../../docs/protocol.md) section「第三方服务凭证：正确用法」for the full workflow.
 
 ## Demo Mode

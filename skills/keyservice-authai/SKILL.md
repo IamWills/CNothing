@@ -52,6 +52,17 @@ CNothing stores third-party API keys and tokens. Do not mix up the three public 
 
 **Never:** give third parties the client public key for credential delivery; use CNothing or client keys as `recipient_public_key` when the consumer is the third-party service; decrypt envelopes or API keys yourself.
 
+## Common Mistakes (Searchengine and similar third parties)
+
+| Wrong | Error at third party |
+| --- | --- |
+| `kv_read` with `recipient_public_key` = CNothing AuthAI or client key when Searchengine consumes the credential | `Failed to decrypt encrypted_key` |
+| `kv_save` Searchengine `authenticate_agent` `api_key_envelope` (reader-encrypted) without backend decrypt | `Failed to decrypt encrypted_key` after read |
+| Use `authenticate_agent` `api_key_envelope` directly as Searchengine search credential | `Failed to decrypt encrypted_key` |
+| Pass entire `result_envelope_for_client` as Searchengine `api_key_envelope` | `Decrypted envelope missing api_key` |
+
+For Searchengine: `recipient_public_key` on `kv_read` must be `GET /v1/auth/public-key` PEM. Autonomous agents should prefer `client_uuid` + `auth_envelope` per Searchengine search instead of api_key envelopes.
+
 ## Save
 
 Use `kv_save` only when you already have:

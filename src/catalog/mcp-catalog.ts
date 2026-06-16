@@ -255,8 +255,11 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "kv_save",
-    description:
-      "Store one or more encrypted KV items for the authenticated client namespace. Recommended third-party integrations use private or blind mode so CNothing operators and AI layers do not see application plaintext.",
+    description: [
+      "Store one or more encrypted KV items for the authenticated client namespace.",
+      "COMMON MISTAKE (Searchengine): do NOT save authenticate_agent api_key_envelope (reader-encrypted) as the value without backend decrypt — CNothing cannot unwrap reader keys; later kv_read + Searchengine auth will fail with Failed to decrypt encrypted_key.",
+      "CORRECT: backend decrypts reader envelope first, then kv_save stores plaintext JSON { api_key, ... } inside data_envelope, or a ksp1 envelope encrypted to CNothing AuthAI public key.",
+    ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
@@ -284,8 +287,12 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "kv_read",
-    description:
-      "Read encrypted KV items for the authenticated client namespace. Requires recipient_public_key; ciphertext is encrypted to that reader key before transmission.",
+    description: [
+      "Read encrypted KV items for the authenticated client namespace. Requires recipient_public_key.",
+      "recipient_public_key MUST be the PEM public key of whoever will decrypt the result — for third-party auth (e.g. Searchengine) use THAT service public key (GET /v1/auth/public-key), NOT CNothing AuthAI key and NOT client key unless the client backend consumes the secret.",
+      "COMMON MISTAKES: (1) wrong recipient_public_key → third party returns Failed to decrypt encrypted_key; (2) passing entire result_envelope_for_client to Searchengine search as api_key_envelope → Decrypted envelope missing api_key — backend must decrypt result_envelope_for_client and pass items[<key>] inner ksp1 only.",
+      "For ksp1-stored credentials each item value is re-encrypted to recipient_public_key; result_envelope_for_client wraps the full result and is also encrypted to recipient_public_key.",
+    ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
@@ -300,7 +307,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
         recipient_public_key: {
           type: "string",
           description:
-            "Required PEM RSA public key of the reader. result_envelope_for_client is encrypted to this key so AI agents and other intermediaries cannot access plaintext.",
+            "Required PEM RSA public key of the party that will decrypt the read result. For third-party service auth (e.g. Searchengine search), use that service public key from GET /v1/auth/public-key — NOT get_authai_public_key and NOT client_public_key unless the client backend consumes the credential. Wrong key causes Failed to decrypt encrypted_key at the third party.",
           examples: ["-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"],
         },
       },

@@ -3,9 +3,10 @@
   "name_for_human": "CNothing AuthAI KV",
   "name_for_model": "keyservice_authai_kv",
   "description_for_human": "Register a client public key, obtain one-time encrypted challenges, and read or write encrypted KV payloads without exposing plaintext to the AI.",
-  "description_for_model": "CNothing AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI should never request or handle private keys. Instead, it registers a client public key, receives an encrypted one-time challenge for the client backend, and forwards opaque auth, data, or query envelopes produced by that backend for kv save/read operations. Public discovery links also exist at /.well-known/mcp, /skills/index.json, /skill.md, and /getting-started.md.",
+  "description_for_model": "CNothing AuthAI KV is a public MCP server for challenge-based AI-safe identity registration and encrypted KV storage. The AI must never request or handle private keys or decrypt envelopes. CRITICAL: recipient_public_key on kv_read must be the third-party service public key when that service will auth (e.g. Searchengine GET /v1/auth/public-key) — not CNothing AuthAI key. Do NOT save Searchengine authenticate_agent api_key_envelope (reader-encrypted) without backend decrypt. Read initialize instructions for common mistakes causing Failed to decrypt encrypted_key.",
   "auth": {
-    "type": "none"
+    "type": "none",
+    "instructions": "Agent forwards opaque envelopes only. On kv_read, recipient_public_key is who decrypts the result — use third-party service public key for third-party auth. Never use get_authai_public_key as recipient_public_key for Searchengine credentials. Prefer client_uuid + auth_envelope per Searchengine search when no backend can decrypt kv_read results."
   },
   "api": {
     "type": "openapi",
@@ -213,7 +214,7 @@
     },
     {
       "name": "kv_save",
-      "description": "Save one or more encrypted KV items for the authenticated client namespace. Recommended third-party integrations use private or blind mode so CNothing operators and AI layers do not see application plaintext.",
+      "description": "Save encrypted KV items. WRONG for Searchengine: saving authenticate_agent api_key_envelope (reader-encrypted) without backend decrypt. CORRECT: backend decrypts with reader private key, then stores plaintext JSON in data_envelope.",
       "input_schema": {
         "type": "object",
         "required": ["auth_envelope", "data_envelope"],
@@ -237,7 +238,7 @@
     },
     {
       "name": "kv_read",
-      "description": "Read encrypted KV items for the authenticated client namespace. Requires recipient_public_key; the result is encrypted to that reader public key before transmission.",
+      "description": "Read encrypted KV items. recipient_public_key MUST be the decrypting party's PEM key — for Searchengine use GET /v1/auth/public-key, NOT get_authai_public_key. Wrong key → Failed to decrypt encrypted_key at Searchengine. Do NOT pass result_envelope_for_client to Searchengine search as api_key_envelope; backend extracts items[key] inner ksp1 after decrypt.",
       "input_schema": {
         "type": "object",
         "required": ["auth_envelope", "query_envelope", "recipient_public_key"],
@@ -252,7 +253,7 @@
           },
           "recipient_public_key": {
             "type": "string",
-            "description": "Required PEM RSA public key of the reader. result_envelope_for_client is encrypted to this key so intermediaries cannot access plaintext."
+            "description": "Required. PEM of who decrypts the result. Third-party auth (Searchengine): that service public key from GET /v1/auth/public-key. NOT CNothing AuthAI key unless CNothing consumes the secret."
           }
         },
         "examples": [

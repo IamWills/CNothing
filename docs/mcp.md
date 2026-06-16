@@ -35,6 +35,25 @@
 
 完整说明见 [protocol.md](./protocol.md) 中「第三方服务凭证：正确用法」。
 
+## 常见错误用法（Agent 自主对接时必读）
+
+以下错误在 Searchengine 等第三方鉴权时**高频出现**，对应错误信息供对照：
+
+| 错误做法 | 典型后果 |
+| --- | --- |
+| `kv_read` 的 `recipient_public_key` 填 **CNothing AuthAI 公钥**（`get_authai_public_key`）或**客户端公钥**，但实际消费方是 Searchengine | Searchengine 返回 **`Failed to decrypt encrypted_key`** |
+| 将 Searchengine `authenticate_agent` 返回的 **`api_key_envelope` 原样 `kv_save`**（该信封仅加密给 `reader_public_key`，未解密） | 后续 `kv_read` 重包装后 Searchengine 仍报 **`Failed to decrypt encrypted_key`**（内层仍是 reader 密钥） |
+| 把 `authenticate_agent` 的 **`api_key_envelope` 直接当作 Searchengine 检索凭证** | **`Failed to decrypt encrypted_key`**（RSA 层加密对象是 reader 公钥，不是 search-api 公钥） |
+| 把 `kv_read` 整段 **`result_envelope_for_client` 当作 Searchengine 的 `api_key_envelope`** | Searchengine 报 **`Decrypted envelope missing api_key`**（外层是 kv.read.result 结构，不是 api_key 载荷） |
+| Agent 自行解密 envelope 或自行用公钥加密 api_key | 违反信任边界；密钥/明文泄露风险 |
+
+**正确要点：**
+
+1. **`recipient_public_key` 的含义是「谁应该能解密读取结果」** —— 凭证要给 Searchengine 鉴权时，必须填 Searchengine 的公钥（`GET /v1/auth/public-key` → `search_api_public_key.public_key_pem`），**不是** CNothing 公钥。
+2. **Searchengine `authenticate_agent` 下发的 `api_key_envelope` 只加密给 `reader_public_key`** —— 必须先由**可信后端**用 reader 私钥解密，再以明文 JSON（或标准 ksp1→CNothing 路径）经 `kv_save` 入库；**禁止**原样存入。
+3. **`result_envelope_for_client` 只有 recipient 私钥持有者能解密** —— Agent 无法从中取出 `items`；若走加密 api_key 检索路径，须由后端解密后取 `items[<key>]` 内的 ksp1 信封再交给 Searchengine（或注入 HTTP 头）。
+4. **无后端解密的自主 Agent 推荐路径**：每次 Searchengine 检索使用 **`client_uuid` + 新的 `auth_envelope`**（CNothing `authai_refresh`），**不需要** api_key envelope。
+
 ## MCP Usage Pattern
 
 AI 通过 MCP 使用 `CNothing` 时，应遵守以下流程：

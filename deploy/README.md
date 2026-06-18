@@ -74,6 +74,17 @@ curl -sS https://cnothing.com/openapi-v2.json | head
 curl -sS https://cnothing.com/v2/jwks | jq .
 ```
 
+### Nginx (API + Console split)
+
+Production uses API on `3021` and Console on `3022`. Ensure `/v2/` and `/openapi-v2.json` proxy to the API:
+
+```bash
+sudo cp /var/www/keyservice/deploy/nginx-cnothing-split.conf /etc/nginx/sites-available/cnothing.com
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Template: [nginx-cnothing-split.conf](./nginx-cnothing-split.conf)
+
 Local on server:
 
 ```bash

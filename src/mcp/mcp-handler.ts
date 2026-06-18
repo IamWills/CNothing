@@ -2,8 +2,14 @@ import config from "../config";
 import { MCP_SERVER_INSTRUCTIONS } from "../catalog/mcp-instructions";
 import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
 import { KeyService } from "../core/key-service";
+import { CapabilityService } from "../v2/capability-service";
+import { AuthorizationService } from "../v2/authorization-service";
+import { findAgentByAccessToken, listCapabilities } from "../v2/v2.repository";
+import { V1_DEPRECATED_MCP_TOOLS, v1DeprecationMeta } from "../v2/deprecation";
 
 const service = new KeyService();
+const capabilityService = new CapabilityService();
+const authorizationService = new AuthorizationService();
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -30,6 +36,23 @@ function jsonRpcError(
   data?: unknown,
 ): JsonRpcResponse {
   return { jsonrpc: "2.0", id, error: { code, message, data } };
+}
+
+function wrapDeprecatedToolResult(toolName: string, result: unknown): unknown {
+  if (!V1_DEPRECATED_MCP_TOOLS.has(toolName)) {
+    return result;
+  }
+
+  const deprecation = {
+    ...v1DeprecationMeta(),
+    warning: `Tool "${toolName}" is deprecated. Prefer invoke_capability or request_authorization.`,
+  };
+
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return { ...(result as Record<string, unknown>), _deprecation: deprecation };
+  }
+
+  return { value: result, _deprecation: deprecation };
 }
 
 export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcResponse> {
@@ -81,6 +104,73 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             : {};
 
         switch (name) {
+          case "invoke_capability": {
+            const token =
+              typeof args.agent_access_token === "string" ? args.agent_access_token.trim() : "";
+            if (!token) {
+              return jsonRpcError(
+                id,
+                -32000,
+                "agent_access_token is required in arguments for invoke_capability",
+              );
+            }
+            const agent = await findAgentByAccessToken(token);
+            if (!agent) {
+              return jsonRpcError(id, -32000, "Invalid agent access token");
+            }
+            result = await capabilityService.invoke({
+              agent,
+              body: {
+                capability: String(args.capability ?? ""),
+                input: args.input && typeof args.input === "object" && !Array.isArray(args.input)
+                  ? (args.input as Record<string, unknown>)
+                  : {},
+                user_id: typeof args.user_id === "string" ? args.user_id : undefined,
+                reason: typeof args.reason === "string" ? args.reason : undefined,
+                confirmation_id: typeof args.confirmation_id === "string" ? args.confirmation_id : undefined,
+              },
+            });
+            break;
+          }
+          case "list_capabilities":
+            result = {
+              ok: true,
+              items: (await listCapabilities()).map((item) => ({
+                name: item.name,
+                description: item.description,
+                capability_type: item.capability_type,
+                risk_level: item.risk_level,
+                scopes: item.scopes,
+              })),
+            };
+            break;
+          case "request_authorization": {
+            const token =
+              typeof args.agent_access_token === "string" ? args.agent_access_token.trim() : "";
+            if (!token) {
+              return jsonRpcError(id, -32000, "agent_access_token is required");
+            }
+            const agent = await findAgentByAccessToken(token);
+            if (!agent) {
+              return jsonRpcError(id, -32000, "Invalid agent access token");
+            }
+            const capabilities = Array.isArray(args.capabilities)
+              ? args.capabilities.map(String)
+              : [];
+            if (capabilities.length === 0) {
+              return jsonRpcError(id, -32000, "capabilities must be a non-empty array");
+            }
+            result = await authorizationService.createRequest({
+              agentId: agent.id,
+              userId: typeof args.user_id === "string" ? args.user_id : agent.owner_user_id,
+              capabilities,
+              state: typeof args.state === "string" ? args.state : undefined,
+              reason: typeof args.reason === "string" ? args.reason : undefined,
+              consoleBaseUrl: config.consoleUrl,
+              apiBaseUrl: "https://cnothing.com",
+            });
+            break;
+          }
           case "get_authai_public_key":
             result = service.getAuthaiPublicKey();
             break;
@@ -110,6 +200,10 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             break;
           default:
             return jsonRpcError(id, -32601, "Method not found", { tool: name });
+        }
+
+        if (typeof result !== "undefined") {
+          result = wrapDeprecatedToolResult(name, result);
         }
         break;
       }

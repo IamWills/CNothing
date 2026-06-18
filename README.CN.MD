@@ -6,6 +6,36 @@
 
 它解决的是一个非常具体的问题：AI 代理需要参与工具选择、流程决策和请求转发，但实际使用到的 secrets 又必须留在可信后端边界内。CNothing 提供了一种协议化方式，让 AI 能参与工作流，而私钥和解密后的秘密值始终不进入模型上下文。
 
+## v2：Agent 能力授权平台（推荐）
+
+CNothing v2 是新 AI Agent 的**主集成路径**：
+
+- Agent 调用 **`POST /v2/capabilities/invoke`**，传入业务能力名（如 `github.create_issue`）——无需 envelope、无需 `recipient_public_key`
+- **Connector** 在本地保管第三方凭据；CNothing 校验 Grant 并转发请求
+- **用户**在 Console 或 OAuth 风格审批流中授权的是**能力**，不是 Secret
+- **策略引擎**按风险等级执行确认策略并写入审计
+
+```ts
+import { CNothingAgentClient } from "cnothing";
+
+const agent = new CNothingAgentClient({
+  baseUrl: "https://cnothing.com",
+  accessToken: process.env.AGENT_ACCESS_TOKEN!,
+});
+
+await agent.invoke({
+  capability: "github.create_issue",
+  input: { repo: "org/repo", title: "Bug report" },
+});
+```
+
+- API 规范：[`openapi-v2.json`](./openapi-v2.json)
+- MCP 工具：`invoke_capability`、`list_capabilities`、`request_authorization`
+- 示例 Connector：`examples/github-connector`、`examples/slack-connector`、`examples/webhook-connector`
+- 端到端验证：`bun run e2e:v2`
+
+**v1 AuthAI + Encrypted KV** 在兼容期内仍可用，但已**废弃**（响应含 `Deprecation` / `Sunset` 头与 `_deprecation` 字段）。迁移见 `GET /v2/platform/migration`。
+
 ## 为什么是 CNothing
 
 当你希望同时满足下面这些目标时，CNothing 才真正有价值：
@@ -438,6 +468,12 @@ curl http://127.0.0.1:3021/mcp
 - 生产私钥不要放在会被代码同步覆盖的位置里
 
 仓库已经包含部署辅助脚本，见 [deploy/](./deploy)。
+
+生产环境 pull、迁移、重启与 v2 环境变量说明见 [deploy/README.md](./deploy/README.md)。
+
+### CI
+
+推送到 `main` 会触发 GitHub Actions：typecheck、build、PostgreSQL 迁移与 `bun run e2e:v2`。见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)。
 
 ## 文件导览
 

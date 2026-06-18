@@ -16,6 +16,9 @@ export interface AppConfig {
   authaiKeyId: string;
   challengeTtlSeconds: number;
   bearerToken?: string;
+  userSessionTtlSeconds: number;
+  userLoginTokenTtlSeconds: number;
+  v1SunsetDate: string;
 }
 
 function readRequiredEnv(name: string): string {
@@ -98,6 +101,34 @@ const challengeTtlSeconds = (() => {
   return Math.trunc(raw);
 })();
 
+const userSessionTtlSeconds = (() => {
+  const raw = Number(process.env.KEYSERVICE_USER_SESSION_TTL_SECONDS ?? "86400");
+  if (!Number.isFinite(raw) || raw < 300 || raw > 604800) {
+    throw new Error("KEYSERVICE_USER_SESSION_TTL_SECONDS must be between 300 and 604800.");
+  }
+  return Math.trunc(raw);
+})();
+
+const userLoginTokenTtlSeconds = (() => {
+  const raw = Number(process.env.KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS ?? "900");
+  if (!Number.isFinite(raw) || raw < 60 || raw > 86400) {
+    throw new Error("KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS must be between 60 and 86400.");
+  }
+  return Math.trunc(raw);
+})();
+
+const v1SunsetDate = (() => {
+  const raw = process.env.KEYSERVICE_V1_SUNSET_DATE?.trim();
+  if (raw) {
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error("KEYSERVICE_V1_SUNSET_DATE must be a valid ISO date.");
+    }
+    return parsed.toISOString();
+  }
+  return "2026-12-17T00:00:00.000Z";
+})();
+
 const config: AppConfig = {
   port: Number(process.env.PORT ?? "3021"),
   databaseUrl: readRequiredEnv("DATABASE_URL"),
@@ -112,6 +143,9 @@ const config: AppConfig = {
   authaiKeyId: authaiKeyPair.keyId,
   challengeTtlSeconds,
   bearerToken: process.env.KEYSERVICE_BEARER_TOKEN?.trim() || undefined,
+  userSessionTtlSeconds,
+  userLoginTokenTtlSeconds,
+  v1SunsetDate,
 };
 
 export default config;

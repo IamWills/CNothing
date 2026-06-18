@@ -17,8 +17,14 @@ export class ValidationError extends AppError {
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = "Unauthorized") {
-    super(message, 401);
+  constructor(message = "Unauthorized", details?: unknown) {
+    super(message, 401, details);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 403, details);
   }
 }
 

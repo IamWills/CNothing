@@ -8,19 +8,55 @@
 - `GET /mcp/sse`
 - `POST /mcp/message`
 
-## Exposed Tools
+## v2 工具（推荐）
+
+| 工具 | 用途 |
+| --- | --- |
+| `invoke_capability` | **主 API**：按业务名调用能力（如 `github.create_issue`） |
+| `list_capabilities` | 发现已注册能力 |
+| `request_authorization` | Agent 向用户申请能力授权（OAuth 风格） |
+
+Agent 只需 `agent_access_token`，传入 `capability` + `input`，**永不接触 API key**。
+
+```json
+{
+  "name": "invoke_capability",
+  "arguments": {
+    "agent_access_token": "agent_...",
+    "capability": "github.create_issue",
+    "input": { "repo": "org/repo", "title": "Bug report" }
+  }
+}
+```
+
+REST 等价：`POST /v2/capabilities/invoke`，Header `Authorization: Bearer agent_...`。
+
+完整规范见 [`/openapi-v2.json`](../openapi-v2.json)。
+
+### v2 典型流程
+
+1. `list_capabilities` — 发现可用能力
+2. `request_authorization` — 用户未授权时发起申请，用户在 Console `/authorize/:id` 批准
+3. `invoke_capability` — 携带 grant 调用业务 API
+4. 高风险能力可能返回 `pending: true`，用户确认后带 `confirmation_id` 重试
+
+## v1 工具（已废弃）
+
+以下工具仍可用，但响应含 `_deprecation` 字段，**请勿用于新集成**：
 
 - `get_authai_public_key`
-- `authai_register`
-- `authai_refresh`
-- `authai_key_holder_sign_challenge`（推荐）
-- `authai_key_holder_verify_signature`（推荐）
-- `authai_key_holder_challenge`
-- `authai_key_holder_verify`
-- `kv_save`
-- `kv_read`
+- `authai_register` / `authai_refresh`
+- `authai_key_holder_*`
+- `kv_save` / `kv_read`
 
-## 第三方凭证流程（Agent 必读）
+迁移指南：`GET /v2/platform/migration`  
+Console 迁移页：`/migration`
+
+---
+
+## 第三方凭证流程（v1 遗留，Agent 必读）
+
+> 仅在你维护 v1 KV 集成时需要。新集成请使用 v2 Connector + `invoke_capability`。
 
 `CNothing` 用于储存第三方服务的 API key 等敏感信息。Agent 最常搞混三把公钥：
 
@@ -30,83 +66,32 @@
 | 客户端公钥 | `authai_register` 提交 | AuthAI 身份注册；解密 challenge；仅当凭证由**客户端后端**使用时作为 `recipient_public_key` |
 | 第三方服务公钥 | `kv_read` 的 `recipient_public_key` | 读取凭证供**第三方服务**鉴权时必须使用 |
 
-**存凭证：** Agent 带 CNothing AuthAI 公钥向第三方注册 → 第三方返回 ksp1 加密 API key → 后端构造 envelope → `kv_save`（`value` 可为完整 `api_key_envelope`）。  
-**用凭证：** 指定第三方标识符 + 第三方公钥 → 后端构造 envelope → `kv_read`（`recipient_public_key` = 第三方公钥）→ CNothing 返回重加密后的 ksp1 信封 → 交给第三方解密鉴权。
-
 完整说明见 [protocol.md](./protocol.md) 中「第三方服务凭证：正确用法」。
 
-## 常见错误用法（Agent 自主对接时必读）
+## 常见错误用法（v1 遗留）
 
-以下错误在 Searchengine 等第三方鉴权时**高频出现**，对应错误信息供对照：
+以下错误在 Searchengine 等第三方鉴权时**高频出现**：
 
 | 错误做法 | 典型后果 |
 | --- | --- |
-| `kv_read` 的 `recipient_public_key` 填 **CNothing AuthAI 公钥**（`get_authai_public_key`）或**客户端公钥**，但实际消费方是 Searchengine | Searchengine 返回 **`Failed to decrypt encrypted_key`** |
-| 将 Searchengine `authenticate_agent` 返回的 **`api_key_envelope` 原样 `kv_save`**（该信封仅加密给 `reader_public_key`，未解密） | 后续 `kv_read` 重包装后 Searchengine 仍报 **`Failed to decrypt encrypted_key`**（内层仍是 reader 密钥） |
-| 把 `authenticate_agent` 的 **`api_key_envelope` 直接当作 Searchengine 检索凭证** | **`Failed to decrypt encrypted_key`**（RSA 层加密对象是 reader 公钥，不是 search-api 公钥） |
-| 把 `kv_read` 整段 **`result_envelope_for_client` 当作 Searchengine 的 `api_key_envelope`** | Searchengine 报 **`Decrypted envelope missing api_key`**（外层是 kv.read.result 结构，不是 api_key 载荷） |
-| Agent 自行解密 envelope 或自行用公钥加密 api_key | 违反信任边界；密钥/明文泄露风险 |
+| `kv_read` 的 `recipient_public_key` 填 **CNothing AuthAI 公钥** 或**客户端公钥**，但消费方是第三方 | 第三方 **`Failed to decrypt encrypted_key`** |
+| 将 `authenticate_agent` 的 **`api_key_envelope` 原样 `kv_save`** | 后续 **`Failed to decrypt encrypted_key`** |
+| 把整段 **`result_envelope_for_client` 当作第三方 `api_key_envelope`** | **`Decrypted envelope missing api_key`** |
 
-**正确要点：**
+**v2 正确路径：** Connector 本地保管 `GITHUB_TOKEN` / `SLACK_BOT_TOKEN` 等；Agent 只调用 `invoke_capability`。
 
-1. **`recipient_public_key` 的含义是「谁应该能解密读取结果」** —— 凭证要给 Searchengine 鉴权时，必须填 Searchengine 的公钥（`GET /v1/auth/public-key` → `search_api_public_key.public_key_pem`），**不是** CNothing 公钥。
-2. **Searchengine `authenticate_agent` 下发的 `api_key_envelope` 只加密给 `reader_public_key`** —— 必须先由**可信后端**用 reader 私钥解密，再以明文 JSON（或标准 ksp1→CNothing 路径）经 `kv_save` 入库；**禁止**原样存入。
-3. **`result_envelope_for_client` 只有 recipient 私钥持有者能解密** —— Agent 无法从中取出 `items`；若走加密 api_key 检索路径，须由后端解密后取 `items[<key>]` 内的 ksp1 信封再交给 Searchengine（或注入 HTTP 头）。
-4. **无后端解密的自主 Agent 推荐路径**：每次 Searchengine 检索使用 **`client_uuid` + 新的 `auth_envelope`**（CNothing `authai_refresh`），**不需要** api_key envelope。
+## MCP Usage Pattern (v1 legacy)
 
-## MCP Usage Pattern
+1. 调 `get_authai_public_key`
+2. 调 `authai_register`，提交客户端公钥
+3. 客户端后端解密 `challenge_for_client` 并构造 envelope
+4. AI 通过 `kv_save` / `kv_read` 转发密文
 
-AI 通过 MCP 使用 `CNothing` 时，应遵守以下流程：
+公钥持有者挑战验证流程见 [protocol.md](./protocol.md)。
 
-1. 调 `get_authai_public_key`，获取 CNothing 公钥信息
-2. 调 `authai_register`，提交客户端公钥，拿到 `challenge_for_client`
-3. 将 `challenge_for_client` 交给客户端后端解密
-4. 由客户端后端构造：
-   - `auth_envelope`
-   - `data_envelope` 或 `query_envelope`
-   - 读取时还需 `recipient_public_key`（读取者 RSA 公钥，必填）
-5. AI 再通过 `kv_save` 或 `kv_read` 转发这些 envelope
-6. `kv_read` 的结果由客户端后端解密（服务端 MUST 先加密给 `recipient_public_key`）
+## Discovery
 
-公钥持有者挑战验证（A/B + S1/S2）流程：
-
-1. 调 `authai_key_holder_challenge`，提交对方公钥，拿到：
-   - `challenge_for_target`（A）
-   - `challenge_for_authai`（B）
-   - `verification_id`
-2. 将 A 发给对方，对方用私钥解密得到 `S2`
-3. 对方回传 `S2`，同时保留 B 原样不变
-4. 调 `authai_key_holder_verify`，提交 `verification_id + responder_secret(S2) + challenge_for_authai(B)`
-5. CNothing 用自己的私钥解密 B 得到 `S1`，比对 `S1 === S2`
-6. 一致则 `verified=true`，该 challenge 标记为已使用
-
-推荐的公钥持有者签名验证流程：
-
-1. 调 `authai_key_holder_sign_challenge`，提交对方公钥，获得 `challenge_text` 与 `verification_id`
-2. 将 `challenge_text` 发给对方，由对方私钥对该文本做签名（`RSA-SHA256`）
-3. 对方返回签名（`base64` 或 `base64url`）
-4. 调 `authai_key_holder_verify_signature`，提交：
-   - `verification_id`
-   - `challenge_text`
-   - `signature`
-   - `target_public_key`
-5. CNothing 校验 challenge 哈希、目标公钥指纹与签名合法性
-6. 合法则 `verified=true`，challenge 标记为已使用
-
-## Important Safety Rules
-
-- AI 不应要求客户端提供私钥
-- AI 不应尝试解释 envelope 密文字段
-- AI 不应自行构造 challenge 明文
-- AI 不应把读取结果的密文当作普通 JSON 业务对象使用
-
-## Recommended Tooling Split
-
-- AI：
-  - 发现流程
-  - 调 MCP
-  - 转发密文
-- 客户端后端：
-  - 解密 challenge
-  - 构造 auth/data/query envelope
-  - 解密 `kv.read.result`
+- MCP manifest: `/mcp/manifest`
+- OpenAPI v2: `/openapi-v2.json`
+- Platform status: `/v2/platform/status`
+- Skills: `/skills/index.json`

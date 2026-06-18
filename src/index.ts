@@ -3,6 +3,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { handleAdminRequest } from "./admin/admin.api";
 import { handleKeyRequest } from "./api/key.api";
+import { handleV2PlatformRequest } from "./api/v2-platform.api";
+import { handleV2Request } from "./api/v2.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
@@ -60,8 +62,13 @@ function renderHomePage(baseUrl: string): string {
     ["/health", "Health check"],
     ["/skill.md", "Primary skill markdown for AI discovery"],
     ["/mcp", "MCP info endpoint"],
-    ["/openapi.json", "OpenAPI document"],
-    ["/v1/authai/public-key", "AuthAI public key"],
+    ["/openapi.json", "OpenAPI document (v1 legacy)"],
+    ["/openapi-v2.json", "OpenAPI document (v2 capability platform)"],
+    ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
+    ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
+    ["/v2/authorize/request", "Request user authorization for capabilities"],
+    ["/v2/jwks", "JWKS for Capability Grant verification"],
+    ["/v2/capabilities", "List registered capabilities"],
     ["/v1/catalog/mcp", "Browsable MCP tools and resources"],
     ["/v1/catalog/skills", "Bundled skills catalog"],
   ];
@@ -212,6 +219,22 @@ async function router(request: Request): Promise<Response> {
     );
   }
 
+  if (pathname === "/openapi-v2.json" && request.method === "GET") {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const content = readFileSync(path.join(__dirname, "..", "openapi-v2.json"), "utf8");
+    return withCors(
+      new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+        },
+      }),
+      request,
+    );
+  }
+
   if (pathname.startsWith("/v1/")) {
     if (pathname.startsWith("/v1/catalog/")) {
       return withCors(await handleCatalogRequest(request), request);
@@ -219,7 +242,18 @@ async function router(request: Request): Promise<Response> {
     if (pathname.startsWith("/v1/admin/")) {
       return withCors(await handleAdminRequest(request), request);
     }
-    return withCors(await handleKeyRequest(request), request);
+    return withCors(await handleKeyRequest(request, baseUrl), request);
+  }
+
+  if (pathname.startsWith("/v2/")) {
+    if (
+      pathname.startsWith("/v2/platform/") ||
+      pathname.startsWith("/v2/admin/") ||
+      pathname.startsWith("/v2/auth/oidc/")
+    ) {
+      return withCors(await handleV2PlatformRequest(request), request);
+    }
+    return withCors(await handleV2Request(request), request);
   }
 
   return withCors(

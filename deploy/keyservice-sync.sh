@@ -49,6 +49,10 @@ fi
 
 log "updated ${before} -> ${after}"
 
+if [[ -x "${KEYSERVICE_ROOT}/deploy/upgrade-env.sh" ]]; then
+  bash "${KEYSERVICE_ROOT}/deploy/upgrade-env.sh" "${KEYSERVICE_ROOT}/.env"
+fi
+
 /usr/local/bin/bun install
 if [[ -d "${KEYSERVICE_CONSOLE_ROOT}" ]]; then
   if [[ "${KEYSERVICE_SYNC_CONSOLE_BUILD}" == "1" ]]; then

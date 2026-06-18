@@ -13,6 +13,7 @@ export const homeChannelTabs: ChannelTab[] = [
 export const clientChannelTabs: ChannelTab[] = [
   { href: "/clients", label: "Clients", activePrefixes: ["/clients"] },
   { href: "/kv", label: "KV", activePrefixes: ["/kv"] },
+  { href: "/migration", label: "Migration", activePrefixes: ["/migration"] },
 ];
 
 export const standardsChannelTabs: ChannelTab[] = [

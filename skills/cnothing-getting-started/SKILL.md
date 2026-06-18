@@ -1,63 +1,82 @@
 ---
 name: cnothing-getting-started
-description: Use when an AI or developer is integrating with CNothing for the first time and needs a safe quick start, public discovery links, and a minimal demo flow without handling plaintext secrets.
+description: Use when an AI or developer is integrating with CNothing for the first time. Prefer v2 capability invoke; v1 AuthAI/KV is deprecated.
 ---
 
 # CNothing Getting Started
 
-Use this skill when you are new to CNothing and need the shortest safe path to a working integration.
+Use this skill when you are new to CNothing. **Start with v2** — agents invoke capabilities; connectors hold secrets.
 
 ## Discovery Links
 
+- OpenAPI v2: `/openapi-v2.json`
+- Platform status: `/v2/platform/status`
 - MCP info: `/mcp`
 - MCP manifest: `/mcp/manifest`
-- MCP discovery: `/.well-known/mcp`
 - Skills index: `/skills/index.json`
-- Primary skill: `/skill.md`
 - Getting started: `/getting-started.md`
+- v2 capabilities skill: `/skills/markdown/cnothing-v2-capabilities/SKILL.md`
 
-## Rules
+## Core Principle
 
-- Never ask for or handle a client private key.
-- Only the trusted backend may decrypt `challenge_for_client` or `result_envelope_for_client`.
-- Treat all envelopes as opaque ciphertext.
-- Prefer private mode or blind mode when third-party application data is sensitive.
+**Agent Never Owns Secrets. Agent Only Receives Permissions.**
 
-## Minimal Flow
+## v2 Minimal Flow (Recommended)
 
-1. Fetch the AuthAI public key from `/v1/authai/public-key`.
-2. Generate a backend keypair locally.
-3. Register the backend public key with `/v1/authai/register`.
-4. Hand `challenge_for_client` to the trusted backend only.
-5. Have the backend return `auth_envelope` and `data_envelope` or `query_envelope`.
-6. Forward those envelopes with `kv.save` or `kv.read`.
-7. Return `next_challenge_for_client` or `result_envelope_for_client` to the backend.
+1. Discover capabilities — MCP `list_capabilities` or `GET /v2/capabilities`.
+2. Register agent — Admin `POST /v2/agents/register` → save `access_token` (`agent_...`).
+3. User authorization — Agent `POST /v2/authorize/request` → user approves in Console `/authorize/:id`.
+4. Invoke — `POST /v2/capabilities/invoke` or MCP `invoke_capability`:
 
-## Third-Party Secrets (Do Not Mix Up Keys)
+```json
+{
+  "capability": "github.create_issue",
+  "input": { "repo": "org/repo", "title": "Bug report" }
+}
+```
 
-CNothing is the platform that stores third-party service credentials.
+5. Audit — `GET /v2/audit` for policy decisions and outcomes.
 
-- **CNothing AuthAI public key** (step 1): encrypt envelopes to CNothing; also give to third parties when they return an API key encrypted for CNothing.
-- **Client public key** (step 3): your AuthAI identity only—not for third-party credential encryption.
-- **Third-party service public key**: required as `recipient_public_key` on read when the third party (not your backend) will decrypt and use the API key.
+### Agent SDK
 
-Store path: third party encrypts API key → CNothing → `kv.save` (value may be the raw `ksp1` api_key_envelope).  
-Use path: `kv.read` with third-party identifier + third-party public key → CNothing re-encrypts api_key as a new `ksp1` envelope to recipient → give ciphertext to third party → it decrypts and authenticates.
+```ts
+import { CNothingAgentClient } from "cnothing";
 
-**Common mistakes (e.g. Searchengine):** wrong `recipient_public_key` on `kv_read` → third party `Failed to decrypt encrypted_key`; saving reader-encrypted `authenticate_agent` envelope without backend decrypt → same; passing `result_envelope_for_client` as search `api_key_envelope` → `Decrypted envelope missing api_key`. See `/docs/mcp.md`.
+const agent = new CNothingAgentClient({
+  baseUrl: "https://cnothing.com",
+  accessToken: process.env.AGENT_ACCESS_TOKEN!,
+});
 
-See [protocol.md](../../docs/protocol.md) section「第三方服务凭证：正确用法」for the full workflow.
+await agent.invoke({ capability: "github.create_issue", input: { repo: "org/repo", title: "Demo" } });
+```
+
+## Connectors
+
+Official examples under `examples/`:
+
+- `github-connector` — GitHub issues/repos
+- `slack-connector` — Slack messages
+- `webhook-connector` — Generic HTTP webhooks
+
+Bootstrap with `bun run github:bootstrap` (requires running CNothing + admin token).
+
+## v1 AuthAI/KV (Deprecated)
+
+v1 envelope tools (`kv_save`, `kv_read`, `authai_register`, …) remain for backward compatibility but include `_deprecation` metadata. **Do not start new integrations on v1.**
+
+Migration: `GET /v2/platform/migration` or Console `/migration`.
+
+If you must read legacy docs:
+
+- Never handle client private keys in the agent.
+- See `/docs/mcp.md` for common third-party credential mistakes (Searchengine, etc.).
 
 ## Demo Mode
 
-Use demo mode when you want to validate that routing and discovery work before real secrets are involved.
-
-- Browse `/skills/index.json` to locate skills and markdown URLs.
-- Browse `/standards/authentication/1.0` for the protocol contract.
-- Browse `/standards/registration-hub` for the AI website registration architecture.
-- Use synthetic test data only, and never use a production private key or real credentials.
+- Browse `/skills/index.json` and `/standards/authentication/1.0`.
+- Run `bun run e2e:v2` against a local deployment to validate the full v2 chain.
 
 ## Read More
 
-- Read [protocol.md](../../docs/protocol.md) for the envelope protocol.
-- Read [mcp.md](../../docs/mcp.md) for MCP integration details.
+- [mcp.md](../../docs/mcp.md) — MCP tools (v2 + legacy v1)
+- [protocol.md](../../docs/protocol.md) — v1 envelope protocol (legacy)

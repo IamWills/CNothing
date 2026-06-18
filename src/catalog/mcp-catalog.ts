@@ -1,9 +1,83 @@
 import config from "../config";
 import type { McpResourceDescriptor, McpToolDescriptor } from "./catalog.entity";
 
+const V1_DEPRECATED_TOOL = {
+  deprecated: true,
+  successor: "invoke_capability",
+} as const;
+
 const MCP_TOOLS: McpToolDescriptor[] = [
   {
+    name: "invoke_capability",
+    description:
+      "Primary v2 agent API. Invoke a registered capability by business name. Agent never receives secrets — CNothing validates authorization, applies policy, and forwards to the Connector.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        capability: {
+          type: "string",
+          description: "Capability name, e.g. github.create_issue",
+          examples: ["github.create_issue"],
+        },
+        input: {
+          type: "object",
+          description: "Business input for the capability.",
+          examples: [{ repo: "org/repo", title: "Bug report" }],
+        },
+        user_id: {
+          type: "string",
+          description: "Optional user context override. Defaults to agent owner.",
+        },
+        reason: {
+          type: "string",
+          description: "Required when policy demands explicit reason.",
+        },
+        confirmation_id: {
+          type: "string",
+          description: "Retry invoke after user approved a pending confirmation.",
+        },
+      },
+      required: ["capability"],
+    },
+    useCases: [
+      "Execute an authorized third-party action without handling API keys or tokens.",
+      "Retry a capability after user confirmation via confirmation_id.",
+    ],
+  },
+  {
+    name: "request_authorization",
+    description:
+      "OAuth-style flow: request user approval for one or more capabilities. Returns an approval_url for the user to review and grant access.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_access_token: { type: "string", description: "Agent bearer token." },
+        capabilities: {
+          type: "array",
+          items: { type: "string" },
+          description: "Capability names to request, e.g. github.create_issue",
+        },
+        user_id: { type: "string" },
+        reason: { type: "string" },
+        state: { type: "string" },
+      },
+      required: ["agent_access_token", "capabilities"],
+    },
+    useCases: ["Start OAuth-style capability authorization before invoking protected actions."],
+  },
+  {
+    name: "list_capabilities",
+    description: "List registered capabilities available for invocation.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    useCases: ["Discover what capabilities exist in the registry."],
+  },
+  {
     name: "get_authai_public_key",
+    ...V1_DEPRECATED_TOOL,
+    successor: "list_capabilities",
     description:
       "Return the CNothing AuthAI public key metadata used by a client backend to encrypt auth, data, and query envelopes toward CNothing without exposing its private key to the AI.",
     inputSchema: {
@@ -25,6 +99,8 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "authai_register",
+    ...V1_DEPRECATED_TOOL,
+    successor: "request_authorization",
     description:
       "Register a client public key and receive an encrypted one-time challenge for the client backend. The AI may forward the challenge ciphertext, but only the trusted backend should decrypt it.",
     inputSchema: {
@@ -83,6 +159,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "authai_refresh",
+    ...V1_DEPRECATED_TOOL,
     description:
       "Consume a valid auth envelope and issue the next encrypted challenge for the client backend. Use this when a workflow needs another operation without re-registering the client.",
     inputSchema: {
@@ -103,6 +180,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "authai_key_holder_sign_challenge",
+    ...V1_DEPRECATED_TOOL,
     description:
       "Recommended: create a signature-based key-holder challenge. The target should sign challenge_text with its private key and return a base64/base64url signature.",
     inputSchema: {
@@ -139,6 +217,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "authai_key_holder_verify_signature",
+    ...V1_DEPRECATED_TOOL,
     description:
       "Recommended: verify signature proof by checking target public key fingerprint, challenge_text hash, and RSA-SHA256 signature validity.",
     inputSchema: {
@@ -179,6 +258,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "authai_key_holder_challenge",
+    ...V1_DEPRECATED_TOOL,
     description:
       "Compatibility flow: create a two-ciphertext key-holder verification challenge. Prefer signature-based verification for new integrations.",
     inputSchema: {
@@ -215,6 +295,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "authai_key_holder_verify",
+    ...V1_DEPRECATED_TOOL,
     description:
       "Compatibility flow: compare responder_secret (S2) against S1 decrypted from challenge_for_authai. Prefer authai_key_holder_verify_signature for new integrations.",
     inputSchema: {
@@ -255,6 +336,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "kv_save",
+    ...V1_DEPRECATED_TOOL,
     description: [
       "Store one or more encrypted KV items for the authenticated client namespace.",
       "COMMON MISTAKE (Searchengine): do NOT save authenticate_agent api_key_envelope (reader-encrypted) as the value without backend decrypt — CNothing cannot unwrap reader keys; later kv_read + Searchengine auth will fail with Failed to decrypt encrypted_key.",
@@ -287,6 +369,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
   {
     name: "kv_read",
+    ...V1_DEPRECATED_TOOL,
     description: [
       "Read encrypted KV items for the authenticated client namespace. Requires recipient_public_key.",
       "recipient_public_key MUST be the PEM public key of whoever will decrypt the result — for third-party auth (e.g. Searchengine) use THAT service public key (GET /v1/auth/public-key), NOT CNothing AuthAI key and NOT client key unless the client backend consumes the secret.",
@@ -408,10 +491,15 @@ export function readMcpResource(uri: string): { uri: string; mimeType: string; t
         {
           getting_started_markdown: "/getting-started.md",
           recommended_flow: [
-            "Fetch /v1/authai/public-key.",
-            "Register a backend public key with /v1/authai/register.",
-            "Let the trusted backend decrypt challenge_for_client.",
-            "Use kv.save or kv.read only with backend-produced opaque envelopes.",
+            "Fetch /openapi-v2.json for the v2 capability platform API.",
+            "Register connector + capabilities (see examples/github-connector/bootstrap.ts).",
+            "Register agent via POST /v2/agents/register and obtain agent access token.",
+            "User approves capabilities via Console /authorize/:id or POST /v2/grants.",
+            "Agent invokes POST /v2/capabilities/invoke or MCP invoke_capability.",
+          ],
+          v1_legacy_flow: [
+            "Deprecated: /v1/authai/register → kv.save/kv.read envelope flow.",
+            "Migration guide: GET /v2/platform/migration",
           ],
           demo_paths: {
             homepage: "/",

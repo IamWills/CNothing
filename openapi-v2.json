@@ -1,0 +1,611 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CNothing Capability Authorization Platform API",
+    "version": "2.0.0",
+    "description": "Agent-facing capability invoke API, OAuth-style user authorization, policy engine, and connector trust broker. Agents never receive secrets."
+  },
+  "servers": [{ "url": "http://localhost:3021" }],
+  "tags": [
+    { "name": "capabilities", "description": "Agent capability invocation" },
+    { "name": "authorization", "description": "User authorization for agents" },
+    { "name": "auth", "description": "User session authentication" },
+    { "name": "registry", "description": "Connectors and capability registry" },
+    { "name": "admin", "description": "Administrative operations" },
+    { "name": "trust", "description": "Grant signing and JWKS" },
+    { "name": "platform", "description": "Platform status, migration, and OIDC" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "AgentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Agent access token from POST /v2/agents/register"
+      },
+      "UserSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "User session token (usr_...) from POST /v2/auth/login"
+      },
+      "AdminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Admin bearer token (KEYSERVICE_BEARER_TOKEN)"
+      }
+    },
+    "schemas": {
+      "InvokeRequest": {
+        "type": "object",
+        "required": ["capability"],
+        "properties": {
+          "capability": { "type": "string", "example": "github.create_issue" },
+          "input": { "type": "object", "additionalProperties": true },
+          "user_id": { "type": "string" },
+          "reason": { "type": "string" },
+          "confirmation_id": { "type": "string" },
+          "request_id": { "type": "string" }
+        }
+      },
+      "InvokeSuccess": {
+        "type": "object",
+        "properties": {
+          "ok": { "const": true },
+          "request_id": { "type": "string" },
+          "capability": { "type": "string" },
+          "result": {}
+        }
+      },
+      "InvokePending": {
+        "type": "object",
+        "properties": {
+          "ok": { "const": false },
+          "pending": { "const": true },
+          "confirmation_id": { "type": "string" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "message": { "type": "string" }
+        }
+      },
+      "AuthorizationRequestCreate": {
+        "type": "object",
+        "required": ["capabilities"],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "user_id": { "type": "string" },
+          "redirect_uri": { "type": "string" },
+          "state": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "message": { "type": "string" },
+              "details": {}
+            }
+          }
+        }
+      },
+      "PlatformStatus": {
+        "type": "object",
+        "properties": {
+          "ok": { "const": true },
+          "platform": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "primary_api": { "type": "string" },
+              "openapi": { "type": "string" },
+              "jwks": { "type": "string" }
+            }
+          },
+          "v1": {
+            "type": "object",
+            "properties": {
+              "deprecated": { "type": "boolean" },
+              "sunset_at": { "type": "string", "format": "date" },
+              "successor_version": { "type": "string" },
+              "successor_openapi": { "type": "string" },
+              "migration_guide": { "type": "string" },
+              "replacement": { "type": "string" }
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "agents": { "type": "integer" },
+              "capabilities": { "type": "integer" },
+              "connectors": { "type": "integer" },
+              "active_grants": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "KvMigrationInventoryItem": {
+        "type": "object",
+        "properties": {
+          "client_uuid": { "type": "string" },
+          "namespace": { "type": "string" },
+          "record_key": { "type": "string" },
+          "value_fingerprint": { "type": "string" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "suggested_capability": { "type": "string", "nullable": true }
+        }
+      },
+      "OidcProviderPublic": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "issuer": { "type": "string" },
+          "scopes": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v2/capabilities/invoke": {
+      "post": {
+        "tags": ["capabilities"],
+        "summary": "Invoke a capability",
+        "description": "Primary agent API. Validates grant, applies policy, issues short-lived Capability Grant JWT, forwards to connector.",
+        "security": [{ "AgentBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/InvokeRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Capability executed successfully",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/InvokeSuccess" } }
+            }
+          },
+          "202": {
+            "description": "User confirmation required",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/InvokePending" } }
+            }
+          },
+          "401": { "description": "Invalid agent token" },
+          "403": { "description": "Grant missing or policy denied" }
+        }
+      }
+    },
+    "/v2/capabilities": {
+      "get": {
+        "tags": ["registry"],
+        "summary": "List registered capabilities",
+        "responses": {
+          "200": { "description": "Capability catalog" }
+        }
+      }
+    },
+    "/v2/capabilities/{name}": {
+      "get": {
+        "tags": ["registry"],
+        "summary": "Get capability by name",
+        "parameters": [
+          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Capability details" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/v2/authorize/request": {
+      "post": {
+        "tags": ["authorization"],
+        "summary": "Request user authorization for capabilities",
+        "security": [{ "AgentBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AuthorizationRequestCreate" } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Authorization request created with approval_url" }
+        }
+      }
+    },
+    "/v2/authorize/{id}": {
+      "get": {
+        "tags": ["authorization"],
+        "summary": "Get authorization request status",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Authorization request details" }
+        }
+      }
+    },
+    "/v2/authorize/approve": {
+      "post": {
+        "tags": ["authorization"],
+        "summary": "Approve authorization request",
+        "description": "Requires user session for the subject user, or admin bearer.",
+        "security": [{ "UserSession": [] }, { "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Grants issued" }
+        }
+      }
+    },
+    "/v2/authorize/deny": {
+      "post": {
+        "tags": ["authorization"],
+        "summary": "Deny authorization request",
+        "security": [{ "UserSession": [] }, { "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Authorization denied" }
+        }
+      }
+    },
+    "/v2/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Exchange one-time login token for user session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["user_id", "login_token"],
+                "properties": {
+                  "user_id": { "type": "string" },
+                  "login_token": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "User session issued" }
+        }
+      }
+    },
+    "/v2/auth/login-tokens": {
+      "post": {
+        "tags": ["auth", "admin"],
+        "summary": "Issue one-time login token for a user",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "201": { "description": "Login token issued" }
+        }
+      }
+    },
+    "/v2/auth/me": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Get current user session",
+        "security": [{ "UserSession": [] }],
+        "responses": {
+          "200": { "description": "Current user" }
+        }
+      }
+    },
+    "/v2/auth/logout": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Revoke current user session",
+        "security": [{ "UserSession": [] }],
+        "responses": {
+          "200": { "description": "Logged out" }
+        }
+      }
+    },
+    "/v2/jwks": {
+      "get": {
+        "tags": ["trust"],
+        "summary": "JWKS for Capability Grant verification",
+        "responses": {
+          "200": { "description": "JSON Web Key Set" }
+        }
+      }
+    },
+    "/v2/connectors": {
+      "get": {
+        "tags": ["registry"],
+        "summary": "List connectors",
+        "responses": {
+          "200": { "description": "Connector list" }
+        }
+      }
+    },
+    "/v2/connectors/register": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Register connector",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Connector registered" }
+        }
+      }
+    },
+    "/v2/capabilities/register": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Register capability",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Capability registered" }
+        }
+      }
+    },
+    "/v2/agents/register": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Register agent",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Agent registered with access_token" }
+        }
+      }
+    },
+    "/v2/grants": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List active grants",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Grant list" }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create grant manually",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Grant created" }
+        }
+      }
+    },
+    "/v2/confirmations/pending": {
+      "get": {
+        "tags": ["authorization"],
+        "summary": "List pending invoke confirmations",
+        "security": [{ "UserSession": [] }, { "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Pending confirmations" }
+        }
+      }
+    },
+    "/v2/audit": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List capability invoke audit events",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Audit log" }
+        }
+      }
+    },
+    "/v2/platform/status": {
+      "get": {
+        "tags": ["platform"],
+        "summary": "Platform status and v1 deprecation metadata",
+        "responses": {
+          "200": {
+            "description": "Platform overview",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlatformStatus" } }
+            }
+          }
+        }
+      }
+    },
+    "/v2/platform/migration": {
+      "get": {
+        "tags": ["platform"],
+        "summary": "v1 → v2 migration guide",
+        "responses": {
+          "200": { "description": "Migration steps and namespace hints" }
+        }
+      }
+    },
+    "/v2/admin/migration/kv-inventory": {
+      "get": {
+        "tags": ["platform", "admin"],
+        "summary": "Inventory legacy v1 KV records",
+        "security": [{ "AdminBearer": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 500 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "KV inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "const": true },
+                    "total": { "type": "integer" },
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/KvMigrationInventoryItem" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/admin/migration/kv-to-credential": {
+      "post": {
+        "tags": ["platform", "admin"],
+        "summary": "Migrate one KV record into connector credential storage",
+        "security": [{ "AdminBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["client_uuid", "namespace", "record_key", "connector_id", "owner_user_id"],
+                "properties": {
+                  "client_uuid": { "type": "string" },
+                  "namespace": { "type": "string" },
+                  "record_key": { "type": "string" },
+                  "connector_id": { "type": "string" },
+                  "owner_user_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Migration result with credential_id" }
+        }
+      }
+    },
+    "/v2/auth/oidc/providers": {
+      "get": {
+        "tags": ["platform", "auth"],
+        "summary": "List public OIDC identity providers",
+        "responses": {
+          "200": {
+            "description": "OIDC providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "const": true },
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/OidcProviderPublic" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/auth/oidc/{provider}/start": {
+      "get": {
+        "tags": ["platform", "auth"],
+        "summary": "Start OIDC authorization (redirects to IdP)",
+        "parameters": [
+          { "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "redirect_after", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirect to identity provider" }
+        }
+      }
+    },
+    "/v2/auth/oidc/{provider}/callback": {
+      "get": {
+        "tags": ["platform", "auth"],
+        "summary": "OIDC callback — exchanges code for user session",
+        "parameters": [
+          { "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirect to console with session_token" }
+        }
+      }
+    },
+    "/v2/admin/oidc/providers": {
+      "post": {
+        "tags": ["platform", "admin"],
+        "summary": "Register OIDC identity provider",
+        "security": [{ "AdminBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "display_name", "issuer", "client_id", "client_secret"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "display_name": { "type": "string" },
+                  "issuer": { "type": "string" },
+                  "client_id": { "type": "string" },
+                  "client_secret": { "type": "string" },
+                  "scopes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Provider registered" }
+        }
+      }
+    },
+    "/v2/grants/revoke": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Revoke a grant",
+        "security": [{ "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Grant revoked" }
+        }
+      }
+    },
+    "/v2/confirmations/approve": {
+      "post": {
+        "tags": ["authorization"],
+        "summary": "Approve pending high-risk invoke confirmation",
+        "security": [{ "UserSession": [] }, { "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Confirmation approved" }
+        }
+      }
+    },
+    "/v2/confirmations/reject": {
+      "post": {
+        "tags": ["authorization"],
+        "summary": "Reject pending invoke confirmation",
+        "security": [{ "UserSession": [] }, { "AdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Confirmation rejected" }
+        }
+      }
+    },
+    "/v2/agents": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List agents",
+        "security": [{ "AdminBearer": [] }],
+        "parameters": [
+          { "name": "owner_user_id", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Agent list" }
+        }
+      }
+    },
+    "/v2/.well-known/openid-configuration": {
+      "get": {
+        "tags": ["trust"],
+        "summary": "OpenID Provider metadata for Capability Grant issuer",
+        "responses": {
+          "200": { "description": "Issuer metadata" }
+        }
+      }
+    }
+  }
+}

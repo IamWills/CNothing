@@ -2,7 +2,7 @@
 
 import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { ExternalLink, Github, LayoutGrid, ShieldCheck, Users } from "lucide-react";
+import { Bot, ExternalLink, Github, LayoutGrid, ShieldCheck, Users } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { brand } from "@/lib/brand";
@@ -15,7 +15,8 @@ const navigation: Array<{
 }> = [
   { href: "/", label: "Home", matches: ["/", "/readme"] },
   { href: "/catalog", label: "Catalog", icon: LayoutGrid, matches: ["/catalog"] },
-  { href: "/clients", label: "Clients", icon: Users, matches: ["/clients", "/kv"] },
+  { href: "/agents", label: "Agents", icon: Bot, matches: ["/agents", "/capabilities", "/grants", "/audit", "/authorize", "/login"] },
+  { href: "/clients", label: "Clients (v1)", icon: Users, matches: ["/clients", "/kv", "/migration"] },
   {
     href: "/standards",
     label: "Standards",

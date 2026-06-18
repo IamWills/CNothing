@@ -104,6 +104,17 @@ export function ClientsPage() {
         errorMessage={errorMessage}
       />
 
+      <Card className="mb-6 border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-medium">v1 Clients / AuthAI / KV are deprecated</p>
+        <p className="mt-1 text-amber-900">
+          New integrations should use v2 agents and capabilities. Migrate existing KV secrets via{" "}
+          <a href="/migration" className="underline">
+            Migration
+          </a>
+          .
+        </p>
+      </Card>
+
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>
           <form className="space-y-4" onSubmit={handleRegisterClient}>

@@ -1,5 +1,19 @@
 export { CNothingClient, createCNothingClient } from "./client";
 export {
+  CNothingAgentClient,
+  createCNothingAgentClient,
+  CNothingAgentError,
+} from "./agent-client";
+export type {
+  AuthorizationRequestResponse,
+  AuthorizationRequestStatusResponse,
+  CapabilitySummary,
+  CNothingAgentClientConfig,
+  InvokeCapabilityPending,
+  InvokeCapabilityRequest,
+  InvokeCapabilitySuccess,
+} from "./agent-entity";
+export {
   buildAuthEnvelope,
   buildReadEnvelope,
   buildSaveEnvelope,

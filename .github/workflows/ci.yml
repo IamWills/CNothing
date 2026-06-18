@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: keyservice
+          POSTGRES_PASSWORD: keyservice
+          POSTGRES_DB: keyservice
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build library
+        run: bun run build
+
+      - name: Prepare environment
+        run: |
+          bun run generate-secrets
+          {
+            echo "PORT=3021"
+            echo "DATABASE_URL=postgresql://keyservice:keyservice@127.0.0.1:5432/keyservice"
+            echo "KEYSERVICE_BEARER_TOKEN=ci-test-admin-token"
+            echo "KEYSERVICE_CONSOLE_URL=http://127.0.0.1:3000"
+            echo "KEYSERVICE_USER_SESSION_TTL_SECONDS=86400"
+            echo "KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS=900"
+            echo "KEYSERVICE_V1_SUNSET_DATE=2026-12-17"
+          } >> .env
+          cat .local-keys/generated.env >> .env
+
+      - name: Migrate database
+        run: bun run migrate
+
+      - name: Start CNothing API
+        run: |
+          bun run start > /tmp/keyservice.log 2>&1 &
+          echo $! > /tmp/keyservice.pid
+          for i in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:3021/health >/dev/null; then
+              echo "API ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start:"
+          cat /tmp/keyservice.log
+          exit 1
+
+      - name: E2E v2 flow
+        run: |
+          CNOTHING_BASE_URL=http://127.0.0.1:3021 \
+          CNOTHING_ADMIN_TOKEN=ci-test-admin-token \
+          bun run e2e:v2
+
+      - name: Upload server log on failure
+        if: failure()
+        run: cat /tmp/keyservice.log || true

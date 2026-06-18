@@ -4,6 +4,8 @@ export type McpToolDescriptor = {
   inputSchema: Record<string, unknown>;
   useCases?: string[];
   examples?: Array<Record<string, unknown>>;
+  deprecated?: boolean;
+  successor?: string;
 };
 
 export type McpResourceDescriptor = {

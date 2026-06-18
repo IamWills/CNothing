@@ -11,6 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { fetchAuthaiPublicKey, fetchClients, fetchMcpCatalog, fetchSkills, type AuthaiPublicKey } from "@/lib/api";
+import {
+  fetchPlatformStatus,
+  fetchV2Agents,
+  fetchV2Capabilities,
+  fetchV2Connectors,
+  fetchV2Grants,
+} from "@/lib/api-v2";
 import { brand } from "@/lib/brand";
 import { homeChannelTabs } from "@/lib/channel-tabs";
 
@@ -39,10 +46,10 @@ const sections: Array<{
     icon: Wrench,
   },
   {
-    href: "/clients",
-    title: "Clients",
-    description: "Register public keys manually and review the clients that can talk to CNothing.",
-    icon: Fingerprint,
+    href: "/agents",
+    title: "Agents (v2)",
+    description: "Register agents, capabilities, grants, and review capability invoke audit logs.",
+    icon: Bot,
   },
   {
     href: "/standards/registration-hub",
@@ -59,6 +66,12 @@ export function HomePage() {
   const [resourceCount, setResourceCount] = React.useState(0);
   const [skillCount, setSkillCount] = React.useState(0);
   const [clientCount, setClientCount] = React.useState(0);
+  const [agentCount, setAgentCount] = React.useState(0);
+  const [capabilityCount, setCapabilityCount] = React.useState(0);
+  const [grantCount, setGrantCount] = React.useState(0);
+  const [connectorCount, setConnectorCount] = React.useState(0);
+  const [v1SunsetAt, setV1SunsetAt] = React.useState("");
+  const [platformVersion, setPlatformVersion] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -83,11 +96,41 @@ export function HomePage() {
       try {
         const clientsResponse = await fetchClients(connection);
         setClientCount(clientsResponse.items.length);
-      } catch (error) {
+      } catch {
         setClientCount(0);
-        setStatusMessage(
-          error instanceof Error ? error.message : "Admin endpoints are not available yet.",
-        );
+      }
+
+      try {
+        const platformResponse = await fetchPlatformStatus(connection);
+        setPlatformVersion(platformResponse.platform.version);
+        setV1SunsetAt(platformResponse.v1.sunset_at);
+      } catch {
+        setPlatformVersion("");
+        setV1SunsetAt("");
+      }
+
+      try {
+        const [agentsResponse, capabilitiesResponse, grantsResponse, connectorsResponse] =
+          await Promise.all([
+          fetchV2Agents(connection),
+          fetchV2Capabilities(connection),
+          fetchV2Grants(connection),
+          fetchV2Connectors(connection),
+        ]);
+        setAgentCount(agentsResponse.items.length);
+        setCapabilityCount(capabilitiesResponse.items.length);
+        setGrantCount(grantsResponse.items.length);
+        setConnectorCount(connectorsResponse.items.length);
+      } catch (error) {
+        setAgentCount(0);
+        setCapabilityCount(0);
+        setGrantCount(0);
+        setConnectorCount(0);
+        if (!statusMessage) {
+          setStatusMessage(
+            error instanceof Error ? error.message : "Some v2 admin endpoints are unavailable.",
+          );
+        }
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load CNothing overview.");
@@ -121,31 +164,84 @@ export function HomePage() {
       />
 
       <section className="grid gap-4 lg:grid-cols-4">
-        <MetricCard
-          icon={Shield}
-          label="AuthAI identity"
-          value={publicKey?.key_id ?? "Loading..."}
-          helper="Current key id"
-        />
-        <MetricCard
-          icon={Wrench}
-          label="MCP tools"
-          value={String(toolCount)}
-          helper={`${resourceCount} resources are also published`}
-        />
-        <MetricCard
-          icon={Sparkles}
-          label="Skills"
-          value={String(skillCount)}
-          helper="Markdown skills discoverable by AI"
-        />
-        <MetricCard
-          icon={Fingerprint}
-          label="Clients"
-          value={String(clientCount)}
-          helper="Admin-visible registered client identities"
-        />
+        <MetricCard icon={Bot} label="Platform" value={platformVersion || "v2"} helper="Capability authorization platform" />
+        <MetricCard icon={Bot} label="Agents (v2)" value={String(agentCount)} helper="Registered AI agents" />
+        <MetricCard icon={Sparkles} label="Capabilities" value={String(capabilityCount)} helper="Business capabilities in registry" />
+        <MetricCard icon={Shield} label="Active grants" value={String(grantCount)} helper="User → agent authorizations" />
       </section>
+
+      {v1SunsetAt ? (
+        <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          v1 AuthAI/KV is deprecated. Sunset date: <strong>{v1SunsetAt}</strong>.{" "}
+          <a href="/migration" className="underline">
+            Migrate KV records
+          </a>{" "}
+          or read{" "}
+          <a href={`${connection.baseUrl.replace(/\/+$/, "")}/openapi-v2.json`} className="underline">
+            openapi-v2.json
+          </a>
+          .
+        </Card>
+      ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-4">
+        <MetricCard icon={Fingerprint} label="Clients (v1)" value={String(clientCount)} helper="Legacy AuthAI clients" />
+        <MetricCard icon={Fingerprint} label="Connectors" value={String(connectorCount)} helper="Registered backend connectors" />
+        <MetricCard icon={Sparkles} label="Skills" value={String(skillCount)} helper="Markdown skills for AI discovery" />
+        <MetricCard icon={Wrench} label="MCP tools" value={String(toolCount)} helper={`${resourceCount} resources`} />
+      </section>
+
+      <Card className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-[color:var(--brand)]" />
+          <h2 className="text-lg font-semibold">v2 Quick Start</h2>
+        </div>
+        <p className="max-w-3xl text-sm text-slate-600">
+          CNothing v2 is an Agent Capability Authorization Platform. Agents invoke business capabilities;
+          connectors hold credentials; users authorize capabilities — not secrets.
+        </p>
+        <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 text-sm text-slate-700">
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>1. Register infrastructure</strong>
+            <p className="mt-2 text-slate-600">
+              <a href="/capabilities" className="underline">Capabilities</a> → register Connector + capabilities.
+              Run <code className="text-xs">examples/github-connector/bootstrap.ts</code> for GitHub demo.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>2. Register an agent</strong>
+            <p className="mt-2 text-slate-600">
+              <a href="/agents" className="underline">Agents</a> → copy the agent access token (shown once).
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>3. User sign-in</strong>
+            <p className="mt-2 text-slate-600">
+              <a href="/login" className="underline">Login</a> → issue one-time token, sign in as user.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>4. Authorize capabilities</strong>
+            <p className="mt-2 text-slate-600">
+              Agent calls <code className="text-xs">POST /v2/authorize/request</code> → user approves at{" "}
+              <code className="text-xs">/authorize/:id</code> or <a href="/grants" className="underline">Grants</a>.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>5. Invoke</strong>
+            <p className="mt-2 text-slate-600">
+              Agent calls <code className="text-xs">POST /v2/capabilities/invoke</code> with capability name + input.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>6. Audit</strong>
+            <p className="mt-2 text-slate-600">
+              Review policy decisions at <a href="/audit" className="underline">Audit</a>.
+              API spec: <a href="/openapi-v2.json" className="underline">openapi-v2.json</a>.
+            </p>
+          </li>
+        </ol>
+      </Card>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="space-y-5">
@@ -237,6 +333,11 @@ export function HomePage() {
             href="/skills.txt"
             title="Skills Text"
             description="Plain-text skills directory for simpler crawlers and basic agents."
+          />
+          <DiscoveryLink
+            href="/openapi-v2.json"
+            title="OpenAPI v2"
+            description="Capability platform API specification for agents and connectors."
           />
           <DiscoveryLink
             href="/getting-started.md"

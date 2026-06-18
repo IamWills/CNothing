@@ -6,6 +6,36 @@ For Chinese documentation, see [README.CN.MD](./README.CN.MD).
 
 It is designed for a specific problem: an AI agent needs to help orchestrate work, choose tools, and route requests, but the sensitive values used by that workflow must stay inside a trusted backend boundary. CNothing gives you a way to let the AI participate in the flow while keeping private keys and decrypted secrets out of the model.
 
+## v2: Agent Capability Authorization Platform (Recommended)
+
+CNothing v2 is the **primary integration path** for new AI agents:
+
+- Agents call **`POST /v2/capabilities/invoke`** with a business capability name (e.g. `github.create_issue`) — no envelopes, no `recipient_public_key`
+- **Connectors** hold third-party credentials locally; CNothing validates grants and forwards requests
+- **Users** authorize capabilities (not secrets) via Console or OAuth-style approval flows
+- **Policy engine** enforces risk levels, confirmations, and audit
+
+```ts
+import { CNothingAgentClient } from "cnothing";
+
+const agent = new CNothingAgentClient({
+  baseUrl: "https://cnothing.com",
+  accessToken: process.env.AGENT_ACCESS_TOKEN!,
+});
+
+await agent.invoke({
+  capability: "github.create_issue",
+  input: { repo: "org/repo", title: "Bug report" },
+});
+```
+
+- API spec: [`openapi-v2.json`](./openapi-v2.json)
+- MCP tools: `invoke_capability`, `list_capabilities`, `request_authorization`
+- Example connectors: `examples/github-connector`, `examples/slack-connector`, `examples/webhook-connector`
+- E2E validation: `bun run e2e:v2`
+
+**v1 AuthAI + Encrypted KV** remains available during a compatibility period but is **deprecated** (see `Deprecation` / `Sunset` headers and `_deprecation` in JSON responses). Migrate via `GET /v2/platform/migration`.
+
 ## Why CNothing
 
 CNothing is valuable when you want all of the following at the same time:
@@ -438,6 +468,12 @@ curl http://127.0.0.1:3021/mcp
 - Keep production private keys outside paths that may be overwritten by code sync
 
 This repository already includes deployment helpers under [deploy/](./deploy).
+
+See [deploy/README.md](./deploy/README.md) for production pull/migrate/restart, v2 `.env` upgrades, and verification steps.
+
+### CI
+
+Every push to `main` runs GitHub Actions: typecheck, build, PostgreSQL migrate, and `bun run e2e:v2`. See [.github/workflows/ci.yml](./.github/workflows/ci.yml).
 
 ## File Guide
 

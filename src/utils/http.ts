@@ -5,7 +5,7 @@ export function corsHeaders(request: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Session",
     "Access-Control-Max-Age": "86400",
   };
 }

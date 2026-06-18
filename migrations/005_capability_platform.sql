@@ -145,10 +145,10 @@ CREATE INDEX IF NOT EXISTS cap_pending_confirmations_user_idx
 -- Default policy rules
 INSERT INTO cap_policies (id, capability_type, action, priority, metadata)
 VALUES
-  ('policy-confidential-query-confirm', 'CONFIDENTIAL_QUERY', 'require_user_confirmation', 10, '{"reason":"confidential data access"}'::jsonb),
-  ('policy-high-risk-confirm', NULL, 'require_user_confirmation', 20, '{"reason":"high risk capability"}'::jsonb)
+  ('policy-confidential-query-confirm', 'CONFIDENTIAL_QUERY', 'require_user_confirmation', 10, '{"reason":"confidential data access"}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
-UPDATE cap_policies
-SET risk_level = 'HIGH'
-WHERE id = 'policy-high-risk-confirm';
+INSERT INTO cap_policies (id, risk_level, action, priority, metadata)
+VALUES
+  ('policy-high-risk-confirm', 'HIGH', 'require_user_confirmation', 20, '{"reason":"high risk capability"}'::jsonb)
+ON CONFLICT (id) DO NOTHING;

@@ -16,6 +16,10 @@ import type {
   JsonObject,
 } from "./v2.entity";
 import {
+  executePlatformCapability,
+  PLATFORM_CONNECTOR_PROVIDER,
+} from "./platform-connector.executor";
+import {
   confirmPendingConfirmation,
   createPendingConfirmation,
   findActiveGrant,
@@ -273,35 +277,44 @@ export class CapabilityService {
 
     let connectorResult: unknown;
     try {
-      const response = await fetch(input.connector.callback_url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${grantToken}`,
-          "x-cnothing-request-id": input.requestId,
-        },
-        body: JSON.stringify({
-          grant: grantToken,
+      if (input.connector.provider === PLATFORM_CONNECTOR_PROVIDER) {
+        connectorResult = await executePlatformCapability({
           capability: input.capability.name,
           input: input.input,
           user_id: input.userId,
           agent_id: input.agent.id,
-        }),
-      });
+        });
+      } else {
+        const response = await fetch(input.connector.callback_url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${grantToken}`,
+            "x-cnothing-request-id": input.requestId,
+          },
+          body: JSON.stringify({
+            grant: grantToken,
+            capability: input.capability.name,
+            input: input.input,
+            user_id: input.userId,
+            agent_id: input.agent.id,
+          }),
+        });
 
-      const text = await response.text();
-      const parsed = text ? (JSON.parse(text) as unknown) : null;
-      if (!response.ok) {
-        const message =
-          parsed && typeof parsed === "object" && "error" in parsed
-            ? String((parsed as { error?: { message?: string } }).error?.message ?? "Connector error")
-            : `Connector returned ${response.status}`;
-        throw new Error(message);
+        const text = await response.text();
+        const parsed = text ? (JSON.parse(text) as unknown) : null;
+        if (!response.ok) {
+          const message =
+            parsed && typeof parsed === "object" && "error" in parsed
+              ? String((parsed as { error?: { message?: string } }).error?.message ?? "Connector error")
+              : `Connector returned ${response.status}`;
+          throw new Error(message);
+        }
+        connectorResult =
+          parsed && typeof parsed === "object" && "result" in parsed
+            ? (parsed as { result: unknown }).result
+            : parsed;
       }
-      connectorResult =
-        parsed && typeof parsed === "object" && "result" in parsed
-          ? (parsed as { result: unknown }).result
-          : parsed;
     } catch (error) {
       await writeInvokeAudit({
         user_id: input.userId,

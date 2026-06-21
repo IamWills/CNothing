@@ -30,6 +30,15 @@ append_if_missing "KEYSERVICE_USER_SESSION_TTL_SECONDS" "86400"
 append_if_missing "KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS" "900"
 append_if_missing "KEYSERVICE_V1_SUNSET_DATE" "2026-12-17"
 append_if_missing "KEYSERVICE_CONSOLE_URL" "https://cnothing.com"
+append_if_missing "KEYSERVICE_PUBLIC_URL" "https://cnothing.com"
+append_if_missing "KEYSERVICE_V2_AUTO_BOOTSTRAP" "1"
+append_if_missing "KEYSERVICE_V2_AUTO_GRANT_LOW_RISK" "1"
+append_if_missing "KEYSERVICE_PLATFORM_AGENT_NAME" "cnothing-platform-agent"
+
+# GitHub OAuth / API (set via deploy/configure-v2-github.sh — values are not auto-generated)
+# KEYSERVICE_GITHUB_OAUTH_CLIENT_ID=
+# KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET=
+# KEYSERVICE_GITHUB_TOKEN=
 
 if ! grep -q "^KEYSERVICE_BEARER_TOKEN=" "${ENV_FILE}"; then
   if command -v openssl >/dev/null 2>&1; then

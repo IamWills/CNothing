@@ -8,6 +8,7 @@ export interface AppConfig {
   serviceName: string;
   protocolVersion: string;
   consoleUrl?: string;
+  publicBaseUrl: string;
   masterKey: Buffer;
   authaiPrivateKeyPath: string;
   authaiPublicKeyPath?: string;
@@ -19,6 +20,15 @@ export interface AppConfig {
   userSessionTtlSeconds: number;
   userLoginTokenTtlSeconds: number;
   v1SunsetDate: string;
+  v2AutoBootstrap: boolean;
+  githubOAuth?: {
+    clientId: string;
+    clientSecret: string;
+  };
+  githubToken?: string;
+  webhookDefaultUrl?: string;
+  platformAgentName: string;
+  autoGrantLowRiskCapabilities: boolean;
 }
 
 function readRequiredEnv(name: string): string {
@@ -129,12 +139,49 @@ const v1SunsetDate = (() => {
   return "2026-12-17T00:00:00.000Z";
 })();
 
+const v2AutoBootstrap = process.env.KEYSERVICE_V2_AUTO_BOOTSTRAP?.trim() !== "0";
+
+const githubOAuth = (() => {
+  const clientId = process.env.KEYSERVICE_GITHUB_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET?.trim();
+  if (clientId && clientSecret) {
+    return { clientId, clientSecret };
+  }
+  return undefined;
+})();
+
+const githubToken =
+  process.env.KEYSERVICE_GITHUB_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim() || undefined;
+
+const webhookDefaultUrl = process.env.KEYSERVICE_WEBHOOK_DEFAULT_URL?.trim() || undefined;
+
+const autoGrantLowRiskCapabilities =
+  process.env.KEYSERVICE_V2_AUTO_GRANT_LOW_RISK?.trim() !== "0";
+
+const publicBaseUrl = (() => {
+  const explicit = process.env.KEYSERVICE_PUBLIC_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+  const consoleUrl = process.env.KEYSERVICE_CONSOLE_URL?.trim();
+  if (consoleUrl) {
+    try {
+      return new URL(consoleUrl).origin;
+    } catch {
+      // fall through
+    }
+  }
+  const port = Number(process.env.PORT ?? "3021");
+  return `http://127.0.0.1:${port}`;
+})();
+
 const config: AppConfig = {
   port: Number(process.env.PORT ?? "3021"),
   databaseUrl: readRequiredEnv("DATABASE_URL"),
   serviceName: "CNothing",
   protocolVersion: "2024-11-05",
   consoleUrl: process.env.KEYSERVICE_CONSOLE_URL?.trim() || undefined,
+  publicBaseUrl,
   masterKey,
   authaiPrivateKeyPath: resolveFilePath(authaiPrivateKeyPath),
   authaiPublicKeyPath: authaiPublicKeyPath ? resolveFilePath(authaiPublicKeyPath) : undefined,
@@ -146,6 +193,12 @@ const config: AppConfig = {
   userSessionTtlSeconds,
   userLoginTokenTtlSeconds,
   v1SunsetDate,
+  v2AutoBootstrap,
+  githubOAuth,
+  githubToken,
+  webhookDefaultUrl,
+  platformAgentName: process.env.KEYSERVICE_PLATFORM_AGENT_NAME?.trim() || "cnothing-platform-agent",
+  autoGrantLowRiskCapabilities,
 };
 
 export default config;

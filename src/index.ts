@@ -4,10 +4,12 @@ import { fileURLToPath } from "url";
 import { handleAdminRequest } from "./admin/admin.api";
 import { handleKeyRequest } from "./api/key.api";
 import { handleV2PlatformRequest } from "./api/v2-platform.api";
+import { handleV2InternalRequest } from "./api/v2-internal.api";
 import { handleV2Request } from "./api/v2.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
+import { runStartupBootstrap } from "./v2/platform-bootstrap.service";
 import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
 import { toHttpResponse } from "./utils/errors";
 import { corsHeaders } from "./utils/http";
@@ -246,10 +248,13 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (pathname.startsWith("/v2/")) {
+    if (pathname.startsWith("/v2/internal/")) {
+      return withCors(await handleV2InternalRequest(request), request);
+    }
     if (
       pathname.startsWith("/v2/platform/") ||
       pathname.startsWith("/v2/admin/") ||
-      pathname.startsWith("/v2/auth/oidc/")
+      pathname.startsWith("/v2/auth/")
     ) {
       return withCors(await handleV2PlatformRequest(request), request);
     }
@@ -272,6 +277,7 @@ async function router(request: Request): Promise<Response> {
 
 async function main(): Promise<void> {
   await initDb();
+  await runStartupBootstrap();
   Bun.serve({
     port: config.port,
     fetch: (request: Request) => router(request).catch((error) => toHttpResponse(error)),

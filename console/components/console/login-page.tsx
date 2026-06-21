@@ -11,18 +11,19 @@ import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
+  buildGitHubStartUrl,
   buildOidcStartUrl,
-  fetchOidcProviders,
+  fetchAuthProviders,
   issueLoginToken,
   loginUser,
-  type V2OidcProvider,
+  type V2AuthProvider,
 } from "@/lib/api-v2";
 
 export function LoginPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const { session, saveSession, clearSession, isLoggedIn } = useUserSession();
   const [form, setForm] = React.useState({ user_id: "user123", login_token: "" });
-  const [oidcProviders, setOidcProviders] = React.useState<V2OidcProvider[]>([]);
+  const [authProviders, setAuthProviders] = React.useState<V2AuthProvider[]>([]);
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -38,15 +39,15 @@ export function LoginPage() {
         userId,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });
-      setStatusMessage(`Signed in via OIDC as ${userId}.`);
+      setStatusMessage(`Signed in as ${userId}.`);
       window.history.replaceState({}, "", "/login");
     }
   }, [saveSession]);
 
   React.useEffect(() => {
-    void fetchOidcProviders(connection)
-      .then((response) => setOidcProviders(response.items))
-      .catch(() => setOidcProviders([]));
+    void fetchAuthProviders(connection)
+      .then((response) => setAuthProviders(response.items))
+      .catch(() => setAuthProviders([]));
   }, [connection]);
 
   async function handleIssueToken() {
@@ -89,7 +90,7 @@ export function LoginPage() {
   return (
     <PageFrame
       title="User Sign In"
-      description="Sign in with OIDC or a one-time login token to approve agent authorization requests and high-risk capability confirmations."
+      description="Sign in with GitHub, OIDC, or a one-time login token to approve agent authorization requests and high-risk capability confirmations."
     >
       <ConnectionPanel
         draft={draft}
@@ -136,17 +137,21 @@ export function LoginPage() {
             </div>
           </form>
 
-          {oidcProviders.length > 0 ? (
+          {authProviders.length > 0 ? (
             <div className="space-y-3 border-t border-slate-200 pt-4">
-              <p className="text-sm font-medium text-slate-700">Sign in with OIDC</p>
+              <p className="text-sm font-medium text-slate-700">Sign in with identity provider</p>
               <div className="flex flex-wrap gap-2">
-                {oidcProviders.map((provider) => (
+                {authProviders.map((provider) => (
                   <Button
-                    key={provider.name}
+                    key={`${provider.type}:${provider.name}`}
                     type="button"
                     variant="secondary"
                     onClick={() => {
                       const redirectAfter = `${window.location.origin}/login`;
+                      if (provider.type === "github") {
+                        window.location.href = buildGitHubStartUrl(connection, redirectAfter);
+                        return;
+                      }
                       window.location.href = buildOidcStartUrl(connection, provider.name, redirectAfter);
                     }}
                   >

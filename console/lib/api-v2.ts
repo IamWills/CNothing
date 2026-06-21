@@ -416,6 +416,22 @@ export async function migrateKvToCredential(
   );
 }
 
+export type V2AuthProvider = {
+  type: "github" | "oidc";
+  name: string;
+  display_name: string;
+  start_path: string;
+};
+
+export async function fetchAuthProviders(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: V2AuthProvider[] }>(connection, "/v2/auth/providers");
+}
+
+export function buildGitHubStartUrl(connection: ConsoleConnection, redirectAfter: string) {
+  const params = new URLSearchParams({ redirect_after: redirectAfter });
+  return `${normalizeBaseUrl(connection.baseUrl)}/v2/auth/github/start?${params.toString()}`;
+}
+
 export async function fetchOidcProviders(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V2OidcProvider[] }>(connection, "/v2/auth/oidc/providers");
 }

@@ -5,6 +5,9 @@ import { parseJsonBody } from "../utils/http";
 import { getV1SunsetDate, v1DeprecationMeta } from "../v2/deprecation";
 import { kvMigrationService } from "../v2/kv-migration.service";
 import { oidcService } from "../v2/oidc.service";
+import { githubOAuthService } from "../v2/github-oauth.service";
+import { listAuthProviders } from "../v2/auth-providers.service";
+import { bootstrapV2Platform } from "../v2/platform-bootstrap.service";
 import { readRequiredString } from "../v2/agent-auth";
 import { listAgents, listCapabilities, listConnectors, listGrantSummaries } from "../v2/v2.repository";
 
@@ -23,11 +26,12 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
   const baseUrl = inferBaseUrl(request);
 
   if (request.method === "GET" && path === "/v2/platform/status") {
-    const [agents, capabilities, connectors, grants] = await Promise.all([
+    const [agents, capabilities, connectors, grants, authProviders] = await Promise.all([
       listAgents(),
       listCapabilities(),
       listConnectors(),
       listGrantSummaries(),
+      listAuthProviders(baseUrl),
     ]);
 
     return Response.json({
@@ -40,6 +44,13 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
         jwks: `${baseUrl}/v2/jwks`,
       },
       v1: v1DeprecationMeta(baseUrl),
+      auth: {
+        providers: authProviders.items,
+        github_oauth: githubOAuthService.isEnabled(),
+        auto_bootstrap: config.v2AutoBootstrap,
+        auto_grant_low_risk: config.autoGrantLowRiskCapabilities,
+        platform_agent: config.platformAgentName,
+      },
       counts: {
         agents: agents.length,
         capabilities: capabilities.length,
@@ -53,8 +64,35 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
     return Response.json(kvMigrationService.getMigrationGuide());
   }
 
+  if (request.method === "GET" && path === "/v2/auth/providers") {
+    return Response.json(await listAuthProviders(baseUrl));
+  }
+
   if (request.method === "GET" && path === "/v2/auth/oidc/providers") {
     return Response.json(await oidcService.listPublicProviders());
+  }
+
+  if (request.method === "GET" && path === "/v2/auth/github/start") {
+    const redirectAfter = url.searchParams.get("redirect_after")?.trim() || undefined;
+    const result = await githubOAuthService.startAuthorization({
+      apiBaseUrl: baseUrl,
+      redirectAfter,
+    });
+    return Response.redirect(result.authorization_url, 302);
+  }
+
+  if (request.method === "GET" && path === "/v2/auth/github/callback") {
+    const code = url.searchParams.get("code")?.trim();
+    const state = url.searchParams.get("state")?.trim();
+    if (!code || !state) {
+      throw new ValidationError("code and state are required", { error_code: "missing_field" });
+    }
+    const result = await githubOAuthService.handleCallback({
+      code,
+      state,
+      apiBaseUrl: baseUrl,
+    });
+    return Response.redirect(result.redirect_url, 302);
   }
 
   if (
@@ -119,6 +157,16 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
       record_key: readRequiredString(body, "record_key"),
       connector_id: readRequiredString(body, "connector_id"),
       owner_user_id: readRequiredString(body, "owner_user_id"),
+    });
+    return Response.json(result);
+  }
+
+  if (request.method === "POST" && path === "/v2/admin/platform/bootstrap") {
+    requireAdminAccess(request);
+    const body = (await parseJsonBody(request).catch(() => ({}))) as Record<string, unknown>;
+    const result = await bootstrapV2Platform({
+      apiBaseUrl: baseUrl,
+      force: body.force === true,
     });
     return Response.json(result);
   }

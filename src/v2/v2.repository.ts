@@ -183,6 +183,14 @@ export async function findAgentById(id: string): Promise<AgentRecord | null> {
   return result.rows[0] ? mapAgentRow(result.rows[0]) : null;
 }
 
+export async function findAgentByName(name: string): Promise<AgentRecord | null> {
+  const result = await pool.query(
+    `SELECT * FROM cap_agents WHERE name = $1 AND status = 'active' ORDER BY created_at ASC LIMIT 1`,
+    [name],
+  );
+  return result.rows[0] ? mapAgentRow(result.rows[0]) : null;
+}
+
 export async function listAgents(ownerUserId?: string): Promise<AgentRecord[]> {
   const result = ownerUserId
     ? await pool.query(`SELECT * FROM cap_agents WHERE owner_user_id = $1 ORDER BY created_at DESC`, [
@@ -220,8 +228,32 @@ export async function createConnector(input: {
   return mapConnectorRow(result.rows[0]);
 }
 
+export async function updateConnectorCallbackUrl(
+  connectorId: string,
+  callbackUrl: string,
+): Promise<ConnectorRecord | null> {
+  const result = await pool.query(
+    `
+      UPDATE cap_connectors
+      SET callback_url = $2, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [connectorId, callbackUrl],
+  );
+  return result.rows[0] ? mapConnectorRow(result.rows[0]) : null;
+}
+
 export async function findConnectorById(id: string): Promise<ConnectorRecord | null> {
   const result = await pool.query(`SELECT * FROM cap_connectors WHERE id = $1`, [id]);
+  return result.rows[0] ? mapConnectorRow(result.rows[0]) : null;
+}
+
+export async function findConnectorByProvider(provider: string): Promise<ConnectorRecord | null> {
+  const result = await pool.query(
+    `SELECT * FROM cap_connectors WHERE provider = $1 AND status = 'active' ORDER BY created_at ASC LIMIT 1`,
+    [provider],
+  );
   return result.rows[0] ? mapConnectorRow(result.rows[0]) : null;
 }
 

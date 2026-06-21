@@ -148,6 +148,15 @@
           "issuer": { "type": "string" },
           "scopes": { "type": "string" }
         }
+      },
+      "AuthProvider": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["github", "oidc"] },
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "start_path": { "type": "string", "format": "uri" }
+        }
       }
     }
   },
@@ -471,6 +480,105 @@
         },
         "responses": {
           "200": { "description": "Migration result with credential_id" }
+        }
+      }
+    },
+    "/v2/auth/providers": {
+      "get": {
+        "tags": ["platform", "auth"],
+        "summary": "List all sign-in providers (GitHub OAuth2 + OIDC)",
+        "responses": {
+          "200": {
+            "description": "Auth providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "const": true },
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/AuthProvider" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/auth/github/start": {
+      "get": {
+        "tags": ["platform", "auth"],
+        "summary": "Start GitHub OAuth2 sign-in (redirects to GitHub)",
+        "parameters": [
+          { "name": "redirect_after", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirect to GitHub authorization" }
+        }
+      }
+    },
+    "/v2/auth/github/callback": {
+      "get": {
+        "tags": ["platform", "auth"],
+        "summary": "GitHub OAuth2 callback — exchanges code for user session",
+        "parameters": [
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirect to console with session_token" }
+        }
+      }
+    },
+    "/v2/admin/platform/bootstrap": {
+      "post": {
+        "tags": ["platform", "admin"],
+        "summary": "Bootstrap built-in platform connector, capabilities, and default agent",
+        "security": [{ "AdminBearer": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "force": { "type": "boolean", "description": "Reserved for future re-sync" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Bootstrap result including optional new agent access_token" }
+        }
+      }
+    },
+    "/v2/internal/connectors/platform": {
+      "post": {
+        "tags": ["platform", "internal"],
+        "summary": "Built-in platform connector execution endpoint",
+        "security": [{ "CapabilityGrant": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["capability", "input"],
+                "properties": {
+                  "capability": { "type": "string" },
+                  "input": { "type": "object" },
+                  "user_id": { "type": "string" },
+                  "agent_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Capability result" }
         }
       }
     },

@@ -1,3 +1,5 @@
+import { MCP_V2_AUTH_WORKFLOW_URI } from "./mcp-v2-auth-workflow";
+
 /**
  * MCP initialize instructions — returned to AI agents on connect.
  * v2 capability platform is primary; v1 AuthAI/KV remains for backward compatibility only.
@@ -5,21 +7,31 @@
 export const MCP_SERVER_INSTRUCTIONS = `
 # CNothing v2 — Agent Capability Authorization Platform
 
-**Agent Never Owns Secrets. Agent Only Receives Permissions.**
+**READ FIRST:** MCP tools run on the **agent** side. **Humans never log in to GitHub through MCP.**
+GitHub sign-in happens in the **user's browser** at the \`approval_url\` from \`request_authorization\`.
 
-CNothing v2 lets AI agents invoke **capabilities** (e.g. \`github.list_repositories\`, \`search.query\`) without ever seeing API keys, OAuth tokens, \`user_id\`, or user session tokens.
+Full step-by-step workflow (GitHub + capabilities): MCP resource **${MCP_V2_AUTH_WORKFLOW_URI}**
+(or \`resources/read\` with that URI immediately after \`initialize\`).
 
-## Correct agent workflow (never ask the user for tokens)
+## Agent vs human — who does what
+
+| | Agent (you) | Human user |
+| --- | --- | --- |
+| Auth | \`agent_access_token\` only | Browser session on cnothing.com (GitHub OAuth) |
+| GitHub login | **Cannot** — no MCP tool for this | Opens \`approval_url\`, clicks **Sign in with GitHub**, then **Allow** |
+| Secrets | **Never** receive GitHub token, session_token, or user_id from user | Never paste tokens into chat |
+
+## Correct workflow (5 steps)
 
 1. **Discover** — \`list_capabilities\`
-2. **Authorize** — \`request_authorization\` with \`capabilities\` only (omit \`user_id\`)
-3. **Send the user the \`approval_url\`** from the response — user signs in with GitHub/OIDC in the browser and clicks Allow
-4. **Poll** — \`GET /v2/authorize/{id}\` until \`status\` is \`approved\`; read \`user_id\` from the response if needed
-5. **Invoke** — \`invoke_capability\` with \`capability\` + \`input\` only (omit \`user_id\` when a single grant exists)
+2. **Authorize** — \`request_authorization\` with \`capabilities\` only (**omit \`user_id\`**)
+3. **Send link** — give user \`authorization_request.approval_url\` (e.g. \`https://cnothing.com/authorize/{uuid}\`)
+4. **Poll** — \`GET /v2/authorize/{id}\` until \`status\` is \`approved\`
+5. **Invoke** — \`invoke_capability\` with \`capability\` + \`input\` (**omit \`user_id\`** when one grant exists)
 
-**Never ask the human for:** \`session_token\`, \`login_token\`, \`user_id\`, GitHub tokens, or CNothing client private keys.
+**Never ask the human for:** \`session_token\`, \`login_token\`, \`user_id\`, GitHub tokens, or CNothing private keys.
 
-Example authorization:
+### Example: request authorization
 
 \`\`\`json
 {
@@ -32,9 +44,9 @@ Example authorization:
 }
 \`\`\`
 
-Then tell the user: "Open this link to approve: {approval_url}"
+Say to the user: **"Open this link in your browser, sign in with GitHub if prompted, and click Allow: {approval_url}"**
 
-Example invoke (after approval):
+### Example: invoke (after approval)
 
 \`\`\`json
 {
@@ -47,15 +59,17 @@ Example invoke (after approval):
 }
 \`\`\`
 
-REST equivalent: \`POST /v2/capabilities/invoke\` with \`Authorization: Bearer agent_...\`.
+REST: \`POST /v2/capabilities/invoke\` with header \`Authorization: Bearer agent_...\`.
+
+## Do NOT use these for GitHub user login
+
+- \`authai_register\` / \`kv_save\` — deprecated v1; not user OAuth
+- \`GET /v2/auth/github/start\` — browser redirect only; not for agents
+- Console \`/login\` + copy \`session_token\` — never share tokens with the agent
 
 ## v1 AuthAI/KV (deprecated)
 
-Tools \`kv_save\`, \`kv_read\`, \`authai_register\`, and related AuthAI envelope tools are **deprecated**.
+Do not start new integrations on v1. Migration: \`GET /v2/platform/migration\`
 
-**Do not start new integrations on v1.** Use v2 capabilities instead.
-
-Migration guide: \`GET /v2/platform/migration\`
-
-Read \`/openapi-v2.json\`, \`/docs/mcp.md\`, and \`/standards/registration-hub\` for full details.
+Docs: \`/openapi-v2.json\`, \`${MCP_V2_AUTH_WORKFLOW_URI}\`, \`/getting-started.md\`
 `.trim();

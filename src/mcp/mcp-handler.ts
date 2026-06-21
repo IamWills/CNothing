@@ -1,5 +1,6 @@
 import config from "../config";
 import { MCP_SERVER_INSTRUCTIONS } from "../catalog/mcp-instructions";
+import { MCP_V2_AUTH_WORKFLOW_URI } from "../catalog/mcp-v2-auth-workflow";
 import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
 import { KeyService } from "../core/key-service";
 import { CapabilityService } from "../v2/capability-service";
@@ -243,6 +244,8 @@ export function handleMcpInfo(baseUrl: string) {
     },
     discovery: {
       manifest: `${baseUrl}/mcp/manifest`,
+      v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
+      openapi_v2: `${baseUrl}/openapi-v2.json`,
       skills_index: `${baseUrl}/skills/index.json`,
       skills_text: `${baseUrl}/skills.txt`,
       getting_started: `${baseUrl}/getting-started.md`,

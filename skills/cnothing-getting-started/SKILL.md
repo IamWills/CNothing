@@ -23,19 +23,23 @@ Use this skill when you are new to CNothing. **Start with v2** — agents invoke
 
 ## v2 Minimal Flow (Recommended)
 
+**GitHub sign-in is browser-only.** Agent sends `approval_url`; user opens it and clicks Sign in with GitHub.
+
 1. Discover capabilities — MCP `list_capabilities` or `GET /v2/capabilities`.
 2. Register agent — Admin `POST /v2/agents/register` → save `access_token` (`agent_...`).
-3. User authorization — Agent `POST /v2/authorize/request` → user approves in Console `/authorize/:id`.
-4. Invoke — `POST /v2/capabilities/invoke` or MCP `invoke_capability`:
+3. **User authorization** — MCP `request_authorization` (**omit user_id**) → send user `approval_url` → user GitHub login + Allow in browser → agent polls `GET /v2/authorize/{id}`.
+4. Invoke — MCP `invoke_capability` (**omit user_id** when one grant exists):
 
 ```json
 {
-  "capability": "github.create_issue",
-  "input": { "repo": "org/repo", "title": "Bug report" }
+  "capability": "github.list_repositories",
+  "input": { "per_page": 10 }
 }
 ```
 
 5. Audit — `GET /v2/audit` for policy decisions and outcomes.
+
+MCP resource with full GitHub flow: **`resource://cnothing/v2-user-authorization`**
 
 ### Agent SDK
 

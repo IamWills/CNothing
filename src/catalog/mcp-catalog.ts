@@ -1,5 +1,9 @@
 import config from "../config";
 import type { McpResourceDescriptor, McpToolDescriptor } from "./catalog.entity";
+import {
+  MCP_V2_AUTH_WORKFLOW_MARKDOWN,
+  MCP_V2_AUTH_WORKFLOW_URI,
+} from "./mcp-v2-auth-workflow";
 
 const V1_DEPRECATED_TOOL = {
   deprecated: true,
@@ -10,23 +14,28 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "invoke_capability",
     description:
-      "Primary v2 agent API. Invoke a registered capability by business name. Agent never receives secrets — CNothing validates authorization, applies policy, and forwards to the Connector.",
+      "Primary v2 agent API. Invoke a registered capability by business name (e.g. github.list_repositories, search.query). Requires a prior user Grant from request_authorization — user approves in browser at approval_url (GitHub sign-in happens there, NOT via MCP). Agent never receives secrets. Omit user_id when this agent has a single active grant for the capability.",
     inputSchema: {
       type: "object",
       properties: {
         capability: {
           type: "string",
-          description: "Capability name, e.g. github.create_issue",
-          examples: ["github.create_issue"],
+          description: "Capability name, e.g. github.list_repositories",
+          examples: ["github.list_repositories", "search.query"],
         },
         input: {
           type: "object",
           description: "Business input for the capability.",
-          examples: [{ repo: "org/repo", title: "Bug report" }],
+          examples: [{ per_page: 10 }, { query: "CNothing", limit: 5 }],
+        },
+        agent_access_token: {
+          type: "string",
+          description: "Agent bearer token from POST /v2/agents/register.",
         },
         user_id: {
           type: "string",
-          description: "Optional user context override. Defaults to agent owner.",
+          description:
+            "Optional. Only when multiple users granted the same capability to this agent. Do NOT ask the user for user_id — use request_authorization first.",
         },
         reason: {
           type: "string",
@@ -37,17 +46,17 @@ const MCP_TOOLS: McpToolDescriptor[] = [
           description: "Retry invoke after user approved a pending confirmation.",
         },
       },
-      required: ["capability"],
+      required: ["agent_access_token", "capability"],
     },
     useCases: [
-      "Execute an authorized third-party action without handling API keys or tokens.",
+      "After user approved capabilities at approval_url, call GitHub or Search without handling tokens.",
       "Retry a capability after user confirmation via confirmation_id.",
     ],
   },
   {
     name: "request_authorization",
     description:
-      "OAuth-style flow: request user approval for one or more capabilities. Returns an approval_url for the user to review and grant access.",
+      "Start OAuth-style capability authorization. Returns approval_url (https://cnothing.com/authorize/{id}). Send that URL to the human — they sign in with GitHub IN THE BROWSER on that page and click Allow. Agent cannot log in to GitHub via MCP. Omit user_id; identity binds at approve time. Read resource://cnothing/v2-user-authorization for full GitHub flow.",
     inputSchema: {
       type: "object",
       properties: {
@@ -55,15 +64,20 @@ const MCP_TOOLS: McpToolDescriptor[] = [
         capabilities: {
           type: "array",
           items: { type: "string" },
-          description: "Capability names to request, e.g. github.create_issue",
+          description: "Capability names to request, e.g. github.list_repositories, search.query",
         },
-        user_id: { type: "string" },
-        reason: { type: "string" },
+        user_id: {
+          type: "string",
+          description: "Optional and usually omitted. Do NOT ask the user for user_id.",
+        },
+        reason: { type: "string", description: "Shown to the user on the approval page." },
         state: { type: "string" },
       },
       required: ["agent_access_token", "capabilities"],
     },
-    useCases: ["Start OAuth-style capability authorization before invoking protected actions."],
+    useCases: [
+      "Before first invoke when grant_not_found — send user approval_url for GitHub sign-in + Allow.",
+    ],
   },
   {
     name: "list_capabilities",
@@ -412,6 +426,13 @@ const MCP_TOOLS: McpToolDescriptor[] = [
 
 const MCP_RESOURCES: McpResourceDescriptor[] = [
   {
+    uri: MCP_V2_AUTH_WORKFLOW_URI,
+    name: "v2 User Authorization & GitHub Sign-In",
+    description:
+      "REQUIRED READING: How humans sign in with GitHub on cnothing.com and authorize agents. MCP has no GitHub login tool — users open approval_url in a browser.",
+    mimeType: "text/markdown",
+  },
+  {
     uri: "resource://keyservice/protocol",
     name: "Protocol Overview",
     description: "CNothing AuthAI + KV protocol endpoints and flow summary.",
@@ -452,6 +473,14 @@ export function listMcpResources(): McpResourceDescriptor[] {
 }
 
 export function readMcpResource(uri: string): { uri: string; mimeType: string; text: string } {
+  if (uri === MCP_V2_AUTH_WORKFLOW_URI) {
+    return {
+      uri,
+      mimeType: "text/markdown",
+      text: MCP_V2_AUTH_WORKFLOW_MARKDOWN,
+    };
+  }
+
   if (uri === "resource://keyservice/mcp-manifest") {
     return {
       uri,
@@ -490,21 +519,36 @@ export function readMcpResource(uri: string): { uri: string; mimeType: string; t
       text: JSON.stringify(
         {
           getting_started_markdown: "/getting-started.md",
+          v2_auth_workflow_resource: MCP_V2_AUTH_WORKFLOW_URI,
+          v2_auth_workflow_markdown_path: "/skills/markdown/cnothing-v2-capabilities/SKILL.md",
           recommended_flow: [
-            "Fetch /openapi-v2.json for the v2 capability platform API.",
-            "Register connector + capabilities (see examples/github-connector/bootstrap.ts).",
-            "Register agent via POST /v2/agents/register and obtain agent access token.",
-            "User approves capabilities via Console /authorize/:id or POST /v2/grants.",
-            "Agent invokes POST /v2/capabilities/invoke or MCP invoke_capability.",
+            "READ resource://cnothing/v2-user-authorization — GitHub login is browser-only at approval_url.",
+            "MCP request_authorization (omit user_id) → send user approval_url.",
+            "User: open link → Sign in with GitHub → Allow capabilities.",
+            "Agent: poll GET /v2/authorize/{id} until approved.",
+            "MCP invoke_capability (omit user_id when single grant).",
           ],
+          github_sign_in: {
+            agent_must_not: [
+              "Call GET /v2/auth/github/start (browser redirect only)",
+              "Ask user for session_token, login_token, or user_id",
+              "Use authai_register for user GitHub OAuth",
+            ],
+            user_must: [
+              "Open approval_url in a web browser",
+              "Click Sign in with GitHub on the authorize page",
+              "Click Allow selected capabilities",
+            ],
+          },
           v1_legacy_flow: [
             "Deprecated: /v1/authai/register → kv.save/kv.read envelope flow.",
             "Migration guide: GET /v2/platform/migration",
           ],
           demo_paths: {
             homepage: "/",
+            authorize_example: "/authorize/{authorization_request_id}",
             skills_index: "/skills/index.json",
-            standards: "/standards",
+            openapi_v2: "/openapi-v2.json",
           },
         },
         null,
@@ -534,7 +578,18 @@ export function readMcpResource(uri: string): { uri: string; mimeType: string; t
     mimeType: "application/json",
     text: JSON.stringify(
       {
-        protocol: "authai-kv",
+        primary: "v2-capability-platform",
+        v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
+        v2_endpoints: {
+          invoke: "POST /v2/capabilities/invoke",
+          authorize_request: "POST /v2/authorize/request",
+          authorize_status: "GET /v2/authorize/{id}",
+          capabilities: "GET /v2/capabilities",
+          openapi: "/openapi-v2.json",
+        },
+        user_github_sign_in:
+          "Browser only at https://cnothing.com/authorize/{id} — NOT via MCP tools. See v2_auth_workflow resource.",
+        protocol_v1_legacy: "authai-kv",
         public_key_endpoint: "/v1/authai/public-key",
         register_endpoint: "/v1/authai/register",
         refresh_endpoint: "/v1/authai/refresh",

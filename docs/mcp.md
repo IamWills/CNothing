@@ -8,23 +8,72 @@
 - `GET /mcp/sse`
 - `POST /mcp/message`
 
+连接 MCP 后，`initialize` 响应中的 **instructions** 以及 MCP 资源 **`resource://cnothing/v2-user-authorization`** 说明完整授权流程。**Agent 必读。**
+
+---
+
+## 最重要：MCP 不能用来给用户登录 GitHub
+
+| 角色 | 做什么 | 在哪里 |
+| --- | --- | --- |
+| **Agent** | `request_authorization` → 把 `approval_url` 发给用户 → 轮询状态 → `invoke_capability` | `POST /mcp`（使用 **agent access token**） |
+| **用户（人类）** | 在浏览器打开 `approval_url` → 点 **Sign in with GitHub** → 点 **Allow** | **https://cnothing.com/authorize/{id}** |
+
+**MCP 没有任何工具可以让 Agent 替用户登录 GitHub。**  
+GitHub OAuth 只发生在用户的浏览器里，不在 Agent 对话里。
+
+**Agent 绝不应向用户索要：** `session_token`、`login_token`、`user_id`、GitHub token。
+
+---
+
 ## v2 工具（推荐）
 
 | 工具 | 用途 |
 | --- | --- |
-| `invoke_capability` | **主 API**：按业务名调用能力（如 `github.create_issue`） |
+| `request_authorization` | 申请能力授权，返回 `approval_url` 给用户在浏览器打开 |
+| `invoke_capability` | 用户批准后调用能力（如 `github.list_repositories`） |
 | `list_capabilities` | 发现已注册能力 |
-| `request_authorization` | Agent 向用户申请能力授权（OAuth 风格） |
 
-Agent 只需 `agent_access_token`，传入 `capability` + `input`，**永不接触 API key**。
+### 完整流程（GitHub 为例）
+
+**1. Agent 申请授权（不要传 `user_id`）**
+
+```json
+{
+  "name": "request_authorization",
+  "arguments": {
+    "agent_access_token": "agent_...",
+    "capabilities": ["github.list_repositories", "search.query"],
+    "reason": "代表您访问 GitHub 仓库并搜索文档"
+  }
+}
+```
+
+**2. Agent 只发一个链接给用户**
+
+> 请在浏览器中打开此链接，按提示用 GitHub 登录并点击 Allow：  
+> `https://cnothing.com/authorize/{id}`
+
+**3. 用户在浏览器中**
+
+1. 打开上面的链接  
+2. 若未登录 → 在同一页点击 **Sign in with GitHub**（不要单独去 `/login` 复制 token）  
+3. 在 GitHub 授权 CNothing  
+4. 回到授权页，点击 **Allow selected capabilities**
+
+**4. Agent 轮询**
+
+`GET https://cnothing.com/v2/authorize/{id}`，直到 `status` 为 `approved`。
+
+**5. Agent 调用能力（通常无需 `user_id`）**
 
 ```json
 {
   "name": "invoke_capability",
   "arguments": {
     "agent_access_token": "agent_...",
-    "capability": "github.create_issue",
-    "input": { "repo": "org/repo", "title": "Bug report" }
+    "capability": "github.list_repositories",
+    "input": { "per_page": 10 }
   }
 }
 ```
@@ -33,12 +82,17 @@ REST 等价：`POST /v2/capabilities/invoke`，Header `Authorization: Bearer age
 
 完整规范见 [`/openapi-v2.json`](../openapi-v2.json)。
 
-### v2 典型流程
+### 常见误解
 
-1. `list_capabilities` — 发现可用能力
-2. `request_authorization` — 用户未授权时发起申请，用户在 Console `/authorize/:id` 批准
-3. `invoke_capability` — 携带 grant 调用业务 API
-4. 高风险能力可能返回 `pending: true`，用户确认后带 `confirmation_id` 重试
+| 误解 | 正确做法 |
+| --- | --- |
+| 「连上了 cnothing.com MCP 就能登录 GitHub」 | MCP 是 Agent API；用户登录在 **approval_url** 浏览器页 |
+| 让用户去 `/login` 复制 `session_token` | 已废弃；token 不得交给 Agent |
+| Agent 调用 `GET /v2/auth/github/start` | 仅供浏览器重定向，Agent 不要调用 |
+| 用 `authai_register` 做 GitHub 登录 | v1 客户端注册，与用户 GitHub OAuth 无关 |
+| 向用户要 `github:用户名` | 批准时自动绑定，无需用户提供 |
+
+---
 
 ## v1 工具（已废弃）
 
@@ -54,44 +108,10 @@ Console 迁移页：`/migration`
 
 ---
 
-## 第三方凭证流程（v1 遗留，Agent 必读）
+## MCP 资源
 
-> 仅在你维护 v1 KV 集成时需要。新集成请使用 v2 Connector + `invoke_capability`。
-
-`CNothing` 用于储存第三方服务的 API key 等敏感信息。Agent 最常搞混三把公钥：
-
-| 公钥 | MCP / HTTP | 用途 |
-| --- | --- | --- |
-| CNothing AuthAI 公钥 | `get_authai_public_key` | 协议 envelope 加密目标；**提供给第三方**让其把 API key 加密给 CNothing |
-| 客户端公钥 | `authai_register` 提交 | AuthAI 身份注册；解密 challenge；仅当凭证由**客户端后端**使用时作为 `recipient_public_key` |
-| 第三方服务公钥 | `kv_read` 的 `recipient_public_key` | 读取凭证供**第三方服务**鉴权时必须使用 |
-
-完整说明见 [protocol.md](./protocol.md) 中「第三方服务凭证：正确用法」。
-
-## 常见错误用法（v1 遗留）
-
-以下错误在 Searchengine 等第三方鉴权时**高频出现**：
-
-| 错误做法 | 典型后果 |
+| URI | 说明 |
 | --- | --- |
-| `kv_read` 的 `recipient_public_key` 填 **CNothing AuthAI 公钥** 或**客户端公钥**，但消费方是第三方 | 第三方 **`Failed to decrypt encrypted_key`** |
-| 将 `authenticate_agent` 的 **`api_key_envelope` 原样 `kv_save`** | 后续 **`Failed to decrypt encrypted_key`** |
-| 把整段 **`result_envelope_for_client` 当作第三方 `api_key_envelope`** | **`Decrypted envelope missing api_key`** |
-
-**v2 正确路径：** Connector 本地保管 `GITHUB_TOKEN` / `SLACK_BOT_TOKEN` 等；Agent 只调用 `invoke_capability`。
-
-## MCP Usage Pattern (v1 legacy)
-
-1. 调 `get_authai_public_key`
-2. 调 `authai_register`，提交客户端公钥
-3. 客户端后端解密 `challenge_for_client` 并构造 envelope
-4. AI 通过 `kv_save` / `kv_read` 转发密文
-
-公钥持有者挑战验证流程见 [protocol.md](./protocol.md)。
-
-## Discovery
-
-- MCP manifest: `/mcp/manifest`
-- OpenAPI v2: `/openapi-v2.json`
-- Platform status: `/v2/platform/status`
-- Skills: `/skills/index.json`
+| `resource://cnothing/v2-user-authorization` | **v2 用户授权 + GitHub 登录**（Markdown，Agent 必读） |
+| `resource://keyservice/getting-started` | 快速开始 JSON |
+| `resource://keyservice/protocol` | 协议与 v2 端点摘要 |

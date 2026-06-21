@@ -1,5 +1,6 @@
 import config from "../config";
 import { encryptOidcClientSecret } from "./oidc-crypto";
+import { GITHUB_OAUTH_SCOPES } from "./github-credential.service";
 import { pool } from "../db";
 import { randomUUID } from "node:crypto";
 
@@ -32,7 +33,7 @@ export async function ensureGitHubIdentityProvider(): Promise<string> {
       "https://github.com",
       clientId,
       encryptOidcClientSecret(clientSecret),
-      "read:user user:email",
+      GITHUB_OAUTH_SCOPES,
       JSON.stringify({ auth_type: "oauth2", provider: "github" }),
     ],
   );

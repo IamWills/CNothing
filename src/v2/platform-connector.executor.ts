@@ -1,10 +1,15 @@
 import config from "../config";
 import type { JsonObject } from "./v2.entity";
+import {
+  githubCredentialRequiredMessage,
+  isGitHubCapabilityEnabled,
+  resolveGitHubAccessToken,
+} from "./github-credential.service";
 
-async function githubRequest(path: string, init?: RequestInit) {
-  const token = config.githubToken;
+async function githubRequest(path: string, userId: string, init?: RequestInit) {
+  const token = await resolveGitHubAccessToken(userId);
   if (!token) {
-    throw new Error("GitHub token is not configured on the platform connector");
+    throw new Error(githubCredentialRequiredMessage(userId));
   }
 
   const response = await fetch(`https://api.github.com${path}`, {
@@ -78,6 +83,7 @@ export async function executePlatformCapability(input: {
       const type = String(input.input.type ?? "all");
       const data = await githubRequest(
         `/user/repos?per_page=${encodeURIComponent(String(perPage))}&type=${encodeURIComponent(type)}`,
+        input.user_id,
       );
       return { repositories: data };
     }
@@ -87,7 +93,7 @@ export async function executePlatformCapability(input: {
       if (!repo.includes("/")) {
         throw new Error("input.repo must be in owner/name format");
       }
-      const data = await githubRequest(`/repos/${repo}`);
+      const data = await githubRequest(`/repos/${repo}`, input.user_id);
       return { repository: data };
     }
 
@@ -101,14 +107,18 @@ export async function executePlatformCapability(input: {
       if (!title.trim()) {
         throw new Error("input.title is required");
       }
-      const data = await githubRequest(`/repos/${repo}/issues`, {
-        method: "POST",
-        body: JSON.stringify({
-          title,
-          body,
-          labels: Array.isArray(input.input.labels) ? input.input.labels : undefined,
-        }),
-      });
+      const data = await githubRequest(
+        `/repos/${repo}/issues`,
+        input.user_id,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title,
+            body,
+            labels: Array.isArray(input.input.labels) ? input.input.labels : undefined,
+          }),
+        },
+      );
       return {
         issue: data,
         issue_number: (data as { number?: number }).number,
@@ -181,11 +191,11 @@ export function listPlatformCapabilityDefinitions(): Array<{
     },
   ];
 
-  if (config.githubToken) {
+  if (isGitHubCapabilityEnabled()) {
     definitions.push(
       {
         name: "github.list_repositories",
-        description: "List GitHub repositories visible to the platform token",
+        description: "List GitHub repositories for the linked user account",
         capability_type: "QUERY" as const,
         risk_level: "LOW" as const,
         scopes: ["repo.read"],

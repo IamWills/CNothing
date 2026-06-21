@@ -28,6 +28,7 @@
     "console:start": "cd console && bun run start",
     "github:bootstrap": "bun run examples/github-connector/bootstrap.ts",
     "github:connector": "bun run examples/github-connector/index.ts",
+    "github:agent:register": "bun run examples/github-agent/register.ts",
     "slack:bootstrap": "bun run examples/slack-connector/bootstrap.ts",
     "slack:connector": "bun run examples/slack-connector/index.ts",
     "webhook:bootstrap": "bun run examples/webhook-connector/bootstrap.ts",

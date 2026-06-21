@@ -13,6 +13,7 @@ import {
 } from "./user-session";
 import { ensurePlatformGrantsForUser } from "./platform-bootstrap.service";
 import { ensureGitHubIdentityProvider } from "./github-identity.provider";
+import { GITHUB_OAUTH_SCOPES, storeGitHubOAuthCredential } from "./github-credential.service";
 
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -79,7 +80,7 @@ export class GitHubOAuthService {
     const params = new URLSearchParams({
       client_id: config.githubOAuth.clientId,
       redirect_uri: redirectUri,
-      scope: "read:user user:email",
+      scope: GITHUB_OAUTH_SCOPES,
       state,
       allow_signup: "true",
     });
@@ -117,6 +118,8 @@ export class GitHubOAuthService {
 
     const tokenPayload = (await tokenResponse.json().catch(() => null)) as {
       access_token?: string;
+      token_type?: string;
+      scope?: string;
       error?: string;
       error_description?: string;
     } | null;
@@ -142,6 +145,13 @@ export class GitHubOAuthService {
         name: profile.name,
         avatar_url: profile.avatar_url,
       },
+    });
+
+    await storeGitHubOAuthCredential({
+      userId,
+      accessToken: tokenPayload.access_token,
+      scope: tokenPayload.scope,
+      tokenType: tokenPayload.token_type,
     });
 
     const sessionToken = generateUserSessionToken();

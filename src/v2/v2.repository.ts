@@ -681,6 +681,80 @@ export async function storeCredential(input: {
   return id;
 }
 
+export type UserCredentialRecord = {
+  id: string;
+  connector_id: string;
+  owner_user_id: string;
+  encrypted_secret: Buffer;
+  metadata: JsonObject;
+};
+
+export async function findUserCredential(input: {
+  connector_id: string;
+  owner_user_id: string;
+}): Promise<UserCredentialRecord | null> {
+  const result = await pool.query(
+    `
+      SELECT * FROM cap_credentials
+      WHERE connector_id = $1 AND owner_user_id = $2
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    [input.connector_id, input.owner_user_id],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+  return {
+    id: String(row.id),
+    connector_id: String(row.connector_id),
+    owner_user_id: String(row.owner_user_id),
+    encrypted_secret: row.encrypted_secret as Buffer,
+    metadata: normalizeMetadata(row.metadata),
+  };
+}
+
+export async function upsertUserCredential(input: {
+  connector_id: string;
+  owner_user_id: string;
+  secret: Buffer;
+  metadata?: JsonObject;
+}): Promise<string> {
+  const existing = await findUserCredential({
+    connector_id: input.connector_id,
+    owner_user_id: input.owner_user_id,
+  });
+
+  const encrypted = encryptWithAes256Gcm({
+    plaintext: input.secret,
+    key: config.masterKey,
+  });
+  const payload = Buffer.concat([encrypted.iv, encrypted.tag, encrypted.ciphertext]);
+
+  if (existing) {
+    await pool.query(
+      `
+        UPDATE cap_credentials
+        SET encrypted_secret = $3, metadata = $4::jsonb, updated_at = NOW()
+        WHERE id = $1 AND connector_id = $2
+      `,
+      [existing.id, input.connector_id, payload, JSON.stringify(input.metadata ?? {})],
+    );
+    return existing.id;
+  }
+
+  const id = randomUUID();
+  await pool.query(
+    `
+      INSERT INTO cap_credentials (id, connector_id, owner_user_id, encrypted_secret, metadata)
+      VALUES ($1, $2, $3, $4, $5::jsonb)
+    `,
+    [id, input.connector_id, input.owner_user_id, payload, JSON.stringify(input.metadata ?? {})],
+  );
+  return id;
+}
+
 export async function createPendingConfirmation(input: {
   user_id: string;
   agent_id: string;

@@ -104,7 +104,13 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
       state,
       apiBaseUrl: baseUrl,
     });
-    return Response.redirect(result.redirect_url, 302);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: result.redirect_url,
+        "Set-Cookie": result.session_cookie,
+      },
+    });
   }
 
   if (
@@ -143,15 +149,13 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
       apiBaseUrl: baseUrl,
     });
 
-    const redirectTarget =
-      result.redirect_after ||
-      config.consoleUrl ||
-      `${baseUrl.replace(/\/+$/, "")}/login?session=${encodeURIComponent(result.session_token)}&user_id=${encodeURIComponent(result.user_id)}`;
-
-    const redirectUrl = new URL(redirectTarget);
-    redirectUrl.searchParams.set("session_token", result.session_token);
-    redirectUrl.searchParams.set("user_id", result.user_id);
-    return Response.redirect(redirectUrl.toString(), 302);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: result.redirect_url,
+        "Set-Cookie": result.session_cookie,
+      },
+    });
   }
 
   if (request.method === "GET" && path === "/v2/admin/migration/kv-inventory") {

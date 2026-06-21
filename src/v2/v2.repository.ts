@@ -375,6 +375,24 @@ export async function findActiveGrant(input: {
   return result.rows[0] ? mapGrantRow(result.rows[0]) : null;
 }
 
+export async function findActiveGrantsForAgentCapability(input: {
+  agent_id: string;
+  capability_id: string;
+}): Promise<GrantRecord[]> {
+  const result = await pool.query(
+    `
+      SELECT * FROM cap_grants
+      WHERE agent_id = $1
+        AND capability_id = $2
+        AND revoked = FALSE
+        AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY created_at DESC
+    `,
+    [input.agent_id, input.capability_id],
+  );
+  return result.rows.map(mapGrantRow);
+}
+
 export async function revokeGrant(grantId: string): Promise<GrantRecord | null> {
   const result = await pool.query(
     `
@@ -518,6 +536,24 @@ export async function findAuthorizationRequest(id: string): Promise<Authorizatio
     return { ...record, status: "expired" };
   }
   return record;
+}
+
+export async function bindAuthorizationRequestUser(input: {
+  id: string;
+  user_id: string;
+}): Promise<AuthorizationRequestRecord | null> {
+  const result = await pool.query(
+    `
+      UPDATE cap_authorization_requests
+      SET user_id = $2, updated_at = NOW()
+      WHERE id = $1
+        AND status = 'pending'
+        AND expires_at > NOW()
+      RETURNING *
+    `,
+    [input.id, input.user_id],
+  );
+  return result.rows[0] ? mapAuthorizationRequestRow(result.rows[0]) : null;
 }
 
 export async function approveAuthorizationRequest(input: {

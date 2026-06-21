@@ -20,6 +20,7 @@ import {
   verifyOidcIdToken,
 } from "./oidc-crypto";
 import { generateUserSessionToken, hashSessionToken } from "./user-session";
+import { buildUserSessionCookie } from "./session-cookie";
 import config from "../config";
 
 export class OidcService {
@@ -163,6 +164,11 @@ export class OidcService {
       user_id: session.user_id,
       expires_at: session.expires_at,
       redirect_after: consumed.redirect_after,
+      redirect_url:
+        consumed.redirect_after?.trim() ||
+        config.consoleUrl ||
+        `${config.publicBaseUrl.replace(/\/+$/, "")}/login`,
+      session_cookie: buildUserSessionCookie(sessionToken),
     };
   }
 }

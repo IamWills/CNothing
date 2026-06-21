@@ -10,6 +10,12 @@ type StoredUserSession = {
   expiresAt: string;
 };
 
+type SyncSessionInput = {
+  userId: string;
+  expiresAt: string;
+  sessionToken?: string;
+};
+
 export function useUserSession() {
   const [session, setSession] = React.useState<StoredUserSession | null>(null);
 
@@ -33,6 +39,14 @@ export function useUserSession() {
     setSession(next);
   }
 
+  function syncSessionFromServer(input: SyncSessionInput) {
+    saveSession({
+      userId: input.userId,
+      expiresAt: input.expiresAt,
+      sessionToken: input.sessionToken ?? "cookie",
+    });
+  }
+
   function clearSession() {
     window.localStorage.removeItem(STORAGE_KEY);
     setSession(null);
@@ -41,8 +55,9 @@ export function useUserSession() {
   return {
     session,
     saveSession,
+    syncSessionFromServer,
     clearSession,
-    isLoggedIn: Boolean(session?.sessionToken),
+    isLoggedIn: Boolean(session?.userId),
   };
 }
 

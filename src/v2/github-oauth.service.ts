@@ -15,6 +15,7 @@ import { ensurePlatformGrantsForUser } from "./platform-bootstrap.service";
 import { ensureSearchGrantsForUser } from "./search-bootstrap.service";
 import { ensureGitHubIdentityProvider } from "./github-identity.provider";
 import { GITHUB_OAUTH_SCOPES, storeGitHubOAuthCredential } from "./github-credential.service";
+import { buildUserSessionCookie } from "./session-cookie";
 
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -32,20 +33,12 @@ function generateOAuthState(): string {
   return encodeBase64Url(randomBytes(24));
 }
 
-function buildRedirectAfterLogin(input: {
-  sessionToken: string;
-  userId: string;
-  redirectAfter?: string | null;
-}): string {
-  const redirectTarget =
+function buildRedirectAfterLogin(input: { redirectAfter?: string | null }): string {
+  return (
     input.redirectAfter?.trim() ||
     config.consoleUrl ||
-    "https://cnothing.com/login";
-
-  const redirectUrl = new URL(redirectTarget);
-  redirectUrl.searchParams.set("session_token", input.sessionToken);
-  redirectUrl.searchParams.set("user_id", input.userId);
-  return redirectUrl.toString();
+    `${config.publicBaseUrl.replace(/\/+$/, "")}/login`
+  );
 }
 
 export class GitHubOAuthService {
@@ -174,10 +167,9 @@ export class GitHubOAuthService {
       user_id: session.user_id,
       expires_at: session.expires_at,
       redirect_url: buildRedirectAfterLogin({
-        sessionToken,
-        userId: session.user_id,
         redirectAfter: consumed.redirect_after,
       }),
+      session_cookie: buildUserSessionCookie(sessionToken),
     };
   }
 

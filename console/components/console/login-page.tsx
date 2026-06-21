@@ -21,7 +21,7 @@ import {
 
 export function LoginPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const { session, saveSession, clearSession, isLoggedIn } = useUserSession();
+  const { session, saveSession, syncSessionFromServer, clearSession, isLoggedIn } = useUserSession();
   const [form, setForm] = React.useState({ user_id: "user123", login_token: "" });
   const [authProviders, setAuthProviders] = React.useState<V2AuthProvider[]>([]);
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null);
@@ -30,19 +30,30 @@ export function LoginPage() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionToken = params.get("session_token")?.trim();
-    const userId = params.get("user_id")?.trim();
-    if (sessionToken && userId) {
-      saveSession({
-        sessionToken,
-        userId,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    void fetchAuthMe(connection)
+      .then((response) => {
+        syncSessionFromServer({
+          userId: response.user_id,
+          expiresAt: response.expires_at,
+        });
+        setStatusMessage(`Signed in as ${response.user_id}.`);
+      })
+      .catch(() => {
+        // Legacy fallback: session_token in URL from older redirects.
+        const params = new URLSearchParams(window.location.search);
+        const sessionToken = params.get("session_token")?.trim();
+        const userId = params.get("user_id")?.trim();
+        if (sessionToken && userId) {
+          saveSession({
+            sessionToken,
+            userId,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          });
+          setStatusMessage(`Signed in as ${userId}.`);
+          window.history.replaceState({}, "", "/login");
+        }
       });
-      setStatusMessage(`Signed in as ${userId}.`);
-      window.history.replaceState({}, "", "/login");
-    }
-  }, [saveSession]);
+  }, [connection, saveSession, syncSessionFromServer]);
 
   React.useEffect(() => {
     void fetchAuthProviders(connection)
@@ -78,6 +89,11 @@ export function LoginPage() {
         sessionToken: response.session_token,
         userId: response.user_id,
         expiresAt: response.expires_at,
+      });
+      syncSessionFromServer({
+        userId: response.user_id,
+        expiresAt: response.expires_at,
+        sessionToken: response.session_token,
       });
       setStatusMessage(`Signed in as ${response.user_id}.`);
     } catch (error) {

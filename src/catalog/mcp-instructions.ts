@@ -7,22 +7,43 @@ export const MCP_SERVER_INSTRUCTIONS = `
 
 **Agent Never Owns Secrets. Agent Only Receives Permissions.**
 
-CNothing v2 lets AI agents invoke **capabilities** (e.g. \`github.create_issue\`, \`slack.post_message\`) without ever seeing API keys or tokens. CNothing validates grants and policy, issues a short-lived grant JWT, and forwards the request to a **Connector** that holds credentials locally.
+CNothing v2 lets AI agents invoke **capabilities** (e.g. \`github.list_repositories\`, \`search.query\`) without ever seeing API keys, OAuth tokens, \`user_id\`, or user session tokens.
 
-## Preferred v2 workflow
+## Correct agent workflow (never ask the user for tokens)
 
-1. **Discover** — \`list_capabilities\` to see registered capabilities.
-2. **Authorize** — \`request_authorization\` when the agent needs new permissions; the user approves in Console.
-3. **Invoke** — \`invoke_capability\` with \`agent_access_token\`, \`capability\`, and business \`input\`.
-4. **Confirm** — high-risk capabilities may require \`confirmation_id\` after user approval.
+1. **Discover** — \`list_capabilities\`
+2. **Authorize** — \`request_authorization\` with \`capabilities\` only (omit \`user_id\`)
+3. **Send the user the \`approval_url\`** from the response — user signs in with GitHub/OIDC in the browser and clicks Allow
+4. **Poll** — \`GET /v2/authorize/{id}\` until \`status\` is \`approved\`; read \`user_id\` from the response if needed
+5. **Invoke** — \`invoke_capability\` with \`capability\` + \`input\` only (omit \`user_id\` when a single grant exists)
 
-Example:
+**Never ask the human for:** \`session_token\`, \`login_token\`, \`user_id\`, GitHub tokens, or CNothing client private keys.
+
+Example authorization:
 
 \`\`\`json
 {
-  "capability": "github.create_issue",
-  "input": { "repo": "org/repo", "title": "Bug report" },
-  "agent_access_token": "agent_..."
+  "name": "request_authorization",
+  "arguments": {
+    "agent_access_token": "agent_...",
+    "capabilities": ["github.list_repositories", "search.query"],
+    "reason": "List your repos and search docs on your behalf"
+  }
+}
+\`\`\`
+
+Then tell the user: "Open this link to approve: {approval_url}"
+
+Example invoke (after approval):
+
+\`\`\`json
+{
+  "name": "invoke_capability",
+  "arguments": {
+    "agent_access_token": "agent_...",
+    "capability": "github.list_repositories",
+    "input": { "per_page": 10 }
+  }
 }
 \`\`\`
 
@@ -30,25 +51,11 @@ REST equivalent: \`POST /v2/capabilities/invoke\` with \`Authorization: Bearer a
 
 ## v1 AuthAI/KV (deprecated)
 
-Tools \`kv_save\`, \`kv_read\`, \`authai_register\`, and related AuthAI envelope tools are **deprecated** and sunset on the date in \`_deprecation.sunset_at\` on each response.
+Tools \`kv_save\`, \`kv_read\`, \`authai_register\`, and related AuthAI envelope tools are **deprecated**.
 
-**Do not start new integrations on v1.** Migrate to v2 capabilities:
-
-| v1 pattern | v2 replacement |
-| --- | --- |
-| Store credential in KV | Connector holds credential; grant scoped access |
-| \`kv_read\` + recipient_public_key | \`invoke_capability\` with business input |
-| \`authai_register\` client bootstrap | \`POST /v2/agents/register\` + user authorization |
+**Do not start new integrations on v1.** Use v2 capabilities instead.
 
 Migration guide: \`GET /v2/platform/migration\`
-
-## Common v1 mistakes (legacy integrations only)
-
-If you must touch v1 temporarily:
-
-- \`recipient_public_key\` on \`kv_read\` must be the **consumer's** public key (e.g. Searchengine), not CNothing AuthAI or client key.
-- Do not save reader-encrypted \`api_key_envelope\` directly via \`kv_save\` — backend must decrypt first.
-- Agents must never decrypt envelopes; forward ciphertext to trusted backends only.
 
 Read \`/openapi-v2.json\`, \`/docs/mcp.md\`, and \`/standards/registration-hub\` for full details.
 `.trim();

@@ -7,9 +7,12 @@ import {
   readRequiredString,
   requireAgentFromRequest,
 } from "../v2/agent-auth";
-import { requireAuthorizationActor } from "../v2/authorization-actor";
+import { requireAuthorizationActor, requireAuthorizationActorForRequest } from "../v2/authorization-actor";
+import { resolveAuthorizationUserId } from "../v2/authorization-user";
 import { AuthorizationService } from "../v2/authorization-service";
 import { CapabilityService } from "../v2/capability-service";
+import { linkSearchAccountForUser } from "../v2/search-credential.service";
+import { buildUserSessionCookie, clearUserSessionCookie } from "../v2/session-cookie";
 import { getCapabilityGrantJwks, getIssuerMetadata } from "../v2/jwks";
 import {
   isAdminRequest,
@@ -112,11 +115,20 @@ export async function handleV2Request(request: Request): Promise<Response> {
     const body = await parseJsonBody(request);
     const { userId, loginToken } = readRequiredLoginFields(body);
     const result = await userSessionService.login({ userId, loginToken });
-    return Response.json(result);
+    return Response.json(result, {
+      headers: {
+        "Set-Cookie": buildUserSessionCookie(result.session_token),
+      },
+    });
   }
 
   if (request.method === "POST" && path === "/v2/auth/logout") {
-    return Response.json(await userSessionService.logout(request));
+    const result = await userSessionService.logout(request);
+    return Response.json(result, {
+      headers: {
+        "Set-Cookie": clearUserSessionCookie(),
+      },
+    });
   }
 
   if (request.method === "GET" && path === "/v2/auth/me") {
@@ -209,7 +221,7 @@ export async function handleV2Request(request: Request): Promise<Response> {
     const userId =
       typeof body.user_id === "string" && body.user_id.trim()
         ? body.user_id.trim()
-        : agent.owner_user_id;
+        : resolveAuthorizationUserId(undefined);
 
     const result = await authorizationService.createRequest({
       agentId: agent.id,
@@ -241,12 +253,23 @@ export async function handleV2Request(request: Request): Promise<Response> {
     if (!authRequest) {
       throw new NotFoundError("Authorization request not found");
     }
-    await requireAuthorizationActor(request, authRequest.user_id);
+    const actor = await requireAuthorizationActorForRequest(request, authRequest);
+    const boundUserId = actor.kind === "user" ? actor.session.user_id : undefined;
     const result = await authorizationService.approveRequest({
       id: requestId,
       grantedCapabilities: readStringArray(body, "granted_capabilities"),
       grantExpiresAt: typeof body.grant_expires_at === "string" ? body.grant_expires_at : undefined,
+      boundUserId,
     });
+
+    if (boundUserId && result.grants.some((grant) => String(grant.capability).startsWith("search."))) {
+      try {
+        await linkSearchAccountForUser({ userId: boundUserId });
+      } catch {
+        // Search link is best-effort during authorization; invoke will prompt if still missing.
+      }
+    }
+
     return Response.json(result);
   }
 
@@ -257,7 +280,7 @@ export async function handleV2Request(request: Request): Promise<Response> {
     if (!authRequest) {
       throw new NotFoundError("Authorization request not found");
     }
-    await requireAuthorizationActor(request, authRequest.user_id);
+    await requireAuthorizationActorForRequest(request, authRequest);
     const result = await authorizationService.denyRequest(requestId);
     return Response.json(result);
   }

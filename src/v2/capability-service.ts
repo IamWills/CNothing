@@ -27,6 +27,7 @@ import {
   confirmPendingConfirmation,
   createPendingConfirmation,
   findActiveGrant,
+  findActiveGrantsForAgentCapability,
   findCapabilityByName,
   findConnectorById,
   findPendingConfirmation,
@@ -38,6 +39,45 @@ type InvokeContext = {
   agent: AgentRecord;
   body: InvokeCapabilityInput;
 };
+
+async function resolveInvokeUserId(input: {
+  agent: AgentRecord;
+  capabilityId: string;
+  explicitUserId?: string;
+}): Promise<string> {
+  const explicit = input.explicitUserId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const grants = await findActiveGrantsForAgentCapability({
+    agent_id: input.agent.id,
+    capability_id: input.capabilityId,
+  });
+  const userIds = [...new Set(grants.map((grant) => grant.user_id))];
+
+  if (userIds.length === 1) {
+    return userIds[0]!;
+  }
+
+  if (userIds.length === 0) {
+    throw new ForbiddenError(
+      "No active authorization grant for this capability. Call request_authorization and ask the user to open approval_url.",
+      {
+        error_code: "grant_not_found",
+        hint: "Do not ask the user for session_token, user_id, or login_token. Use request_authorization instead.",
+      },
+    );
+  }
+
+  throw new ForbiddenError(
+    "Multiple users have granted this capability to this agent. Specify user_id only when disambiguation is required.",
+    {
+      error_code: "ambiguous_user_grant",
+      user_ids: userIds,
+    },
+  );
+}
 
 export class CapabilityService {
   async invoke(context: InvokeContext): Promise<InvokeCapabilityResult | InvokePendingConfirmation> {
@@ -68,7 +108,11 @@ export class CapabilityService {
       throw new NotFoundError(`Connector unavailable for capability: ${capabilityName}`);
     }
 
-    const userId = context.body.user_id?.trim() || context.agent.owner_user_id;
+    const userId = await resolveInvokeUserId({
+      agent: context.agent,
+      capabilityId: capability.id,
+      explicitUserId: context.body.user_id,
+    });
     const input = (context.body.input ?? {}) as JsonObject;
 
     if (context.body.confirmation_id) {
@@ -105,6 +149,7 @@ export class CapabilityService {
         capability: capabilityName,
         user_id: userId,
         agent_id: context.agent.id,
+        hint: "Use request_authorization and have the user approve at approval_url. Never ask the user for tokens.",
       });
     }
 

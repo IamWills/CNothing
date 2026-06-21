@@ -1,6 +1,9 @@
 import { UnauthorizedError } from "../utils/errors";
-import type { UserSessionRecord } from "./v2.entity";
-import { isAdminRequest, requireUserSessionForUser } from "./user-session";
+import type { AuthorizationRequestRecord, UserSessionRecord } from "./v2.entity";
+import {
+  isPendingAuthorizationUserId,
+} from "./authorization-user";
+import { isAdminRequest, requireUserSession, requireUserSessionForUser } from "./user-session";
 
 export type AuthorizationActor =
   | { kind: "admin" }
@@ -23,6 +26,20 @@ export async function requireAuthorizationActor(
     }
     throw error;
   }
+}
+
+export async function requireAuthorizationActorForRequest(
+  request: Request,
+  authRequest: AuthorizationRequestRecord,
+): Promise<AuthorizationActor> {
+  if (isPendingAuthorizationUserId(authRequest.user_id)) {
+    if (isAdminRequest(request)) {
+      return { kind: "admin" };
+    }
+    const session = await requireUserSession(request);
+    return { kind: "user", session };
+  }
+  return requireAuthorizationActor(request, authRequest.user_id);
 }
 
 export async function requireUserScopedAction(

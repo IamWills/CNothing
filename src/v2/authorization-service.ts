@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../utils/errors";
 import type { AuthorizationRequestView } from "./v2.entity";
 import {
   approveAuthorizationRequest,
+  bindAuthorizationRequestUser,
   createAuthorizationRequest,
   createGrant,
   denyAuthorizationRequest,
@@ -10,6 +11,10 @@ import {
   findCapabilitiesByNames,
   findCapabilityByName,
 } from "./v2.repository";
+import {
+  isPendingAuthorizationUserId,
+  resolveAuthorizationUserId,
+} from "./authorization-user";
 
 function readStringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.length === 0) {
@@ -49,7 +54,7 @@ export class AuthorizationService {
     }
 
     const request = await createAuthorizationRequest({
-      user_id: input.userId,
+      user_id: resolveAuthorizationUserId(input.userId),
       agent_id: input.agentId,
       requested_capabilities: uniqueCapabilities,
       redirect_uri: input.redirectUri,
@@ -104,10 +109,28 @@ export class AuthorizationService {
     id: string;
     grantedCapabilities?: string[];
     grantExpiresAt?: string;
+    boundUserId?: string;
   }) {
-    const before = await findAuthorizationRequest(input.id);
+    let before = await findAuthorizationRequest(input.id);
     if (!before) {
       throw new NotFoundError("Authorization request not found");
+    }
+
+    if (isPendingAuthorizationUserId(before.user_id)) {
+      const boundUserId = input.boundUserId?.trim();
+      if (!boundUserId) {
+        throw new ValidationError("User must sign in before approving this authorization request", {
+          error_code: "authorization_user_unbound",
+        });
+      }
+      const bound = await bindAuthorizationRequestUser({
+        id: before.id,
+        user_id: boundUserId,
+      });
+      if (!bound) {
+        throw new ConflictError("Unable to bind user to authorization request");
+      }
+      before = bound;
     }
     if (before.status === "expired") {
       throw new ConflictError("Authorization request expired");

@@ -126,6 +126,7 @@ async function requestJson<T>(
   const response = await fetch(`${normalizeBaseUrl(connection.baseUrl)}${path}`, {
     ...init,
     headers,
+    credentials: init?.credentials ?? "include",
   });
 
   const text = await response.text();
@@ -422,6 +423,15 @@ export type V2AuthProvider = {
   display_name: string;
   start_path: string;
 };
+
+export async function fetchAuthMe(connection: ConsoleConnection) {
+  return requestJson<{
+    ok: true;
+    user_id: string;
+    expires_at: string;
+    session_id: string;
+  }>(connection, "/v2/auth/me");
+}
 
 export async function fetchAuthProviders(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V2AuthProvider[] }>(connection, "/v2/auth/providers");

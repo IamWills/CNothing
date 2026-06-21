@@ -4,6 +4,7 @@ import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-
 import { KeyService } from "../core/key-service";
 import { CapabilityService } from "../v2/capability-service";
 import { AuthorizationService } from "../v2/authorization-service";
+import { resolveAuthorizationUserId } from "../v2/authorization-user";
 import { findAgentByAccessToken, listCapabilities } from "../v2/v2.repository";
 import { V1_DEPRECATED_MCP_TOOLS, v1DeprecationMeta } from "../v2/deprecation";
 
@@ -162,7 +163,9 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             }
             result = await authorizationService.createRequest({
               agentId: agent.id,
-              userId: typeof args.user_id === "string" ? args.user_id : agent.owner_user_id,
+              userId: resolveAuthorizationUserId(
+                typeof args.user_id === "string" ? args.user_id : undefined,
+              ),
               capabilities,
               state: typeof args.state === "string" ? args.state : undefined,
               reason: typeof args.reason === "string" ? args.reason : undefined,

@@ -14,6 +14,9 @@ export async function listAuthProviders(apiBaseUrl: string): Promise<{
 
   const oidc = await oidcService.listPublicProviders();
   for (const provider of oidc.items) {
+    if (github && provider.name === "github") {
+      continue;
+    }
     items.push({
       type: "oidc",
       name: provider.name,

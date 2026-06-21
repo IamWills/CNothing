@@ -13,6 +13,7 @@ import { useUserSession } from "@/hooks/use-user-session";
 import {
   buildGitHubStartUrl,
   buildOidcStartUrl,
+  fetchAuthMe,
   fetchAuthProviders,
   issueLoginToken,
   loginUser,

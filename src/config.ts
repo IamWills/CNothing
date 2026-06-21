@@ -29,6 +29,8 @@ export interface AppConfig {
   webhookDefaultUrl?: string;
   platformAgentName: string;
   autoGrantLowRiskCapabilities: boolean;
+  searchApiBaseUrl?: string;
+  searchAutoBootstrap: boolean;
 }
 
 function readRequiredEnv(name: string): string {
@@ -158,6 +160,12 @@ const webhookDefaultUrl = process.env.KEYSERVICE_WEBHOOK_DEFAULT_URL?.trim() || 
 const autoGrantLowRiskCapabilities =
   process.env.KEYSERVICE_V2_AUTO_GRANT_LOW_RISK?.trim() !== "0";
 
+const searchApiBaseUrl = process.env.KEYSERVICE_SEARCH_API_URL?.trim() || undefined;
+
+const searchAutoBootstrap =
+  searchApiBaseUrl !== undefined &&
+  process.env.KEYSERVICE_SEARCH_AUTO_BOOTSTRAP?.trim() !== "0";
+
 const publicBaseUrl = (() => {
   const explicit = process.env.KEYSERVICE_PUBLIC_URL?.trim();
   if (explicit) {
@@ -199,6 +207,8 @@ const config: AppConfig = {
   webhookDefaultUrl,
   platformAgentName: process.env.KEYSERVICE_PLATFORM_AGENT_NAME?.trim() || "cnothing-platform-agent",
   autoGrantLowRiskCapabilities,
+  searchApiBaseUrl,
+  searchAutoBootstrap,
 };
 
 export default config;

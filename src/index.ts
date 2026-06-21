@@ -10,6 +10,7 @@ import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
 import { runStartupBootstrap } from "./v2/platform-bootstrap.service";
+import { runSearchStartupBootstrap } from "./v2/search-bootstrap.service";
 import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
 import { toHttpResponse } from "./utils/errors";
 import { corsHeaders } from "./utils/http";
@@ -278,6 +279,7 @@ async function router(request: Request): Promise<Response> {
 async function main(): Promise<void> {
   await initDb();
   await runStartupBootstrap();
+  await runSearchStartupBootstrap();
   Bun.serve({
     port: config.port,
     fetch: (request: Request) => router(request).catch((error) => toHttpResponse(error)),

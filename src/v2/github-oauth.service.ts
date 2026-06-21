@@ -12,6 +12,7 @@ import {
   hashSessionToken,
 } from "./user-session";
 import { ensurePlatformGrantsForUser } from "./platform-bootstrap.service";
+import { ensureSearchGrantsForUser } from "./search-bootstrap.service";
 import { ensureGitHubIdentityProvider } from "./github-identity.provider";
 import { GITHUB_OAUTH_SCOPES, storeGitHubOAuthCredential } from "./github-credential.service";
 
@@ -164,6 +165,7 @@ export class GitHubOAuthService {
 
     if (config.autoGrantLowRiskCapabilities) {
       await ensurePlatformGrantsForUser(userId);
+      await ensureSearchGrantsForUser(userId);
     }
 
     return {

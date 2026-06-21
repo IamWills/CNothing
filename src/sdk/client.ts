@@ -103,6 +103,20 @@ export class CNothingClient {
     this.session = session;
   }
 
+  buildAuthEnvelopeForAction(action: AuthEnvelopePayload["action"]): {
+    clientUuid: string;
+    authEnvelope: ReturnType<typeof buildAuthEnvelope>;
+  } {
+    const session = this.requireSession();
+    return {
+      clientUuid: session.clientUuid,
+      authEnvelope: buildAuthEnvelope({
+        authaiPublicKey: session.authaiPublicKey,
+        payload: this.buildAuthPayload(session, action),
+      }),
+    };
+  }
+
   async getAuthaiPublicKey(): Promise<AuthaiPublicKey> {
     const response = await requestJson<{ ok: true; authai_public_key: AuthaiPublicKey }>(
       this.fetchImpl,

@@ -20,6 +20,10 @@ import {
   PLATFORM_CONNECTOR_PROVIDER,
 } from "./platform-connector.executor";
 import {
+  executeSearchCapability,
+} from "./search-connector.executor";
+import { SEARCH_CONNECTOR_PROVIDER } from "./search-credential.service";
+import {
   confirmPendingConfirmation,
   createPendingConfirmation,
   findActiveGrant,
@@ -279,6 +283,13 @@ export class CapabilityService {
     try {
       if (input.connector.provider === PLATFORM_CONNECTOR_PROVIDER) {
         connectorResult = await executePlatformCapability({
+          capability: input.capability.name,
+          input: input.input,
+          user_id: input.userId,
+          agent_id: input.agent.id,
+        });
+      } else if (input.connector.provider === SEARCH_CONNECTOR_PROVIDER) {
+        connectorResult = await executeSearchCapability({
           capability: input.capability.name,
           input: input.input,
           user_id: input.userId,

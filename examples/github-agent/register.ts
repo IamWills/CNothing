@@ -52,6 +52,8 @@ const lowRiskCapabilities = [
   "platform.ping",
   "github.list_repositories",
   "github.get_repository",
+  "search.query",
+  "search.fetch_document",
 ];
 
 const registered = await requestJson<{ ok: true; agent: { id: string }; access_token: string }>(

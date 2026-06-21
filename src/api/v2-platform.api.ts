@@ -10,6 +10,13 @@ import { listAuthProviders } from "../v2/auth-providers.service";
 import { bootstrapV2Platform } from "../v2/platform-bootstrap.service";
 import { readRequiredString } from "../v2/agent-auth";
 import { listAgents, listCapabilities, listConnectors, listGrantSummaries } from "../v2/v2.repository";
+import {
+  getSearchLinkStatus,
+  linkSearchAccountForUser,
+} from "../v2/search-credential.service";
+import { bootstrapSearchConnector, ensureSearchGrantsForUser } from "../v2/search-bootstrap.service";
+import { isSearchIntegrationEnabled } from "../v2/search-api.client";
+import { requireUserSession } from "../v2/user-session";
 
 function inferBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
@@ -50,6 +57,11 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
         auto_bootstrap: config.v2AutoBootstrap,
         auto_grant_low_risk: config.autoGrantLowRiskCapabilities,
         platform_agent: config.platformAgentName,
+        search: {
+          enabled: isSearchIntegrationEnabled(),
+          api_url: config.searchApiBaseUrl ?? null,
+          auto_bootstrap: config.searchAutoBootstrap,
+        },
       },
       counts: {
         agents: agents.length,
@@ -169,6 +181,43 @@ export async function handleV2PlatformRequest(request: Request): Promise<Respons
       force: body.force === true,
     });
     return Response.json(result);
+  }
+
+  if (request.method === "POST" && path === "/v2/admin/search/bootstrap") {
+    requireAdminAccess(request);
+    const result = await bootstrapSearchConnector({ apiBaseUrl: baseUrl });
+    return Response.json(result);
+  }
+
+  if (request.method === "GET" && path === "/v2/auth/search/status") {
+    const session = await requireUserSession(request);
+    return Response.json({
+      ok: true,
+      user_id: session.user_id,
+      ...(await getSearchLinkStatus(session.user_id)),
+    });
+  }
+
+  if (request.method === "POST" && path === "/v2/auth/search/link") {
+    const session = await requireUserSession(request);
+    const body = (await parseJsonBody(request).catch(() => ({}))) as Record<string, unknown>;
+    const label = typeof body.label === "string" ? body.label.trim() : undefined;
+    const result = await linkSearchAccountForUser({
+      userId: session.user_id,
+      label,
+    });
+    const granted = await ensureSearchGrantsForUser(session.user_id);
+    return Response.json({ ...result, grants: granted });
+  }
+
+  if (request.method === "POST" && path === "/v2/admin/search/link") {
+    requireAdminAccess(request);
+    const body = await parseJsonBody(request);
+    const userId = readRequiredString(body, "user_id");
+    const label = typeof body.label === "string" ? body.label.trim() : undefined;
+    const result = await linkSearchAccountForUser({ userId, label });
+    const granted = await ensureSearchGrantsForUser(userId);
+    return Response.json({ ...result, grants: granted });
   }
 
   if (request.method === "POST" && path === "/v2/admin/oidc/providers") {

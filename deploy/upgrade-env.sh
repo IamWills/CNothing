@@ -34,6 +34,8 @@ append_if_missing "KEYSERVICE_PUBLIC_URL" "https://cnothing.com"
 append_if_missing "KEYSERVICE_V2_AUTO_BOOTSTRAP" "1"
 append_if_missing "KEYSERVICE_V2_AUTO_GRANT_LOW_RISK" "1"
 append_if_missing "KEYSERVICE_PLATFORM_AGENT_NAME" "cnothing-platform-agent"
+append_if_missing "KEYSERVICE_SEARCH_API_URL" "https://search.morethinkings.com"
+append_if_missing "KEYSERVICE_SEARCH_AUTO_BOOTSTRAP" "1"
 
 # GitHub OAuth / API (set via deploy/configure-v2-github.sh — values are not auto-generated)
 # KEYSERVICE_GITHUB_OAUTH_CLIENT_ID=

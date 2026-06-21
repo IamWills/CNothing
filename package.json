@@ -33,6 +33,8 @@
     "slack:connector": "bun run examples/slack-connector/index.ts",
     "webhook:bootstrap": "bun run examples/webhook-connector/bootstrap.ts",
     "webhook:connector": "bun run examples/webhook-connector/index.ts",
+    "search:bootstrap": "bun run examples/search-connector/bootstrap.ts",
+    "search:link": "bun run examples/search-connector/link.ts",
     "e2e:v2": "bun run examples/e2e-v2/run.ts",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"

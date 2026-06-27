@@ -1,16 +1,16 @@
 {
-  "schema_version": "v1",
-  "name_for_human": "CNothing v2 Capabilities",
-  "name_for_model": "cnothing_v2_capabilities",
-  "description_for_human": "Agent Capability Authorization Platform: invoke business capabilities (GitHub, Search, …) without handling secrets. Users authorize in the browser at approval_url.",
-  "description_for_model": "CNothing v2 MCP server. CRITICAL: There is NO MCP tool for human GitHub login. Flow: (1) request_authorization with capabilities only — omit user_id; (2) send user the approval_url from the response; (3) user opens link IN BROWSER, clicks Sign in with GitHub, clicks Allow; (4) poll GET /v2/authorize/{id}; (5) invoke_capability without user_id. NEVER ask users for session_token, login_token, user_id, or GitHub tokens. Do NOT use authai_register for GitHub OAuth. Read initialize instructions and resource://cnothing/v2-user-authorization. v1 kv_* tools are deprecated.",
+  "schema_version": "v2.5",
+  "name_for_human": "CNothing v2.5",
+  "name_for_model": "cnothing_v25_oauth_broker",
+  "description_for_human": "Universal OAuth Broker + Capability Gateway: connect OAuth providers once, grant capabilities to agents, invoke third-party APIs without exposing tokens.",
+  "description_for_model": "CNothing v2.5 MCP. Agent NEVER receives OAuth tokens, API keys, or client secrets. Flow: list_capabilities → request_authorization (returns approval_url) → user approves in browser → get_authorization_status → invoke_capability. Use v2.5 agent API only. v1 kv_* and authai_* tools are deprecated internal tools — do not use for OAuth or capability workflows.",
   "auth": {
     "type": "none",
-    "instructions": "Agent uses agent_access_token on invoke_capability and request_authorization. Human GitHub OAuth is browser-only at https://cnothing.com/authorize/{id} after request_authorization — never via MCP and never share tokens with the agent."
+    "instructions": "Agent uses agent_access_token on v2.5 agent endpoints. Human OAuth and capability approval happen in browser at approval_url only."
   },
   "api": {
     "type": "openapi",
-    "url": "https://cnothing.com/openapi-v2.json",
+    "url": "https://cnothing.com/openapi-v2.5.json",
     "is_user_authenticated": false
   },
   "server": {
@@ -19,283 +19,118 @@
   },
   "documentation": {
     "homepage": "https://cnothing.com",
-    "v2_auth_workflow": "resource://cnothing/v2-user-authorization",
-    "openapi_v2": "https://cnothing.com/openapi-v2.json",
-    "skills_index": "https://cnothing.com/skills/index.json",
-    "skills_text": "https://cnothing.com/skills.txt",
-    "getting_started": "https://cnothing.com/getting-started.md",
-    "primary_skill": "https://cnothing.com/skill.md",
-    "standards": "https://cnothing.com/standards",
-    "authentication_standard": "https://cnothing.com/standards/authentication/1.0",
-    "registration_hub_standard": "https://cnothing.com/standards/registration-hub"
+    "openapi_v25": "https://cnothing.com/openapi-v2.5.json",
+    "v2_auth_workflow": "resource://cnothing/v2-user-authorization"
   },
+  "tool_groups": [
+    {
+      "name": "agent_v25",
+      "description": "Primary v2.5 agent tools",
+      "tools": [
+        "list_capabilities",
+        "request_authorization",
+        "get_authorization_status",
+        "invoke_capability",
+        "list_grants",
+        "revoke_grant"
+      ]
+    },
+    {
+      "name": "deprecated_v1",
+      "description": "Deprecated v1 internal tools — hidden from default manifest",
+      "visible": false,
+      "tools": [
+        "get_authai_public_key",
+        "authai_register",
+        "authai_refresh",
+        "authai_key_holder_sign_challenge",
+        "authai_key_holder_verify_signature",
+        "authai_key_holder_challenge",
+        "authai_key_holder_verify",
+        "kv_save",
+        "kv_read"
+      ]
+    }
+  ],
   "tools": [
     {
-      "name": "request_authorization",
-      "description": "Returns approval_url for the USER's browser. User signs in with GitHub on that page and clicks Allow. Agent cannot GitHub-login via MCP. Omit user_id.",
+      "name": "list_capabilities",
+      "group": "agent_v25",
+      "description": "List available capabilities with schemas and authorization status. Never returns tokens or invocation secrets.",
       "input_schema": {
         "type": "object",
-        "required": ["agent_access_token", "capabilities"],
+        "required": ["agent_access_token"],
+        "properties": {
+          "agent_access_token": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "request_authorization",
+      "group": "agent_v25",
+      "description": "Request user approval for a capability. Returns approval_url for browser. Do not pass user_id.",
+      "input_schema": {
+        "type": "object",
+        "required": ["agent_access_token", "capability"],
         "properties": {
           "agent_access_token": { "type": "string" },
-          "capabilities": { "type": "array", "items": { "type": "string" } },
+          "capability": { "type": "string", "description": "e.g. github.create_issue" },
+          "requested_scopes": { "type": "array", "items": { "type": "string" } },
           "reason": { "type": "string" }
         }
       }
     },
     {
+      "name": "get_authorization_status",
+      "group": "agent_v25",
+      "description": "Poll authorization status after user opens approval_url.",
+      "input_schema": {
+        "type": "object",
+        "required": ["agent_access_token", "authorization_id"],
+        "properties": {
+          "agent_access_token": { "type": "string" },
+          "authorization_id": { "type": "string" }
+        }
+      }
+    },
+    {
       "name": "invoke_capability",
-      "description": "Invoke a capability after user approved at approval_url. Omit user_id when one grant exists. Agent never receives GitHub tokens.",
+      "group": "agent_v25",
+      "description": "Invoke an approved capability. Agent never receives third-party tokens.",
       "input_schema": {
         "type": "object",
         "required": ["agent_access_token", "capability"],
         "properties": {
           "agent_access_token": { "type": "string" },
           "capability": { "type": "string" },
-          "input": { "type": "object" }
+          "input": { "type": "object" },
+          "confirmation_id": { "type": "string" }
         }
       }
     },
     {
-      "name": "list_capabilities",
-      "description": "List registered v2 capabilities (github.*, search.*, …).",
-      "input_schema": { "type": "object", "properties": {} }
-    },
-    {
-      "name": "get_authai_public_key",
-      "description": "Return the AuthAI public key metadata used by the trusted backend to encrypt auth, data, and query envelopes toward CNothing. Call this before registration or whenever the backend needs the active CNothing server key.",
+      "name": "list_grants",
+      "group": "agent_v25",
+      "description": "List capability grants for this agent.",
       "input_schema": {
         "type": "object",
-        "properties": {},
-        "examples": [{}]
+        "required": ["agent_access_token"],
+        "properties": {
+          "agent_access_token": { "type": "string" }
+        }
       }
     },
     {
-      "name": "authai_register",
-      "description": "Register a client public key and receive an encrypted one-time challenge for the client backend. The AI may relay challenge_for_client, but only the trusted backend should decrypt it.",
+      "name": "revoke_grant",
+      "group": "agent_v25",
+      "description": "Revoke a capability grant.",
       "input_schema": {
         "type": "object",
-        "required": ["client_public_key"],
+        "required": ["agent_access_token", "grant_id"],
         "properties": {
-          "client_public_key": {
-            "type": "string",
-            "description": "PEM-encoded public key generated and held by the trusted backend."
-          },
-          "client_key_alg": {
-            "type": "string",
-            "description": "Optional key algorithm profile such as RSA-OAEP-256/A256GCM."
-          },
-          "client_key_id": {
-            "type": "string",
-            "description": "Optional backend-defined key identifier."
-          },
-          "client_label": {
-            "type": "string",
-            "description": "Optional human label for the client identity."
-          },
-          "metadata": {
-            "type": "object",
-            "description": "Optional non-secret metadata about the client."
-          }
-        },
-        "examples": [
-          {
-            "client_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-            "client_label": "signup-control-plane",
-            "metadata": { "team": "growth-ops", "environment": "prod" }
-          }
-        ]
-      }
-    },
-    {
-      "name": "authai_refresh",
-      "description": "Consume a valid auth envelope and issue the next encrypted challenge for the client backend. Use this to continue a protected workflow without re-registering the client.",
-      "input_schema": {
-        "type": "object",
-        "required": ["auth_envelope"],
-        "properties": {
-          "auth_envelope": {
-            "type": "object",
-            "description": "Opaque auth envelope produced by the trusted backend."
-          }
-        },
-        "examples": [
-          {
-            "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
-          }
-        ]
-      }
-    },
-    {
-      "name": "authai_key_holder_sign_challenge",
-      "description": "Recommended flow: create a signature-based key-holder challenge. The target signs challenge_text with its private key.",
-      "input_schema": {
-        "type": "object",
-        "required": ["target_public_key"],
-        "properties": {
-          "target_public_key": {
-            "type": "string",
-            "description": "PEM-encoded target public key."
-          },
-          "target_key_id": {
-            "type": "string",
-            "description": "Optional target key identifier."
-          },
-          "metadata": {
-            "type": "object",
-            "description": "Optional non-secret metadata for tracing."
-          }
-        },
-        "examples": [
-          {
-            "target_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-            "target_key_id": "partner-key-2026-04"
-          }
-        ]
-      }
-    },
-    {
-      "name": "authai_key_holder_verify_signature",
-      "description": "Recommended flow: verify signature proof with verification_id + challenge_text + signature + target_public_key.",
-      "input_schema": {
-        "type": "object",
-        "required": ["verification_id", "challenge_text", "signature", "target_public_key"],
-        "properties": {
-          "verification_id": {
-            "type": "string",
-            "description": "Verification challenge id from authai_key_holder_sign_challenge."
-          },
-          "challenge_text": {
-            "type": "string",
-            "description": "Exact challenge text returned by authai_key_holder_sign_challenge."
-          },
-          "signature": {
-            "type": "string",
-            "description": "Base64 or base64url signature over challenge_text."
-          },
-          "target_public_key": {
-            "type": "string",
-            "description": "PEM-encoded target public key used for signature verification."
-          }
-        },
-        "examples": [
-          {
-            "verification_id": "4f2f4048-b9e8-4d65-aa71-d500f0ef8578",
-            "challenge_text": "cnothing-key-holder-signature-challenge\n...",
-            "signature": "base64-or-base64url-signature",
-            "target_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
-          }
-        ]
-      }
-    },
-    {
-      "name": "authai_key_holder_challenge",
-      "description": "Compatibility flow: create a key-holder verification challenge pair using ciphertext compare. Prefer signature verification for new integrations.",
-      "input_schema": {
-        "type": "object",
-        "required": ["target_public_key"],
-        "properties": {
-          "target_public_key": {
-            "type": "string",
-            "description": "PEM-encoded target public key to be verified."
-          },
-          "target_key_id": {
-            "type": "string",
-            "description": "Optional target key identifier."
-          },
-          "metadata": {
-            "type": "object",
-            "description": "Optional non-secret metadata for verification tracing."
-          }
-        },
-        "examples": [
-          {
-            "target_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-            "target_key_id": "partner-key-2026-04"
-          }
-        ]
-      }
-    },
-    {
-      "name": "authai_key_holder_verify",
-      "description": "Compatibility flow: finalize verification by comparing responder_secret (S2) with S1 decrypted from challenge_for_authai.",
-      "input_schema": {
-        "type": "object",
-        "required": ["verification_id", "responder_secret", "challenge_for_authai"],
-        "properties": {
-          "verification_id": {
-            "type": "string",
-            "description": "Verification challenge id returned by authai_key_holder_challenge."
-          },
-          "responder_secret": {
-            "type": "string",
-            "description": "S2 value from the target party after decrypting challenge_for_target."
-          },
-          "challenge_for_authai": {
-            "type": "object",
-            "description": "Ciphertext B encrypted with the CNothing public key."
-          }
-        },
-        "examples": [
-          {
-            "verification_id": "c14f04a1-0a17-4b70-83df-df4f0c09e303",
-            "responder_secret": "base64url-secret-from-target",
-            "challenge_for_authai": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
-          }
-        ]
-      }
-    },
-    {
-      "name": "kv_save",
-      "description": "Save encrypted KV items. WRONG for Searchengine: saving authenticate_agent api_key_envelope (reader-encrypted) without backend decrypt. CORRECT: backend decrypts with reader private key, then stores plaintext JSON in data_envelope.",
-      "input_schema": {
-        "type": "object",
-        "required": ["auth_envelope", "data_envelope"],
-        "properties": {
-          "auth_envelope": {
-            "type": "object",
-            "description": "Opaque action-bound auth envelope for kv.save."
-          },
-          "data_envelope": {
-            "type": "object",
-            "description": "Opaque ciphertext envelope containing the kv.save payload."
-          }
-        },
-        "examples": [
-          {
-            "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
-            "data_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." }
-          }
-        ]
-      }
-    },
-    {
-      "name": "kv_read",
-      "description": "Read encrypted KV items. recipient_public_key MUST be the decrypting party's PEM key — for Searchengine use GET /v1/auth/public-key, NOT get_authai_public_key. Wrong key → Failed to decrypt encrypted_key at Searchengine. Do NOT pass result_envelope_for_client to Searchengine search as api_key_envelope; backend extracts items[key] inner ksp1 after decrypt.",
-      "input_schema": {
-        "type": "object",
-        "required": ["auth_envelope", "query_envelope", "recipient_public_key"],
-        "properties": {
-          "auth_envelope": {
-            "type": "object",
-            "description": "Opaque action-bound auth envelope for kv.read."
-          },
-          "query_envelope": {
-            "type": "object",
-            "description": "Opaque ciphertext envelope containing the kv.read query."
-          },
-          "recipient_public_key": {
-            "type": "string",
-            "description": "Required. PEM of who decrypts the result. Third-party auth (Searchengine): that service public key from GET /v1/auth/public-key. NOT CNothing AuthAI key unless CNothing consumes the secret."
-          }
-        },
-        "examples": [
-          {
-            "auth_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
-            "query_envelope": { "v": "ksp1", "encrypted_key": "...", "iv": "...", "ciphertext": "...", "tag": "..." },
-            "recipient_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
-          }
-        ]
+          "agent_access_token": { "type": "string" },
+          "grant_id": { "type": "string" }
+        }
       }
     }
   ]

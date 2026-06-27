@@ -6,6 +6,50 @@
 
 它解决的是一个非常具体的问题：AI 代理需要参与工具选择、流程决策和请求转发，但实际使用到的 secrets 又必须留在可信后端边界内。CNothing 提供了一种协议化方式，让 AI 能参与工作流，而私钥和解密后的秘密值始终不进入模型上下文。
 
+## v2.5：Universal OAuth Broker + Capability Gateway（最新）
+
+CNothing v2.5 不再需要为每个第三方网站手写专用 Connector：
+
+- **Universal OAuth Provider Registry** — 内置 GitHub、Google、Microsoft、Slack、Notion；支持自定义 OAuth Provider
+- **OAuth Connection Flow** — 用户在 `/connect` 连接一次；access/refresh token 加密存储，**永不返回给 Agent**
+- **Capability Gateway** — Agent 调用 `POST /v2/agent/invoke`；CNothing 校验 Grant、刷新 token、执行第三方 API
+- **OpenAPI / MCP 导入** — 从 API 规范或 MCP tools 自动生成候选 Capability
+- **Policy Engine v2.5** — 风险等级、机密查询、输出脱敏/metadata/summary
+
+```ts
+// Agent 工作流（v2.5）
+// 1. GET  /v2/agent/capabilities
+// 2. POST /v2/agent/authorizations  { capability: "github.create_issue", reason: "..." }
+// 3. 用户打开 approval_url，选择 OAuth Connection，批准
+// 4. POST /v2/agent/invoke          { capability, input }
+```
+
+- API 规范：[`openapi-v2.5.json`](./openapi-v2.5.json)
+- MCP 工具（仅 v2.5）：`list_capabilities`、`request_authorization`、`get_authorization_status`、`invoke_capability`、`list_grants`、`revoke_grant`
+- 内置 Capability：GitHub / Google Gmail / Slack 等（见 `src/v2/builtin-providers.ts`）
+- 端到端验证：`bun run e2e:v2.5`
+- Console：`/connect`、`/connections`、`/approve/:id`、`/grants`、`/audit`
+
+**安全边界：** Agent 只获得 Capability 授权（Grant），永远不接触 OAuth token、refresh token、client secret 或 API key。
+
+### Admin 配置（v2.5）
+
+在 `.env` 中配置各 Provider 的 OAuth 凭据（至少配置 client_id 后 Provider 才显示为可连接）：
+
+```bash
+KEYSERVICE_GITHUB_OAUTH_CLIENT_ID=
+KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET=
+KEYSERVICE_GOOGLE_OAUTH_CLIENT_ID=
+KEYSERVICE_GOOGLE_OAUTH_CLIENT_SECRET=
+KEYSERVICE_SLACK_OAUTH_CLIENT_ID=
+KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET=
+# Microsoft、Notion 同理
+```
+
+自定义 Provider：`POST /v2/oauth/providers`（需 Admin Bearer Token）。
+
+OpenAPI 导入：`POST /v2/import/openapi` → 审核候选 → `POST /v2/capabilities/from-openapi`。
+
 ## v2：Agent 能力授权平台（推荐）
 
 CNothing v2 是新 AI Agent 的**主集成路径**：

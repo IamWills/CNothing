@@ -5,7 +5,7 @@
     "version": "2.0.0",
     "description": "Agent-facing capability invoke API, OAuth-style user authorization, policy engine, and connector trust broker. Agents never receive secrets."
   },
-  "servers": [{ "url": "http://localhost:3021" }],
+  "servers": [{ "url": "https://cnothing.com" }],
   "tags": [
     { "name": "capabilities", "description": "Agent capability invocation" },
     { "name": "authorization", "description": "User authorization for agents" },

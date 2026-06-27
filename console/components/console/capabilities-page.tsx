@@ -290,12 +290,25 @@ export function CapabilitiesPage() {
             {capabilities.map((capability) => (
               <div key={capability.id} className="space-y-2 px-6 py-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium">{capability.name}</p>
+                  <p className="font-medium">{capability.display_name ?? capability.name}</p>
                   <Badge>{capability.capability_type}</Badge>
                   <Badge>{capability.risk_level}</Badge>
+                  {capability.source ? <Badge variant="secondary">{capability.source}</Badge> : null}
+                  {capability.invocation_type ? (
+                    <Badge variant="outline">{capability.invocation_type}</Badge>
+                  ) : null}
+                  {capability.connection_required ? (
+                    <Badge variant="outline">connection required</Badge>
+                  ) : null}
                 </div>
+                <p className="font-mono text-xs text-slate-500">{capability.name}</p>
                 <p className="text-sm text-slate-600">{capability.description}</p>
                 <p className="text-xs text-slate-500">Scopes: {capability.scopes.join(", ") || "none"}</p>
+                {capability.provider_id ? (
+                  <p className="font-mono text-xs text-slate-400">
+                    provider {capability.provider_id.slice(0, 8)}…
+                  </p>
+                ) : null}
               </div>
             ))}
           </div>

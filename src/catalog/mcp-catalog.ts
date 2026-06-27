@@ -465,6 +465,101 @@ const MCP_RESOURCES: McpResourceDescriptor[] = [
 ];
 
 export function listMcpTools(): McpToolDescriptor[] {
+  return V25_AGENT_MCP_TOOLS;
+}
+
+export function listMcpInternalTools(): McpToolDescriptor[] {
+  return MCP_TOOLS.filter((tool) => tool.deprecated);
+}
+
+const V25_AGENT_MCP_TOOLS: McpToolDescriptor[] = [
+  {
+    name: "list_capabilities",
+    description:
+      "List v2.5 capabilities with schemas and authorization status for this agent. Never returns OAuth tokens or invocation secrets.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token"],
+      properties: {
+        agent_access_token: { type: "string" },
+      },
+    },
+    useCases: ["Discover capabilities and whether this agent already has grants."],
+  },
+  {
+    name: "request_authorization",
+    description:
+      "Request user approval for a single capability. Returns approval_url for the human browser. Do not pass user_id.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token", "capability"],
+      properties: {
+        agent_access_token: { type: "string" },
+        capability: { type: "string", description: "e.g. github.create_issue" },
+        requested_scopes: { type: "array", items: { type: "string" } },
+        reason: { type: "string" },
+      },
+    },
+    useCases: ["Start OAuth capability approval before invoke."],
+  },
+  {
+    name: "get_authorization_status",
+    description: "Poll authorization status after the user opens approval_url.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token", "authorization_id"],
+      properties: {
+        agent_access_token: { type: "string" },
+        authorization_id: { type: "string" },
+      },
+    },
+    useCases: ["Wait until status becomes approved."],
+  },
+  {
+    name: "invoke_capability",
+    description:
+      "Invoke an approved v2.5 capability. CNothing uses the user's OAuth connection server-side; agent never receives tokens.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token", "capability"],
+      properties: {
+        agent_access_token: { type: "string" },
+        capability: { type: "string" },
+        input: { type: "object" },
+        reason: { type: "string" },
+        confirmation_id: { type: "string" },
+      },
+    },
+    useCases: ["Execute github.*, google.*, slack.*, notion.* after grant approval."],
+  },
+  {
+    name: "list_grants",
+    description: "List capability grants bound to this agent.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token"],
+      properties: {
+        agent_access_token: { type: "string" },
+      },
+    },
+    useCases: ["Inspect active grants and connection bindings."],
+  },
+  {
+    name: "revoke_grant",
+    description: "Revoke a capability grant for this agent.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token", "grant_id"],
+      properties: {
+        agent_access_token: { type: "string" },
+        grant_id: { type: "string" },
+      },
+    },
+    useCases: ["Remove agent access to a capability."],
+  },
+];
+
+export function listMcpToolsLegacy(): McpToolDescriptor[] {
   return MCP_TOOLS;
 }
 

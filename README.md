@@ -6,6 +6,31 @@ For Chinese documentation, see [README.CN.MD](./README.CN.MD).
 
 It is designed for a specific problem: an AI agent needs to help orchestrate work, choose tools, and route requests, but the sensitive values used by that workflow must stay inside a trusted backend boundary. CNothing gives you a way to let the AI participate in the flow while keeping private keys and decrypted secrets out of the model.
 
+## v2.5: Universal OAuth Broker + Capability Gateway (Latest)
+
+CNothing v2.5 removes the need for a dedicated connector per OAuth provider:
+
+- **Universal OAuth Provider Registry** — GitHub, Google, Microsoft, Slack, Notion built-in; custom providers via admin API
+- **OAuth Connection Flow** — users connect once at `/connect`; tokens encrypted at rest, never returned to agents
+- **Capability Gateway** — agents call `POST /v2/agent/invoke`; CNothing resolves grants, refreshes tokens, executes APIs
+- **OpenAPI / MCP Importers** — generate candidate capabilities from API specs or MCP tool lists
+- **Policy Engine v2.5** — risk levels, confidential query controls, output redaction
+
+```ts
+// Agent workflow (v2.5)
+// 1. GET /v2/agent/capabilities
+// 2. POST /v2/agent/authorizations { capability: "github.create_issue" }
+// 3. User opens approval_url, selects OAuth connection, approves
+// 4. POST /v2/agent/invoke { capability, input }
+```
+
+- API spec: [`openapi-v2.5.json`](./openapi-v2.5.json)
+- MCP tools (v2.5 only): `list_capabilities`, `request_authorization`, `get_authorization_status`, `invoke_capability`, `list_grants`, `revoke_grant`
+- E2E: `bun run e2e:v2.5`
+- Console: `/connect`, `/connections`, `/approve/:id`, `/grants`, `/audit`
+
+**Security boundary:** agents receive capability permissions (grants), never OAuth tokens, refresh tokens, client secrets, or API keys.
+
 ## v2: Agent Capability Authorization Platform (Recommended)
 
 CNothing v2 is the **primary integration path** for new AI agents:

@@ -1,18 +1,37 @@
 import config from "../config";
 import type { JsonObject } from "./v2.entity";
 import {
+  executeGoogleCapability,
+  executeMicrosoftCapability,
+  executeNotionCapability,
+  executeSlackCapability,
+  isGoogleCapability,
+  isMicrosoftCapability,
+  isNotionCapability,
+  isSlackCapability,
+} from "./builtin-provider.executor";
+import {
+  executeHttpCapability,
+  readCapabilityInvocationType,
+} from "./http-invocation.executor";
+import {
   githubCredentialRequiredMessage,
   isGitHubCapabilityEnabled,
   resolveGitHubAccessToken,
 } from "./github-credential.service";
 
-async function githubRequest(path: string, userId: string, init?: RequestInit) {
-  const token = await resolveGitHubAccessToken(userId);
+async function githubRequest(
+  path: string,
+  userId: string,
+  init?: RequestInit,
+  accessTokenOverride?: string,
+) {
+  const token = accessTokenOverride ?? (await resolveGitHubAccessToken(userId));
   if (!token) {
     throw new Error(githubCredentialRequiredMessage(userId));
   }
 
-  const response = await fetch(`https://api.github.com${path}`, {
+  const response = await fetch(`${config.githubApiBaseUrl}${path}`, {
     ...init,
     headers: {
       accept: "application/vnd.github+json",
@@ -59,7 +78,9 @@ export async function executePlatformCapability(input: {
   input: JsonObject;
   user_id: string;
   agent_id: string;
+  access_token?: string;
 }): Promise<unknown> {
+  const tokenOverride = input.access_token;
   switch (input.capability) {
     case "platform.echo":
       return {
@@ -84,8 +105,15 @@ export async function executePlatformCapability(input: {
       const data = await githubRequest(
         `/user/repos?per_page=${encodeURIComponent(String(perPage))}&type=${encodeURIComponent(type)}`,
         input.user_id,
+        undefined,
+        tokenOverride,
       );
       return { repositories: data };
+    }
+
+    case "github.get_user": {
+      const data = await githubRequest("/user", input.user_id, undefined, tokenOverride);
+      return { user: data };
     }
 
     case "github.get_repository": {
@@ -93,16 +121,21 @@ export async function executePlatformCapability(input: {
       if (!repo.includes("/")) {
         throw new Error("input.repo must be in owner/name format");
       }
-      const data = await githubRequest(`/repos/${repo}`, input.user_id);
+      const data = await githubRequest(`/repos/${repo}`, input.user_id, undefined, tokenOverride);
       return { repository: data };
     }
 
     case "github.create_issue": {
-      const repo = String(input.input.repo ?? "");
+      const owner = String(input.input.owner ?? "");
+      const repoName = String(input.input.repo ?? "");
+      const repo =
+        owner && repoName && !repoName.includes("/")
+          ? `${owner}/${repoName}`
+          : String(input.input.repo ?? "");
       const title = String(input.input.title ?? "");
       const body = typeof input.input.body === "string" ? input.input.body : undefined;
       if (!repo.includes("/")) {
-        throw new Error("input.repo must be in owner/name format");
+        throw new Error("input.owner and input.repo (or input.repo as owner/name) are required");
       }
       if (!title.trim()) {
         throw new Error("input.title is required");
@@ -118,12 +151,32 @@ export async function executePlatformCapability(input: {
             labels: Array.isArray(input.input.labels) ? input.input.labels : undefined,
           }),
         },
+        tokenOverride,
       );
       return {
         issue: data,
         issue_number: (data as { number?: number }).number,
         url: (data as { html_url?: string }).html_url,
       };
+    }
+
+    case "github.delete_repo": {
+      const owner = String(input.input.owner ?? "");
+      const repoName = String(input.input.repo ?? "");
+      const repo =
+        owner && repoName && !repoName.includes("/")
+          ? `${owner}/${repoName}`
+          : String(input.input.repo ?? "");
+      if (!repo.includes("/")) {
+        throw new Error("input.owner and input.repo are required");
+      }
+      await githubRequest(
+        `/repos/${repo}`,
+        input.user_id,
+        { method: "DELETE" },
+        tokenOverride,
+      );
+      return { deleted: true, repo };
     }
 
     case "webhook.notify": {
@@ -150,8 +203,37 @@ export async function executePlatformCapability(input: {
       });
     }
 
-    default:
+    default: {
+      if (isGoogleCapability(input.capability)) {
+        return executeGoogleCapability({
+          capability: input.capability,
+          payload: input.input,
+          accessToken: tokenOverride,
+        });
+      }
+      if (isSlackCapability(input.capability)) {
+        return executeSlackCapability({
+          capability: input.capability,
+          payload: input.input,
+          accessToken: tokenOverride,
+        });
+      }
+      if (isNotionCapability(input.capability)) {
+        return executeNotionCapability({
+          capability: input.capability,
+          payload: input.input,
+          accessToken: tokenOverride,
+        });
+      }
+      if (isMicrosoftCapability(input.capability)) {
+        return executeMicrosoftCapability({
+          capability: input.capability,
+          payload: input.input,
+          accessToken: tokenOverride,
+        });
+      }
       throw new Error(`Unsupported platform capability: ${input.capability}`);
+    }
   }
 }
 

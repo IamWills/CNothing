@@ -248,10 +248,16 @@ export function GrantsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{grant.capability_name}</p>
                         <Badge>{grant.connector_provider}</Badge>
+                        {grant.grant_status ? <Badge>{grant.grant_status}</Badge> : null}
                       </div>
                       <p className="mt-1 text-sm text-slate-600">
                         Agent {grant.agent_name} · User {grant.user_id}
                       </p>
+                      {grant.connection_id ? (
+                        <p className="mt-1 font-mono text-xs text-slate-500">
+                          connection {grant.connection_id.slice(0, 8)}…
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-slate-500">{formatDate(grant.created_at)}</p>
                     </div>
                     <Button variant="secondary" onClick={() => void handleRevoke(grant.id)}>

@@ -1,0 +1,369 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CNothing v2.5 API",
+    "version": "2.5.0",
+    "description": "Universal OAuth Broker + Capability Gateway for Agents. Agent-facing endpoints never return OAuth tokens, refresh tokens, client secrets, or API keys."
+  },
+  "servers": [{ "url": "https://cnothing.com" }],
+  "tags": [
+    { "name": "Agent v2.5", "description": "Agent-facing capability gateway (no secrets returned)" },
+    { "name": "OAuth", "description": "User OAuth provider and connection management" },
+    { "name": "Import", "description": "OpenAPI / MCP capability import (admin)" },
+    { "name": "Admin", "description": "Administrative APIs" },
+    { "name": "Legacy v2", "description": "Backward-compatible v2 endpoints" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "AgentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Agent access token from POST /v2/agents/register"
+      },
+      "UserSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "cnothing_session"
+      },
+      "AdminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Admin bearer token (KEYSERVICE_BEARER_TOKEN)"
+      }
+    },
+    "schemas": {
+      "AgentCapability": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "description": { "type": "string" },
+          "capability_type": { "type": "string", "enum": ["ACTION", "QUERY", "CONFIDENTIAL_QUERY"] },
+          "risk_level": { "type": "string" },
+          "required_scopes": { "type": "array", "items": { "type": "string" } },
+          "input_schema": { "type": "object" },
+          "authorized": { "type": "boolean" }
+        }
+      },
+      "AuthorizationRequest": {
+        "type": "object",
+        "properties": {
+          "authorization_id": { "type": "string" },
+          "approval_url": { "type": "string", "format": "uri" },
+          "status": { "type": "string", "enum": ["pending"] }
+        }
+      },
+      "InvokeRequest": {
+        "type": "object",
+        "required": ["capability"],
+        "properties": {
+          "capability": { "type": "string" },
+          "input": { "type": "object" },
+          "confirmation_id": { "type": "string" }
+        }
+      },
+      "OAuthProviderPublic": {
+        "type": "object",
+        "description": "Never includes client_secret",
+        "properties": {
+          "id": { "type": "string" },
+          "slug": { "type": "string" },
+          "display_name": { "type": "string" },
+          "auth_type": { "type": "string" },
+          "connectable": { "type": "boolean" },
+          "status": { "type": "string" }
+        }
+      },
+      "OAuthConnectionPublic": {
+        "type": "object",
+        "description": "Never includes access_token or refresh_token",
+        "properties": {
+          "id": { "type": "string" },
+          "provider_slug": { "type": "string" },
+          "display_name": { "type": "string" },
+          "scopes": { "type": "array", "items": { "type": "string" } },
+          "status": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v2/agent/capabilities": {
+      "get": {
+        "tags": ["Agent v2.5"],
+        "summary": "List capabilities for agent",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Capability list (no secrets)" } }
+      }
+    },
+    "/v2/agent/authorizations": {
+      "post": {
+        "tags": ["Agent v2.5"],
+        "summary": "Request capability authorization",
+        "security": [{ "AgentBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["capability"],
+                "properties": {
+                  "capability": { "type": "string" },
+                  "requested_scopes": { "type": "array", "items": { "type": "string" } },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Returns approval_url — never tokens",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthorizationRequest" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/agent/authorizations/{id}": {
+      "get": {
+        "tags": ["Agent v2.5"],
+        "summary": "Get authorization status",
+        "security": [{ "AgentBearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Authorization status" } }
+      }
+    },
+    "/v2/agent/invoke": {
+      "post": {
+        "tags": ["Agent v2.5"],
+        "summary": "Invoke approved capability",
+        "security": [{ "AgentBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/InvokeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Invocation result (policy-filtered, no tokens)" },
+          "202": { "description": "Pending user confirmation" },
+          "403": { "description": "authorization_required — includes approval_url, never tokens" }
+        }
+      }
+    },
+    "/v2/agent/grants": {
+      "get": {
+        "tags": ["Agent v2.5"],
+        "summary": "List agent grants",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Grant list" } }
+      }
+    },
+    "/v2/agent/grants/revoke": {
+      "post": {
+        "tags": ["Agent v2.5"],
+        "summary": "Revoke grant",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Grant revoked" } }
+      }
+    },
+    "/v2/oauth/providers": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "List OAuth providers",
+        "responses": {
+          "200": {
+            "description": "Public provider list (no client_secret)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/OAuthProviderPublic" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["OAuth", "Admin"],
+        "summary": "Register custom OAuth provider",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "201": { "description": "Provider created" } }
+      }
+    },
+    "/v2/oauth/providers/{id}": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "Get OAuth provider",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Public provider (no secrets)" } }
+      }
+    },
+    "/v2/oauth/connect/start": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Start OAuth connection flow",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Returns authorization_url with state + PKCE" } }
+      }
+    },
+    "/v2/oauth/callback/{provider}": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "OAuth callback (stores encrypted tokens server-side)",
+        "parameters": [{ "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "302": { "description": "Redirect after token storage" } }
+      }
+    },
+    "/v2/oauth/connections": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "List user OAuth connections",
+        "security": [{ "UserSession": [] }],
+        "responses": {
+          "200": {
+            "description": "Connections without tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/OAuthConnectionPublic" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/oauth/connections/{id}": {
+      "delete": {
+        "tags": ["OAuth"],
+        "summary": "Revoke OAuth connection",
+        "security": [{ "UserSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Connection revoked" } }
+      }
+    },
+    "/v2/import/openapi": {
+      "post": {
+        "tags": ["Import", "Admin"],
+        "summary": "Import OpenAPI document",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "201": { "description": "Import job created" } }
+      }
+    },
+    "/v2/import/openapi/{job_id}": {
+      "get": {
+        "tags": ["Import", "Admin"],
+        "summary": "Get OpenAPI import job",
+        "security": [{ "AdminBearer": [] }],
+        "parameters": [{ "name": "job_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Import job with candidate capabilities" } }
+      }
+    },
+    "/v2/capabilities/from-openapi": {
+      "post": {
+        "tags": ["Import", "Admin"],
+        "summary": "Activate selected OpenAPI candidates",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Capabilities activated" } }
+      }
+    },
+    "/v2/import/mcp": {
+      "post": {
+        "tags": ["Import", "Admin"],
+        "summary": "Import MCP manifest tools",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "201": { "description": "Import job created" } }
+      }
+    },
+    "/v2/import/mcp/{job_id}": {
+      "get": {
+        "tags": ["Import", "Admin"],
+        "summary": "Get MCP import job",
+        "security": [{ "AdminBearer": [] }],
+        "parameters": [{ "name": "job_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Import job" } }
+      }
+    },
+    "/v2/capabilities/from-mcp": {
+      "post": {
+        "tags": ["Import", "Admin"],
+        "summary": "Activate selected MCP import candidates",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Capabilities activated" } }
+      }
+    },
+    "/v2/approve/{authorization_id}": {
+      "post": {
+        "tags": ["User"],
+        "summary": "Approve agent authorization with OAuth connection",
+        "security": [{ "UserSession": [] }],
+        "parameters": [
+          { "name": "authorization_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["connection_id"],
+                "properties": {
+                  "connection_id": { "type": "string" },
+                  "scopes": { "type": "array", "items": { "type": "string" } },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Grant created" } }
+      }
+    },
+    "/v2/audit": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Audit log (hashes only, no tokens or full business output)",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Audit events" } }
+      }
+    },
+    "/v2/capabilities/invoke": {
+      "post": {
+        "tags": ["Legacy v2"],
+        "summary": "Legacy invoke (use /v2/agent/invoke)",
+        "deprecated": true,
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Invocation result" } }
+      }
+    },
+    "/v2/authorize/request": {
+      "post": {
+        "tags": ["Legacy v2"],
+        "summary": "Legacy authorization request (use /v2/agent/authorizations)",
+        "deprecated": true,
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "201": { "description": "Authorization request" } }
+      }
+    }
+  }
+}

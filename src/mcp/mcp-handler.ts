@@ -1,17 +1,16 @@
 import config from "../config";
 import { MCP_SERVER_INSTRUCTIONS } from "../catalog/mcp-instructions";
 import { MCP_V2_AUTH_WORKFLOW_URI } from "../catalog/mcp-v2-auth-workflow";
-import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
+import { listMcpInternalTools, listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
 import { KeyService } from "../core/key-service";
-import { CapabilityService } from "../v2/capability-service";
-import { AuthorizationService } from "../v2/authorization-service";
-import { resolveAuthorizationUserId } from "../v2/authorization-user";
-import { findAgentByAccessToken, listCapabilities } from "../v2/v2.repository";
+import { ForbiddenError } from "../utils/errors";
+import { agentAuthorizationV25Service } from "../v2/agent-authorization-v25.service";
+import { invocationGatewayService } from "../v2/invocation-gateway.service";
+import { sanitizeAgentResponse } from "../v2/secret-redaction";
 import { V1_DEPRECATED_MCP_TOOLS, v1DeprecationMeta } from "../v2/deprecation";
+import { findAgentByAccessToken, revokeGrant } from "../v2/v2.repository";
 
-const service = new KeyService();
-const capabilityService = new CapabilityService();
-const authorizationService = new AuthorizationService();
+const legacyService = new KeyService();
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -40,21 +39,45 @@ function jsonRpcError(
   return { jsonrpc: "2.0", id, error: { code, message, data } };
 }
 
+function apiBaseUrl(): string {
+  return config.publicBaseUrl.replace(/\/+$/, "");
+}
+
+async function requireAgentFromMcpArgs(args: Record<string, unknown>) {
+  const token =
+    typeof args.agent_access_token === "string" ? args.agent_access_token.trim() : "";
+  if (!token) {
+    throw new Error("agent_access_token is required");
+  }
+  const agent = await findAgentByAccessToken(token);
+  if (!agent) {
+    throw new Error("Invalid agent access token");
+  }
+  return agent;
+}
+
 function wrapDeprecatedToolResult(toolName: string, result: unknown): unknown {
   if (!V1_DEPRECATED_MCP_TOOLS.has(toolName)) {
     return result;
   }
-
   const deprecation = {
-    ...v1DeprecationMeta(),
-    warning: `Tool "${toolName}" is deprecated. Prefer invoke_capability or request_authorization.`,
+    ...v1DeprecationMeta(apiBaseUrl()),
+    warning: `Tool "${toolName}" is deprecated internal API. Use v2.5 agent tools instead.`,
   };
-
   if (result && typeof result === "object" && !Array.isArray(result)) {
     return { ...(result as Record<string, unknown>), _deprecation: deprecation };
   }
-
   return { value: result, _deprecation: deprecation };
+}
+
+function readCapabilityName(args: Record<string, unknown>): string {
+  if (typeof args.capability === "string" && args.capability.trim()) {
+    return args.capability.trim();
+  }
+  if (Array.isArray(args.capabilities) && args.capabilities[0]) {
+    return String(args.capabilities[0]);
+  }
+  return "";
 }
 
 export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcResponse> {
@@ -73,7 +96,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
       case "initialize":
         result = {
           protocolVersion: config.protocolVersion,
-          serverInfo: { name: config.serviceName, version: "2.0.0" },
+          serverInfo: { name: config.serviceName, version: "2.5.0" },
           instructions: MCP_SERVER_INSTRUCTIONS,
           capabilities: {
             resources: { subscribe: false, listChanged: false },
@@ -88,9 +111,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 
       case "resources/read":
         result = {
-          contents: [
-            readMcpResource(String(params.uri ?? "resource://keyservice/protocol")),
-          ],
+          contents: [readMcpResource(String(params.uri ?? "resource://keyservice/protocol"))],
         };
         break;
 
@@ -107,100 +128,128 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 
         switch (name) {
           case "invoke_capability": {
-            const token =
-              typeof args.agent_access_token === "string" ? args.agent_access_token.trim() : "";
-            if (!token) {
-              return jsonRpcError(
-                id,
-                -32000,
-                "agent_access_token is required in arguments for invoke_capability",
-              );
+            const agent = await requireAgentFromMcpArgs(args);
+            try {
+              result = await invocationGatewayService.invoke({
+                agent,
+                body: {
+                  capability: readCapabilityName(args),
+                  input:
+                    args.input && typeof args.input === "object" && !Array.isArray(args.input)
+                      ? (args.input as Record<string, unknown>)
+                      : {},
+                  reason: typeof args.reason === "string" ? args.reason : undefined,
+                  confirmation_id:
+                    typeof args.confirmation_id === "string" ? args.confirmation_id : undefined,
+                },
+              });
+            } catch (error) {
+              if (error instanceof ForbiddenError) {
+                result = sanitizeAgentResponse({
+                  ok: false,
+                  error_code:
+                    (error.details as { error_code?: string } | undefined)?.error_code ??
+                    "forbidden",
+                  message: error.message,
+                  ...(typeof error.details === "object" && error.details
+                    ? (error.details as Record<string, unknown>)
+                    : {}),
+                });
+                break;
+              }
+              throw error;
             }
-            const agent = await findAgentByAccessToken(token);
-            if (!agent) {
-              return jsonRpcError(id, -32000, "Invalid agent access token");
+            break;
+          }
+
+          case "list_capabilities": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const items = await agentAuthorizationV25Service.listCapabilitiesForAgent(agent);
+            result = sanitizeAgentResponse({ ok: true, items });
+            break;
+          }
+
+          case "request_authorization": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const capability = readCapabilityName(args);
+            if (!capability) {
+              return jsonRpcError(id, -32000, "capability is required");
             }
-            result = await capabilityService.invoke({
+            result = await agentAuthorizationV25Service.requestAuthorization({
               agent,
               body: {
-                capability: String(args.capability ?? ""),
-                input: args.input && typeof args.input === "object" && !Array.isArray(args.input)
-                  ? (args.input as Record<string, unknown>)
-                  : {},
-                user_id: typeof args.user_id === "string" ? args.user_id : undefined,
+                capability,
+                requested_scopes: Array.isArray(args.requested_scopes)
+                  ? args.requested_scopes.map(String)
+                  : undefined,
                 reason: typeof args.reason === "string" ? args.reason : undefined,
-                confirmation_id: typeof args.confirmation_id === "string" ? args.confirmation_id : undefined,
               },
+              apiBaseUrl: apiBaseUrl(),
             });
             break;
           }
-          case "list_capabilities":
-            result = {
-              ok: true,
-              items: (await listCapabilities()).map((item) => ({
-                name: item.name,
-                description: item.description,
-                capability_type: item.capability_type,
-                risk_level: item.risk_level,
-                scopes: item.scopes,
-              })),
-            };
-            break;
-          case "request_authorization": {
-            const token =
-              typeof args.agent_access_token === "string" ? args.agent_access_token.trim() : "";
-            if (!token) {
-              return jsonRpcError(id, -32000, "agent_access_token is required");
+
+          case "get_authorization_status": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const authorizationId =
+              typeof args.authorization_id === "string" ? args.authorization_id.trim() : "";
+            if (!authorizationId) {
+              return jsonRpcError(id, -32000, "authorization_id is required");
             }
-            const agent = await findAgentByAccessToken(token);
-            if (!agent) {
-              return jsonRpcError(id, -32000, "Invalid agent access token");
-            }
-            const capabilities = Array.isArray(args.capabilities)
-              ? args.capabilities.map(String)
-              : [];
-            if (capabilities.length === 0) {
-              return jsonRpcError(id, -32000, "capabilities must be a non-empty array");
-            }
-            result = await authorizationService.createRequest({
-              agentId: agent.id,
-              userId: resolveAuthorizationUserId(
-                typeof args.user_id === "string" ? args.user_id : undefined,
-              ),
-              capabilities,
-              state: typeof args.state === "string" ? args.state : undefined,
-              reason: typeof args.reason === "string" ? args.reason : undefined,
-              consoleBaseUrl: config.consoleUrl,
-              apiBaseUrl: "https://cnothing.com",
-            });
+            result = await agentAuthorizationV25Service.getAuthorizationStatus(
+              authorizationId,
+              agent,
+            );
             break;
           }
+
+          case "list_grants": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const items = await agentAuthorizationV25Service.listGrantsForAgent(agent.id);
+            result = sanitizeAgentResponse({ ok: true, items });
+            break;
+          }
+
+          case "revoke_grant": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const grantId = typeof args.grant_id === "string" ? args.grant_id.trim() : "";
+            if (!grantId) {
+              return jsonRpcError(id, -32000, "grant_id is required");
+            }
+            const revoked = await revokeGrant(grantId);
+            if (!revoked || revoked.agent_id !== agent.id) {
+              return jsonRpcError(id, -32000, "Grant not found for this agent");
+            }
+            result = sanitizeAgentResponse({ ok: true, grant_id: grantId, status: "revoked" });
+            break;
+          }
+
           case "get_authai_public_key":
-            result = service.getAuthaiPublicKey();
+            result = legacyService.getAuthaiPublicKey();
             break;
           case "authai_register":
-            result = await service.registerClient(args);
+            result = await legacyService.registerClient(args);
             break;
           case "authai_refresh":
-            result = await service.refreshChallenge(args);
+            result = await legacyService.refreshChallenge(args);
             break;
           case "authai_key_holder_challenge":
-            result = await service.createKeyHolderChallenge(args);
+            result = await legacyService.createKeyHolderChallenge(args);
             break;
           case "authai_key_holder_verify":
-            result = await service.verifyKeyHolderChallenge(args);
+            result = await legacyService.verifyKeyHolderChallenge(args);
             break;
           case "authai_key_holder_sign_challenge":
-            result = await service.createKeyHolderSignChallenge(args);
+            result = await legacyService.createKeyHolderSignChallenge(args);
             break;
           case "authai_key_holder_verify_signature":
-            result = await service.verifyKeyHolderSignature(args);
+            result = await legacyService.verifyKeyHolderSignature(args);
             break;
           case "kv_save":
-            result = await service.saveKv(args);
+            result = await legacyService.saveKv(args);
             break;
           case "kv_read":
-            result = await service.readKv(args);
+            result = await legacyService.readKv(args);
             break;
           default:
             return jsonRpcError(id, -32601, "Method not found", { tool: name });
@@ -230,7 +279,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 export function handleMcpInfo(baseUrl: string) {
   return {
     name: config.serviceName,
-    version: "2.0.0",
+    version: "2.5.0",
     protocolVersion: config.protocolVersion,
     instructions: MCP_SERVER_INSTRUCTIONS,
     capabilities: {
@@ -245,7 +294,9 @@ export function handleMcpInfo(baseUrl: string) {
     discovery: {
       manifest: `${baseUrl}/mcp/manifest`,
       v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
+      openapi_v25: `${baseUrl}/openapi-v2.5.json`,
       openapi_v2: `${baseUrl}/openapi-v2.json`,
+      internal_tools: listMcpInternalTools().map((tool) => tool.name),
       skills_index: `${baseUrl}/skills/index.json`,
       skills_text: `${baseUrl}/skills.txt`,
       getting_started: `${baseUrl}/getting-started.md`,

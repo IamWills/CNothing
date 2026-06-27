@@ -184,6 +184,14 @@ export async function handleV2Request(request: Request): Promise<Response> {
         risk_level: item.risk_level,
         input_schema: item.input_schema,
         output_schema: item.output_schema,
+        provider_id: item.provider_id,
+        display_name: item.display_name,
+        connection_required: item.connection_required,
+        source: item.source,
+        invocation_type: item.invocation_type,
+        invocation_config: item.invocation_config,
+        policy_config: item.policy_config,
+        status: item.status,
       })),
     });
   }

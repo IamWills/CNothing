@@ -31,6 +31,8 @@ export interface AppConfig {
   autoGrantLowRiskCapabilities: boolean;
   searchApiBaseUrl?: string;
   searchAutoBootstrap: boolean;
+  e2eInternalEnabled: boolean;
+  githubApiBaseUrl: string;
 }
 
 function readRequiredEnv(name: string): string {
@@ -166,6 +168,12 @@ const searchAutoBootstrap =
   searchApiBaseUrl !== undefined &&
   process.env.KEYSERVICE_SEARCH_AUTO_BOOTSTRAP?.trim() !== "0";
 
+const e2eInternalEnabled = process.env.KEYSERVICE_E2E_INTERNAL?.trim() === "1";
+
+const githubApiBaseUrl =
+  process.env.KEYSERVICE_GITHUB_API_BASE_URL?.trim().replace(/\/+$/, "") ||
+  "https://api.github.com";
+
 const publicBaseUrl = (() => {
   const explicit = process.env.KEYSERVICE_PUBLIC_URL?.trim();
   if (explicit) {
@@ -209,6 +217,8 @@ const config: AppConfig = {
   autoGrantLowRiskCapabilities,
   searchApiBaseUrl,
   searchAutoBootstrap,
+  e2eInternalEnabled,
+  githubApiBaseUrl,
 };
 
 export default config;

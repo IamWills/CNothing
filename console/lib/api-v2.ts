@@ -30,6 +30,14 @@ export type V2Capability = {
   risk_level: string;
   input_schema: Record<string, unknown>;
   output_schema: Record<string, unknown>;
+  provider_id?: string | null;
+  display_name?: string | null;
+  connection_required?: boolean;
+  source?: string | null;
+  invocation_type?: string | null;
+  invocation_config?: Record<string, unknown>;
+  policy_config?: Record<string, unknown>;
+  status?: string;
 };
 
 export type V2Grant = {
@@ -40,6 +48,10 @@ export type V2Grant = {
   scopes: string[];
   expires_at: string | null;
   revoked: boolean;
+  provider_id?: string | null;
+  connection_id?: string | null;
+  grant_status?: string | null;
+  last_used_at?: string | null;
   capability_name: string;
   capability_description: string;
   agent_name: string;
@@ -89,10 +101,16 @@ export type V2AuditEvent = {
   agent_id: string | null;
   capability_name: string;
   connector_id: string | null;
+  provider_id?: string | null;
+  connection_id?: string | null;
   policy_decision: string;
   status: string;
   request_id: string | null;
   error_code: string | null;
+  input_hash?: string | null;
+  output_hash?: string | null;
+  success?: boolean | null;
+  risk_level?: string | null;
   created_at: string;
 };
 
@@ -449,4 +467,69 @@ export async function fetchOidcProviders(connection: ConsoleConnection) {
 export function buildOidcStartUrl(connection: ConsoleConnection, providerName: string, redirectAfter: string) {
   const params = new URLSearchParams({ redirect_after: redirectAfter });
   return `${normalizeBaseUrl(connection.baseUrl)}/v2/auth/oidc/${encodeURIComponent(providerName)}/start?${params.toString()}`;
+}
+
+export type V25OAuthProvider = {
+  id: string;
+  slug: string;
+  display_name: string;
+  auth_type: string;
+  default_scopes: string[];
+  supported_scopes: string[];
+  status: string;
+  is_builtin: boolean;
+  connectable: boolean;
+};
+
+export type V25OAuthConnection = {
+  id: string;
+  user_id: string;
+  provider_id: string;
+  provider_slug: string;
+  provider_display_name: string;
+  provider_account_id: string;
+  display_name: string;
+  scopes: string[];
+  status: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+export async function fetchOAuthProviders(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: V25OAuthProvider[] }>(connection, "/v2/oauth/providers");
+}
+
+export async function startOAuthConnect(
+  connection: ConsoleConnection,
+  payload: { provider_slug: string; redirect_after?: string; scopes?: string[] },
+) {
+  return requestJson<{ ok: true; authorization_url: string }>(connection, "/v2/oauth/connect/start", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchOAuthConnections(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: V25OAuthConnection[] }>(connection, "/v2/oauth/connections");
+}
+
+export async function revokeOAuthConnection(connection: ConsoleConnection, connectionId: string) {
+  return requestJson<{ ok: true }>(
+    connection,
+    `/v2/oauth/connections/${encodeURIComponent(connectionId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function approveV25Authorization(
+  connection: ConsoleConnection,
+  authorizationId: string,
+  payload: { connection_id: string; scopes?: string[]; expires_at?: string },
+) {
+  return requestJson<{ ok: true }>(
+    connection,
+    `/v2/approve/${encodeURIComponent(authorizationId)}`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
 }

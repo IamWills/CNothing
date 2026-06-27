@@ -6,11 +6,22 @@ import { handleKeyRequest } from "./api/key.api";
 import { handleV2PlatformRequest } from "./api/v2-platform.api";
 import { handleV2InternalRequest } from "./api/v2-internal.api";
 import { handleV2Request } from "./api/v2.api";
+import {
+  handleV25AgentRequest,
+  handleV25ApproveRequest,
+  handleV25ImportRequest,
+  handleV25OAuthRequest,
+  handleV25PlatformRequest,
+} from "./api/v2.5.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
 import { runStartupBootstrap } from "./v2/platform-bootstrap.service";
 import { runSearchStartupBootstrap } from "./v2/search-bootstrap.service";
+import { runV25StartupBootstrap } from "./v2/v2.5-bootstrap.service";
+import { migrateCredentialsToOAuthConnections } from "./v2/credential-migration.service";
+import { handleV2E2eInternalRequest } from "./api/v2-e2e-internal.api";
+import { applySecurityMiddleware } from "./middleware/security";
 import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
 import { toHttpResponse } from "./utils/errors";
 import { corsHeaders } from "./utils/http";
@@ -67,6 +78,7 @@ function renderHomePage(baseUrl: string): string {
     ["/mcp", "MCP info endpoint"],
     ["/openapi.json", "OpenAPI document (v1 legacy)"],
     ["/openapi-v2.json", "OpenAPI document (v2 capability platform)"],
+    ["/openapi-v2.5.json", "OpenAPI document (v2.5 OAuth broker + capability gateway)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
     ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
     ["/v2/authorize/request", "Request user authorization for capabilities"],
@@ -222,6 +234,22 @@ async function router(request: Request): Promise<Response> {
     );
   }
 
+  if (pathname === "/openapi-v2.5.json" && request.method === "GET") {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const content = readFileSync(path.join(__dirname, "..", "openapi-v2.5.json"), "utf8");
+    return withCors(
+      new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+        },
+      }),
+      request,
+    );
+  }
+
   if (pathname === "/openapi-v2.json" && request.method === "GET") {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -249,8 +277,30 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (pathname.startsWith("/v2/")) {
+    if (pathname.startsWith("/v2/internal/e2e/")) {
+      return withCors(await handleV2E2eInternalRequest(request), request);
+    }
     if (pathname.startsWith("/v2/internal/")) {
       return withCors(await handleV2InternalRequest(request), request);
+    }
+    if (
+      pathname.startsWith("/v2/agent/") ||
+      pathname === "/v2/agent/invoke"
+    ) {
+      return withCors(await handleV25AgentRequest(request), request);
+    }
+    if (pathname.startsWith("/v2/oauth/")) {
+      return withCors(await handleV25OAuthRequest(request), request);
+    }
+    if (pathname.startsWith("/v2/import/") || pathname === "/v2/capabilities/from-openapi") {
+      return withCors(await handleV25ImportRequest(request), request);
+    }
+    if (pathname.startsWith("/v2/approve/") && request.method === "POST") {
+      return withCors(await handleV25ApproveRequest(request), request);
+    }
+    const v25Platform = await handleV25PlatformRequest(request);
+    if (v25Platform) {
+      return withCors(v25Platform, request);
     }
     if (
       pathname.startsWith("/v2/platform/") ||
@@ -280,9 +330,16 @@ async function main(): Promise<void> {
   await initDb();
   await runStartupBootstrap();
   await runSearchStartupBootstrap();
+  await runV25StartupBootstrap();
+  await migrateCredentialsToOAuthConnections();
   Bun.serve({
     port: config.port,
-    fetch: (request: Request) => router(request).catch((error) => toHttpResponse(error)),
+    fetch: (request: Request) => {
+      const url = new URL(request.url);
+      return applySecurityMiddleware(request, url.pathname, () =>
+        router(request).catch((error) => toHttpResponse(error)),
+      );
+    },
   });
   // eslint-disable-next-line no-console
   console.log(`${config.serviceName} listening on http://localhost:${config.port}`);

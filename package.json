@@ -36,6 +36,8 @@
     "search:bootstrap": "bun run examples/search-connector/bootstrap.ts",
     "search:link": "bun run examples/search-connector/link.ts",
     "e2e:v2": "bun run examples/e2e-v2/run.ts",
+    "e2e:v2.5": "bun run examples/e2e-v2.5/run.ts",
+    "test": "bun test src/v2/__tests__",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"
   },

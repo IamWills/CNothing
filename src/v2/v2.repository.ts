@@ -73,6 +73,16 @@ function mapConnectorRow(row: Record<string, unknown>): ConnectorRecord {
 }
 
 function mapCapabilityRow(row: Record<string, unknown>): CapabilityRecord {
+  const metadata = normalizeMetadata(row.metadata);
+  const invocationConfig =
+    row.invocation_config && typeof row.invocation_config === "object"
+      ? normalizeMetadata(row.invocation_config)
+      : normalizeMetadata(metadata.invocation_config);
+  const policyConfig =
+    row.policy_config && typeof row.policy_config === "object"
+      ? normalizeMetadata(row.policy_config)
+      : normalizeMetadata(metadata.policy_config);
+
   return {
     id: String(row.id),
     connector_id: String(row.connector_id),
@@ -84,7 +94,15 @@ function mapCapabilityRow(row: Record<string, unknown>): CapabilityRecord {
     scopes: asStringArray(row.scopes),
     risk_level: String(row.risk_level) as CapabilityRecord["risk_level"],
     status: String(row.status) as CapabilityRecord["status"],
-    metadata: normalizeMetadata(row.metadata),
+    provider_id: row.provider_id ? String(row.provider_id) : null,
+    display_name: row.display_name ? String(row.display_name) : null,
+    connection_required:
+      row.connection_required !== undefined ? Boolean(row.connection_required) : true,
+    source: row.source ? String(row.source) : null,
+    invocation_type: row.invocation_type ? String(row.invocation_type) : null,
+    invocation_config: invocationConfig,
+    policy_config: policyConfig,
+    metadata,
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
   };
@@ -100,6 +118,10 @@ function mapGrantRow(row: Record<string, unknown>): GrantRecord {
     expires_at: row.expires_at ? asIso(row.expires_at) : null,
     revoked: Boolean(row.revoked),
     revoked_at: row.revoked_at ? asIso(row.revoked_at) : null,
+    provider_id: row.provider_id ? String(row.provider_id) : null,
+    connection_id: row.connection_id ? String(row.connection_id) : null,
+    grant_status: row.grant_status ? String(row.grant_status) : null,
+    last_used_at: row.last_used_at ? asIso(row.last_used_at) : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
@@ -321,6 +343,9 @@ export async function createGrant(input: {
   scopes?: string[];
   expires_at?: string;
   metadata?: JsonObject;
+  provider_id?: string;
+  connection_id?: string;
+  grant_status?: string;
 }): Promise<GrantRecord> {
   await pool.query(
     `
@@ -337,8 +362,11 @@ export async function createGrant(input: {
   const id = randomUUID();
   const result = await pool.query(
     `
-      INSERT INTO cap_grants (id, user_id, agent_id, capability_id, scopes, expires_at, metadata)
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb)
+      INSERT INTO cap_grants (
+        id, user_id, agent_id, capability_id, scopes, expires_at, metadata,
+        provider_id, connection_id, grant_status
+      )
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9, $10)
       RETURNING *
     `,
     [
@@ -349,6 +377,9 @@ export async function createGrant(input: {
       JSON.stringify(input.scopes ?? []),
       input.expires_at ?? null,
       JSON.stringify(input.metadata ?? {}),
+      input.provider_id ?? null,
+      input.connection_id ?? null,
+      input.grant_status ?? "approved",
     ],
   );
   return mapGrantRow(result.rows[0]);
@@ -366,6 +397,7 @@ export async function findActiveGrant(input: {
         AND agent_id = $2
         AND capability_id = $3
         AND revoked = FALSE
+        AND (grant_status IS NULL OR grant_status = 'approved')
         AND (expires_at IS NULL OR expires_at > NOW())
       ORDER BY created_at DESC
       LIMIT 1
@@ -385,6 +417,7 @@ export async function findActiveGrantsForAgentCapability(input: {
       WHERE agent_id = $1
         AND capability_id = $2
         AND revoked = FALSE
+        AND (grant_status IS NULL OR grant_status = 'approved')
         AND (expires_at IS NULL OR expires_at > NOW())
       ORDER BY created_at DESC
     `,
@@ -397,13 +430,23 @@ export async function revokeGrant(grantId: string): Promise<GrantRecord | null> 
   const result = await pool.query(
     `
       UPDATE cap_grants
-      SET revoked = TRUE, revoked_at = NOW(), updated_at = NOW()
+      SET revoked = TRUE,
+          revoked_at = NOW(),
+          grant_status = 'revoked',
+          updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
     [grantId],
   );
   return result.rows[0] ? mapGrantRow(result.rows[0]) : null;
+}
+
+export async function touchGrantLastUsed(grantId: string): Promise<void> {
+  await pool.query(
+    `UPDATE cap_grants SET last_used_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    [grantId],
+  );
 }
 
 export async function listGrants(filter?: {
@@ -667,10 +710,16 @@ export async function listInvokeAudit(input?: {
     capability_id: row.capability_id ? String(row.capability_id) : null,
     capability_name: String(row.capability_name),
     connector_id: row.connector_id ? String(row.connector_id) : null,
+    provider_id: row.provider_id ? String(row.provider_id) : null,
+    connection_id: row.connection_id ? String(row.connection_id) : null,
     policy_decision: String(row.policy_decision),
     status: String(row.status),
     request_id: row.request_id ? String(row.request_id) : null,
     error_code: row.error_code ? String(row.error_code) : null,
+    input_hash: row.input_hash ? String(row.input_hash) : null,
+    output_hash: row.output_hash ? String(row.output_hash) : null,
+    success: row.success === null || row.success === undefined ? null : Boolean(row.success),
+    risk_level: row.risk_level ? String(row.risk_level) : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
   }));
@@ -862,20 +911,28 @@ export async function writeInvokeAudit(input: {
   capability_id?: string;
   capability_name: string;
   connector_id?: string;
+  provider_id?: string;
+  connection_id?: string;
   policy_decision: string;
   status: string;
   request_id?: string;
   error_code?: string;
   metadata?: JsonObject;
+  input_hash?: string;
+  output_hash?: string;
+  success?: boolean;
+  risk_level?: string;
 }): Promise<InvokeAuditRecord> {
   const id = randomUUID();
   const result = await pool.query(
     `
       INSERT INTO cap_invoke_audit (
         id, user_id, agent_id, capability_id, capability_name, connector_id,
-        policy_decision, status, request_id, error_code, metadata
+        provider_id, connection_id,
+        policy_decision, status, request_id, error_code, metadata,
+        input_hash, output_hash, success, risk_level
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17)
       RETURNING *
     `,
     [
@@ -885,11 +942,17 @@ export async function writeInvokeAudit(input: {
       input.capability_id ?? null,
       input.capability_name,
       input.connector_id ?? null,
+      input.provider_id ?? null,
+      input.connection_id ?? null,
       input.policy_decision,
       input.status,
       input.request_id ?? null,
       input.error_code ?? null,
       JSON.stringify(input.metadata ?? {}),
+      input.input_hash ?? null,
+      input.output_hash ?? null,
+      input.success ?? null,
+      input.risk_level ?? null,
     ],
   );
   const row = result.rows[0];
@@ -900,10 +963,16 @@ export async function writeInvokeAudit(input: {
     capability_id: row.capability_id ? String(row.capability_id) : null,
     capability_name: String(row.capability_name),
     connector_id: row.connector_id ? String(row.connector_id) : null,
+    provider_id: row.provider_id ? String(row.provider_id) : null,
+    connection_id: row.connection_id ? String(row.connection_id) : null,
     policy_decision: String(row.policy_decision),
     status: String(row.status),
     request_id: row.request_id ? String(row.request_id) : null,
     error_code: row.error_code ? String(row.error_code) : null,
+    input_hash: row.input_hash ? String(row.input_hash) : null,
+    output_hash: row.output_hash ? String(row.output_hash) : null,
+    success: row.success === null || row.success === undefined ? null : Boolean(row.success),
+    risk_level: row.risk_level ? String(row.risk_level) : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
   };

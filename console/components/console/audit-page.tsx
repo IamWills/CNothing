@@ -82,7 +82,14 @@ export function AuditPage() {
                   </div>
                   <p className="mt-1 text-sm text-slate-600">
                     User {event.user_id ?? "n/a"} · Agent {event.agent_id ?? "n/a"}
+                    {event.risk_level ? ` · Risk ${event.risk_level}` : ""}
                   </p>
+                  {event.input_hash ? (
+                    <p className="mt-1 font-mono text-xs text-slate-500">
+                      in:{event.input_hash.slice(0, 12)}…
+                      {event.output_hash ? ` out:${event.output_hash.slice(0, 12)}…` : ""}
+                    </p>
+                  ) : null}
                   {event.error_code ? (
                     <p className="mt-1 text-sm text-red-600">{event.error_code}</p>
                   ) : null}

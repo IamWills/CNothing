@@ -52,6 +52,8 @@ jobs:
             echo "KEYSERVICE_USER_SESSION_TTL_SECONDS=86400"
             echo "KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS=900"
             echo "KEYSERVICE_V1_SUNSET_DATE=2026-12-17"
+            echo "KEYSERVICE_E2E_INTERNAL=1"
+            echo "KEYSERVICE_GITHUB_API_BASE_URL=http://127.0.0.1:3199"
           } >> .env
           cat .local-keys/generated.env >> .env
 
@@ -73,11 +75,21 @@ jobs:
           cat /tmp/keyservice.log
           exit 1
 
+      - name: Unit tests v2.5
+        run: bun test src/v2/__tests__
+
       - name: E2E v2 flow
         run: |
           CNOTHING_BASE_URL=http://127.0.0.1:3021 \
           CNOTHING_ADMIN_TOKEN=ci-test-admin-token \
           bun run e2e:v2
+
+      - name: E2E v2.5 flow
+        run: |
+          CNOTHING_BASE_URL=http://127.0.0.1:3021 \
+          CNOTHING_ADMIN_TOKEN=ci-test-admin-token \
+          CNOTHING_E2E_SCENARIO_A=1 \
+          bun run e2e:v2.5
 
       - name: Upload server log on failure
         if: failure()

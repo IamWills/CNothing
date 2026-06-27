@@ -205,9 +205,9 @@ export async function updateOAuthProviderCredentials(input: {
   const result = await pool.query(
     `
       UPDATE cap_oauth_providers
-      SET client_id = $2,
+      SET client_id = $2::text,
           encrypted_client_secret = COALESCE($3, encrypted_client_secret),
-          status = CASE WHEN $2 IS NOT NULL AND $2 <> '' THEN 'active' ELSE status END,
+          status = CASE WHEN $2::text IS NOT NULL AND $2::text <> '' THEN 'active' ELSE status END,
           updated_at = NOW()
       WHERE id = $1
       RETURNING *

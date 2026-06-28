@@ -83,13 +83,11 @@ export function ProvidersPage({ adminBasePath, apiVersion = "v2.5" }: ProvidersP
     } finally {
       setLoading(false);
     }
-  }, [connection]);
+  }, [connection, apiVersion]);
 
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  }, [connection, apiVersion]);
 
   async function handleDiscover() {
     setErrorMessage("");

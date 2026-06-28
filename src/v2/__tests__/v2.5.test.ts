@@ -17,7 +17,22 @@ describe("secret redaction", () => {
 
   test("detects secret field names", () => {
     expect(isSecretFieldName("client_secret")).toBe(true);
+    expect(isSecretFieldName("authorization")).toBe(true);
+    expect(isSecretFieldName("authorization_token")).toBe(true);
+    expect(isSecretFieldName("authorization_id")).toBe(false);
+    expect(isSecretFieldName("confirmation_id")).toBe(false);
     expect(isSecretFieldName("title")).toBe(false);
+  });
+
+  test("preserves authorization_id in agent responses", () => {
+    const result = redactSecrets({
+      authorization_id: "auth-req-123",
+      approval_url: "https://cnothing.com/approve/auth-req-123",
+      access_token: "gho_secret123",
+    }) as Record<string, unknown>;
+    expect(result.authorization_id).toBe("auth-req-123");
+    expect(result.approval_url).toContain("auth-req-123");
+    expect(result.access_token).toBe("[REDACTED]");
   });
 
   test("redacts bearer tokens in logs", () => {

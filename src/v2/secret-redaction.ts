@@ -4,7 +4,8 @@ const SECRET_FIELD_PATTERNS = [
   /client[_-]?secret/i,
   /api[_-]?key/i,
   /private[_-]?key/i,
-  /authorization/i,
+  /^authorization$/i,
+  /authorization[_-]?(token|header|credential|code)$/i,
   /bearer/i,
   /password/i,
   /secret/i,
@@ -12,9 +13,21 @@ const SECRET_FIELD_PATTERNS = [
   /encrypted/i,
 ];
 
+const NON_SECRET_FIELD_NAMES = new Set([
+  "authorization_id",
+  "authorization_request_id",
+  "confirmation_id",
+  "connection_id",
+  "grant_id",
+  "request_id",
+]);
+
 const REDACTED = "[REDACTED]";
 
 export function isSecretFieldName(name: string): boolean {
+  if (NON_SECRET_FIELD_NAMES.has(name)) {
+    return false;
+  }
   return SECRET_FIELD_PATTERNS.some((pattern) => pattern.test(name));
 }
 

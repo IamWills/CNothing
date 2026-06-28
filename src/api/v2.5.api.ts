@@ -276,8 +276,9 @@ export async function handleV25ImportRequest(request: Request): Promise<Response
       candidateNames: Array.isArray(body.candidate_names)
         ? body.candidate_names.map(String)
         : [],
-      connectorId: readRequiredString(body, "connector_id"),
+      connectorId: typeof body.connector_id === "string" ? body.connector_id : undefined,
       providerId: typeof body.provider_id === "string" ? body.provider_id : undefined,
+      providerSlug: typeof body.provider_slug === "string" ? body.provider_slug : undefined,
     });
     return Response.json({ ok: true, ...result });
   }
@@ -316,8 +317,9 @@ export async function handleV25ImportRequest(request: Request): Promise<Response
       candidateNames: Array.isArray(body.candidate_names)
         ? body.candidate_names.map(String)
         : [],
-      connectorId: readRequiredString(body, "connector_id"),
+      connectorId: typeof body.connector_id === "string" ? body.connector_id : undefined,
       providerId: typeof body.provider_id === "string" ? body.provider_id : undefined,
+      providerSlug: typeof body.provider_slug === "string" ? body.provider_slug : undefined,
     });
     return Response.json({ ok: true, ...result });
   }
@@ -350,7 +352,10 @@ function sanitizeJob(job: Awaited<ReturnType<typeof findImportJob>>) {
       risk_level: candidate.risk_level,
       required_scopes: candidate.required_scopes,
       enabled: candidate.enabled,
+      invocation_type: candidate.invocation_type,
+      invocation_config: candidate.invocation_config,
     })),
+    provider_id: job.provider_id,
     error_message: job.error_message,
     created_at: job.created_at,
     updated_at: job.updated_at,

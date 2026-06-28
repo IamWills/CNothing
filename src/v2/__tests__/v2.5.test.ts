@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { isGoogleCapability, isMicrosoftCapability, isNotionCapability, isSlackCapability } from "../builtin-provider.executor";
+import { generateCandidatesFromOpenApi } from "../import-openapi.util";
 import { redactSecrets, isSecretFieldName, redactLogMessage } from "../secret-redaction";
 import { evaluatePolicyV25, scopesSatisfied, applyOutputPolicy } from "../policy-engine-v25";
 import type { CapabilityRecord, PolicyRecord } from "../v2.entity";
@@ -123,5 +124,53 @@ describe("builtin provider helpers", () => {
     expect(isMicrosoftCapability("microsoft.userinfo")).toBe(true);
     expect(isMicrosoftCapability("outlook.send_mail")).toBe(true);
     expect(isSlackCapability("github.create_issue")).toBe(false);
+  });
+});
+
+describe("import service", () => {
+  test("extracts base_url and auth from OpenAPI", () => {
+    const doc = {
+      openapi: "3.0.0",
+      info: { title: "Petstore" },
+      servers: [{ url: "https://api.example.com/v1" }],
+      components: {
+        securitySchemes: {
+          oauth: { type: "oauth2", flows: {} },
+        },
+      },
+      paths: {
+        "/pets": {
+          get: { operationId: "listPets", summary: "List pets" },
+        },
+      },
+    };
+    const candidates = generateCandidatesFromOpenApi(doc, "petstore");
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.invocation_config).toMatchObject({
+      base_url: "https://api.example.com/v1",
+      auth: "bearer",
+      method: "GET",
+      url_template: "/pets",
+    });
+  });
+
+  test("resolves relative server URL from source URL", () => {
+    const doc = {
+      openapi: "3.0.0",
+      info: { title: "Example" },
+      servers: [{ url: "/v1" }],
+      paths: {
+        "/items": {
+          get: { operationId: "listItems" },
+        },
+      },
+    };
+    const candidates = generateCandidatesFromOpenApi(doc, "example", {
+      sourceUrl: "https://api.example.com/openapi.json",
+    });
+    expect(candidates[0]?.invocation_config).toMatchObject({
+      base_url: "https://api.example.com/v1",
+      auth: "none",
+    });
   });
 });

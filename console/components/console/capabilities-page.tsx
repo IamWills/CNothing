@@ -105,7 +105,7 @@ export function CapabilitiesPage() {
   return (
     <PageFrame
       title="Capabilities"
-      description="Register connectors and declare business capabilities. Agents invoke capabilities — never credentials."
+      description="Browse registered capabilities. Prefer importing from OpenAPI or MCP on the Import page — manual connector registration is for advanced legacy flows."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />

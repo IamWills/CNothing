@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "../db";
+import { ValidationError } from "../utils/errors";
+import { ensureGatewayConnector } from "./gateway-connector.service";
+import { generateCandidatesFromOpenApi } from "./import-openapi.util";
+import { findOAuthProviderBySlug } from "./oauth.repository";
 import type { JsonObject } from "./v2.entity";
 import type { ImportJobRecord, ImportJobStatus, ImportJobType } from "./v2.5.entity";
 
@@ -101,46 +105,7 @@ export async function parseOpenApiDocument(content: string): Promise<JsonObject>
   throw new Error("YAML OpenAPI import requires JSON for now; convert YAML to JSON");
 }
 
-export function generateCandidatesFromOpenApi(doc: JsonObject, providerSlug: string): JsonObject[] {
-  const paths = (doc.paths as Record<string, Record<string, JsonObject>>) ?? {};
-  const candidates: JsonObject[] = [];
-
-  for (const [pathName, methods] of Object.entries(paths)) {
-    for (const [method, operation] of Object.entries(methods)) {
-      if (!["get", "post", "put", "patch", "delete"].includes(method)) {
-        continue;
-      }
-      const operationId =
-        (operation.operationId as string | undefined) ??
-        `${method}_${pathName.replace(/[^\w]+/g, "_")}`;
-      const name = `${providerSlug}.${operationId.replace(/[^\w.]+/g, "_")}`;
-      const inferred = inferRiskFromOperation({
-        method,
-        operationId,
-        summary: operation.summary as string | undefined,
-      });
-
-      candidates.push({
-        name,
-        display_name: (operation.summary as string | undefined) ?? operationId,
-        description: (operation.description as string | undefined) ?? "",
-        capability_type: inferred.capability_type,
-        risk_level: inferred.risk_level,
-        required_scopes: [],
-        source: "openapi_import",
-        invocation_type: "http",
-        invocation_config: {
-          method: method.toUpperCase(),
-          url_template: pathName,
-        },
-        enabled: false,
-        policy_config: inferred.risk_level === "HIGH" ? { require_user_confirmation: true } : {},
-      });
-    }
-  }
-
-  return candidates;
-}
+export { generateCandidatesFromOpenApi } from "./import-openapi.util";
 
 export async function importOpenApi(input: {
   content: string;
@@ -165,7 +130,9 @@ export async function importOpenApi(input: {
         .replace(/[^\w]+/g, "_")
         .slice(0, 32);
 
-    const candidates = generateCandidatesFromOpenApi(doc, providerSlug);
+    const candidates = generateCandidatesFromOpenApi(doc, providerSlug, {
+      sourceUrl: input.sourceUrl,
+    });
     await updateImportJob({
       id: job.id,
       status: "completed",
@@ -251,73 +218,43 @@ export async function importMcpManifest(input: {
   return (await findImportJob(job.id))!;
 }
 
+export async function resolveImportActivationContext(input: {
+  job: ImportJobRecord;
+  connectorId?: string;
+  providerId?: string;
+  providerSlug?: string;
+}): Promise<{ connectorId: string; providerId: string | null; connectionRequired: boolean }> {
+  const connectorId = input.connectorId ?? (await ensureGatewayConnector()).id;
+  let providerId = input.providerId ?? input.job.provider_id ?? null;
+  if (!providerId && input.providerSlug) {
+    const provider = await findOAuthProviderBySlug(input.providerSlug);
+    providerId = provider?.id ?? null;
+  }
+  return {
+    connectorId,
+    providerId,
+    connectionRequired: Boolean(providerId),
+  };
+}
+
 export async function activateOpenApiCandidates(input: {
   jobId: string;
   candidateNames: string[];
-  connectorId: string;
+  connectorId?: string;
   providerId?: string;
+  providerSlug?: string;
 }): Promise<{ activated: number }> {
   const job = await findImportJob(input.jobId);
   if (!job || job.import_type !== "openapi") {
     throw new Error("Import job not found");
   }
 
-  let activated = 0;
-  for (const candidate of job.candidates) {
-    const name = String(candidate.name ?? "");
-    if (!input.candidateNames.includes(name)) {
-      continue;
-    }
-
-    await pool.query(
-      `
-        INSERT INTO cap_capabilities (
-          id, connector_id, name, description, capability_type, input_schema, output_schema,
-          scopes, risk_level, status, metadata, provider_id, display_name, source,
-          invocation_type, invocation_config, policy_config
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6::jsonb, '{}'::jsonb, $7::jsonb, $8, 'active', '{}'::jsonb,
-          $9, $10, 'openapi_import', 'http', $11::jsonb, $12::jsonb
-        )
-        ON CONFLICT (name) DO UPDATE SET
-          description = EXCLUDED.description,
-          capability_type = EXCLUDED.capability_type,
-          risk_level = EXCLUDED.risk_level,
-          invocation_config = EXCLUDED.invocation_config,
-          policy_config = EXCLUDED.policy_config,
-          updated_at = NOW()
-      `,
-      [
-        randomUUID(),
-        input.connectorId,
-        name,
-        String(candidate.description ?? ""),
-        String(candidate.capability_type ?? "ACTION"),
-        JSON.stringify(candidate.input_schema ?? { type: "object" }),
-        JSON.stringify(candidate.required_scopes ?? []),
-        String(candidate.risk_level ?? "MEDIUM"),
-        input.providerId ?? null,
-        String(candidate.display_name ?? name),
-        JSON.stringify(candidate.invocation_config ?? {}),
-        JSON.stringify(candidate.policy_config ?? {}),
-      ],
-    );
-    activated += 1;
-  }
-
-  return { activated };
-}
-
-export async function activateMcpCandidates(input: {
-  jobId: string;
-  candidateNames: string[];
-  connectorId: string;
-  providerId?: string;
-}): Promise<{ activated: number }> {
-  const job = await findImportJob(input.jobId);
-  if (!job || job.import_type !== "mcp") {
-    throw new Error("MCP import job not found");
-  }
+  const activation = await resolveImportActivationContext({
+    job,
+    connectorId: input.connectorId,
+    providerId: input.providerId,
+    providerSlug: input.providerSlug,
+  });
 
   let activated = 0;
   for (const candidate of job.candidates) {
@@ -334,7 +271,80 @@ export async function activateMcpCandidates(input: {
           invocation_type, invocation_config, policy_config, connection_required
         ) VALUES (
           $1, $2, $3, $4, $5, $6::jsonb, '{}'::jsonb, $7::jsonb, $8, 'active', '{}'::jsonb,
-          $9, $10, 'mcp_import', 'mcp', $11::jsonb, $12::jsonb, TRUE
+          $9, $10, 'openapi_import', 'http', $11::jsonb, $12::jsonb, $13
+        )
+        ON CONFLICT (name) DO UPDATE SET
+          description = EXCLUDED.description,
+          capability_type = EXCLUDED.capability_type,
+          risk_level = EXCLUDED.risk_level,
+          invocation_config = EXCLUDED.invocation_config,
+          policy_config = EXCLUDED.policy_config,
+          provider_id = EXCLUDED.provider_id,
+          connection_required = EXCLUDED.connection_required,
+          updated_at = NOW()
+      `,
+      [
+        randomUUID(),
+        activation.connectorId,
+        name,
+        String(candidate.description ?? ""),
+        String(candidate.capability_type ?? "ACTION"),
+        JSON.stringify(candidate.input_schema ?? { type: "object" }),
+        JSON.stringify(candidate.required_scopes ?? []),
+        String(candidate.risk_level ?? "MEDIUM"),
+        activation.providerId,
+        String(candidate.display_name ?? name),
+        JSON.stringify(candidate.invocation_config ?? {}),
+        JSON.stringify(candidate.policy_config ?? {}),
+        activation.connectionRequired,
+      ],
+    );
+    activated += 1;
+  }
+
+  return { activated };
+}
+
+export async function activateMcpCandidates(input: {
+  jobId: string;
+  candidateNames: string[];
+  connectorId?: string;
+  providerId?: string;
+  providerSlug?: string;
+}): Promise<{ activated: number }> {
+  const job = await findImportJob(input.jobId);
+  if (!job || job.import_type !== "mcp") {
+    throw new Error("MCP import job not found");
+  }
+
+  const activation = await resolveImportActivationContext({
+    job,
+    connectorId: input.connectorId,
+    providerId: input.providerId,
+    providerSlug: input.providerSlug,
+  });
+
+  let activated = 0;
+  for (const candidate of job.candidates) {
+    const name = String(candidate.name ?? "");
+    if (!input.candidateNames.includes(name)) {
+      continue;
+    }
+
+    const invocationConfig = (candidate.invocation_config as JsonObject | undefined) ?? {};
+    if (!invocationConfig.server_url) {
+      throw new ValidationError(`MCP capability ${name} is missing server_url`);
+    }
+
+    await pool.query(
+      `
+        INSERT INTO cap_capabilities (
+          id, connector_id, name, description, capability_type, input_schema, output_schema,
+          scopes, risk_level, status, metadata, provider_id, display_name, source,
+          invocation_type, invocation_config, policy_config, connection_required
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6::jsonb, '{}'::jsonb, $7::jsonb, $8, 'active', '{}'::jsonb,
+          $9, $10, 'mcp_import', 'mcp', $11::jsonb, $12::jsonb, $13
         )
         ON CONFLICT (name) DO UPDATE SET
           description = EXCLUDED.description,
@@ -343,21 +353,24 @@ export async function activateMcpCandidates(input: {
           invocation_config = EXCLUDED.invocation_config,
           policy_config = EXCLUDED.policy_config,
           input_schema = EXCLUDED.input_schema,
+          provider_id = EXCLUDED.provider_id,
+          connection_required = EXCLUDED.connection_required,
           updated_at = NOW()
       `,
       [
         randomUUID(),
-        input.connectorId,
+        activation.connectorId,
         name,
         String(candidate.description ?? ""),
         String(candidate.capability_type ?? "ACTION"),
         JSON.stringify(candidate.input_schema ?? { type: "object" }),
         JSON.stringify(candidate.required_scopes ?? []),
         String(candidate.risk_level ?? "MEDIUM"),
-        input.providerId ?? null,
+        activation.providerId,
         String(candidate.display_name ?? name),
         JSON.stringify(candidate.invocation_config ?? {}),
         JSON.stringify(candidate.policy_config ?? {}),
+        activation.connectionRequired,
       ],
     );
     activated += 1;

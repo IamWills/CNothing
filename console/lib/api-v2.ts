@@ -533,3 +533,105 @@ export async function approveV25Authorization(
     { method: "POST", body: JSON.stringify(payload) },
   );
 }
+
+export type V25ImportCandidate = {
+  name: string;
+  display_name: string;
+  description: string;
+  capability_type: string;
+  risk_level: string;
+  required_scopes: string[];
+  enabled: boolean;
+  invocation_type?: string;
+  invocation_config?: Record<string, unknown>;
+};
+
+export type V25ImportJob = {
+  id: string;
+  import_type: "openapi" | "mcp";
+  status: string;
+  candidate_count: number;
+  candidates: V25ImportCandidate[];
+  error_message: string | null;
+  provider_id: string | null;
+  source_url?: string | null;
+  source_filename?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function importOpenApiSpec(
+  connection: ConsoleConnection,
+  payload: {
+    content?: string;
+    url?: string;
+    filename?: string;
+    provider_id?: string;
+    provider_slug?: string;
+  },
+) {
+  return requestJson<{ ok: true; job: V25ImportJob }>(connection, "/v2/import/openapi", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchOpenApiImportJob(connection: ConsoleConnection, jobId: string) {
+  return requestJson<{ ok: true; job: V25ImportJob }>(
+    connection,
+    `/v2/import/openapi/${encodeURIComponent(jobId)}`,
+  );
+}
+
+export async function activateOpenApiCapabilities(
+  connection: ConsoleConnection,
+  payload: {
+    job_id: string;
+    candidate_names: string[];
+    provider_id?: string;
+    provider_slug?: string;
+    connector_id?: string;
+  },
+) {
+  return requestJson<{ ok: true; activated: number }>(connection, "/v2/capabilities/from-openapi", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function importMcpManifestSpec(
+  connection: ConsoleConnection,
+  payload: {
+    manifest: Record<string, unknown>;
+    provider_id?: string;
+    provider_slug?: string;
+  },
+) {
+  return requestJson<{ ok: true; job: V25ImportJob }>(connection, "/v2/import/mcp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchMcpImportJob(connection: ConsoleConnection, jobId: string) {
+  return requestJson<{ ok: true; job: V25ImportJob }>(
+    connection,
+    `/v2/import/mcp/${encodeURIComponent(jobId)}`,
+  );
+}
+
+export async function activateMcpCapabilities(
+  connection: ConsoleConnection,
+  payload: {
+    job_id: string;
+    candidate_names: string[];
+    provider_id?: string;
+    provider_slug?: string;
+    connector_id?: string;
+  },
+) {
+  return requestJson<{ ok: true; activated: number }>(connection, "/v2/capabilities/from-mcp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

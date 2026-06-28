@@ -133,6 +133,24 @@ function renderHomePage(baseUrl: string): string {
 </html>`;
 }
 
+function serveOpenApiDocument(request: Request, filename: string): Response {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const content = readFileSync(path.join(__dirname, "..", filename), "utf8");
+  const headers = {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "public, max-age=60",
+  };
+  if (request.method === "HEAD") {
+    return withCors(new Response(null, { status: 200, headers }), request);
+  }
+  return withCors(new Response(content, { status: 200, headers }), request);
+}
+
+function isOpenApiDocumentRequest(request: Request): boolean {
+  return request.method === "GET" || request.method === "HEAD";
+}
+
 async function router(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
@@ -227,68 +245,20 @@ async function router(request: Request): Promise<Response> {
     );
   }
 
-  if (pathname === "/openapi.json" && request.method === "GET") {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const content = readFileSync(path.join(__dirname, "..", "openapi.json"), "utf8");
-    return withCors(
-      new Response(content, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "public, max-age=60",
-        },
-      }),
-      request,
-    );
+  if (pathname === "/openapi.json" && isOpenApiDocumentRequest(request)) {
+    return serveOpenApiDocument(request, "openapi.json");
   }
 
-  if (pathname === "/openapi-v2.6.json" && request.method === "GET") {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const content = readFileSync(path.join(__dirname, "..", "openapi-v2.6.json"), "utf8");
-    return withCors(
-      new Response(content, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "public, max-age=60",
-        },
-      }),
-      request,
-    );
+  if (pathname === "/openapi-v2.6.json" && isOpenApiDocumentRequest(request)) {
+    return serveOpenApiDocument(request, "openapi-v2.6.json");
   }
 
-  if (pathname === "/openapi-v2.5.json" && request.method === "GET") {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const content = readFileSync(path.join(__dirname, "..", "openapi-v2.5.json"), "utf8");
-    return withCors(
-      new Response(content, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "public, max-age=60",
-        },
-      }),
-      request,
-    );
+  if (pathname === "/openapi-v2.5.json" && isOpenApiDocumentRequest(request)) {
+    return serveOpenApiDocument(request, "openapi-v2.5.json");
   }
 
-  if (pathname === "/openapi-v2.json" && request.method === "GET") {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const content = readFileSync(path.join(__dirname, "..", "openapi-v2.json"), "utf8");
-    return withCors(
-      new Response(content, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "public, max-age=60",
-        },
-      }),
-      request,
-    );
+  if (pathname === "/openapi-v2.json" && isOpenApiDocumentRequest(request)) {
+    return serveOpenApiDocument(request, "openapi-v2.json");
   }
 
   if (pathname.startsWith("/v1/")) {

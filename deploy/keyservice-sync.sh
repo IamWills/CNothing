@@ -86,3 +86,17 @@ if systemctl list-unit-files keyservice-console.service >/dev/null 2>&1; then
   systemctl restart keyservice-console.service
   log "keyservice-console.service restarted"
 fi
+
+NGINX_SITE="${KEYSERVICE_NGINX_SITE:-/etc/nginx/sites-available/cnothing.com}"
+NGINX_TEMPLATE="${KEYSERVICE_ROOT}/deploy/nginx-cnothing-split.conf"
+if [[ -f "${NGINX_TEMPLATE}" ]] && command -v nginx >/dev/null 2>&1; then
+  if ! cmp -s "${NGINX_TEMPLATE}" "${NGINX_SITE}" 2>/dev/null; then
+    cp "${NGINX_TEMPLATE}" "${NGINX_SITE}"
+    if nginx -t; then
+      systemctl reload nginx
+      log "nginx site updated and reloaded"
+    else
+      log "nginx config test failed; site file copied but not reloaded"
+    fi
+  fi
+fi

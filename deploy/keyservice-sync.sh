@@ -89,10 +89,11 @@ fi
 
 NGINX_SITE="${KEYSERVICE_NGINX_SITE:-/etc/nginx/sites-available/cnothing.com}"
 NGINX_TEMPLATE="${KEYSERVICE_ROOT}/deploy/nginx-cnothing-split.conf"
-if [[ -f "${NGINX_TEMPLATE}" ]] && command -v nginx >/dev/null 2>&1; then
+NGINX_BIN="${KEYSERVICE_NGINX_BIN:-/usr/sbin/nginx}"
+if [[ -f "${NGINX_TEMPLATE}" ]] && [[ -x "${NGINX_BIN}" ]]; then
   if ! cmp -s "${NGINX_TEMPLATE}" "${NGINX_SITE}" 2>/dev/null; then
     cp "${NGINX_TEMPLATE}" "${NGINX_SITE}"
-    if nginx -t; then
+    if "${NGINX_BIN}" -t; then
       systemctl reload nginx
       log "nginx site updated and reloaded"
     else

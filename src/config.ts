@@ -27,6 +27,7 @@ export interface AppConfig {
   };
   githubToken?: string;
   webhookDefaultUrl?: string;
+  platformWebhookUrl?: string;
   platformAgentName: string;
   autoGrantLowRiskCapabilities: boolean;
   searchApiBaseUrl?: string;
@@ -159,6 +160,8 @@ const githubToken =
 
 const webhookDefaultUrl = process.env.KEYSERVICE_WEBHOOK_DEFAULT_URL?.trim() || undefined;
 
+const platformWebhookUrl = process.env.KEYSERVICE_PLATFORM_WEBHOOK_URL?.trim() || undefined;
+
 const autoGrantLowRiskCapabilities =
   process.env.KEYSERVICE_V2_AUTO_GRANT_LOW_RISK?.trim() !== "0";
 
@@ -213,6 +216,7 @@ const config: AppConfig = {
   githubOAuth,
   githubToken,
   webhookDefaultUrl,
+  platformWebhookUrl,
   platformAgentName: process.env.KEYSERVICE_PLATFORM_AGENT_NAME?.trim() || "cnothing-platform-agent",
   autoGrantLowRiskCapabilities,
   searchApiBaseUrl,

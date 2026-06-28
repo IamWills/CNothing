@@ -299,6 +299,7 @@ export async function handleV2Request(request: Request): Promise<Response> {
     const created = await createAgent({
       name: readRequiredString(body, "name"),
       owner_user_id: readRequiredString(body, "owner_user_id"),
+      tenant_id: typeof body.tenant_id === "string" ? body.tenant_id : undefined,
       public_key_pem:
         typeof body.public_key_pem === "string" ? body.public_key_pem : undefined,
       metadata: readOptionalObject(body, "metadata"),
@@ -309,6 +310,7 @@ export async function handleV2Request(request: Request): Promise<Response> {
         id: created.agent.id,
         name: created.agent.name,
         owner_user_id: created.agent.owner_user_id,
+        tenant_id: created.agent.tenant_id,
         status: created.agent.status,
       },
       access_token: created.access_token,
@@ -318,7 +320,11 @@ export async function handleV2Request(request: Request): Promise<Response> {
   if (request.method === "GET" && path === "/v2/agents") {
     requireAdminAccess(request);
     const ownerUserId = url.searchParams.get("owner_user_id")?.trim() || undefined;
-    const items = await listAgents(ownerUserId);
+    const tenantId = url.searchParams.get("tenant_id")?.trim() || undefined;
+    const items = await listAgents({
+      owner_user_id: ownerUserId,
+      tenant_id: tenantId,
+    });
     return Response.json({ ok: true, items });
   }
 

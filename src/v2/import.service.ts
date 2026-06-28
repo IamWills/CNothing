@@ -4,6 +4,7 @@ import { ValidationError } from "../utils/errors";
 import { ensureGatewayConnector } from "./gateway-connector.service";
 import { generateCandidatesFromOpenApi } from "./import-openapi.util";
 import { findOAuthProviderBySlug } from "./oauth.repository";
+import { emitPlatformWebhook } from "./platform-webhook.service";
 import type { JsonObject } from "./v2.entity";
 import type { ImportJobRecord, ImportJobStatus, ImportJobType } from "./v2.5.entity";
 
@@ -302,6 +303,19 @@ export async function activateOpenApiCandidates(input: {
     activated += 1;
   }
 
+  if (activated > 0) {
+    void emitPlatformWebhook({
+      event: "import.capabilities.activated",
+      payload: {
+        job_id: input.jobId,
+        import_type: "openapi",
+        activated,
+        candidate_names: input.candidateNames,
+        provider_id: activation.providerId,
+      },
+    });
+  }
+
   return { activated };
 }
 
@@ -374,6 +388,19 @@ export async function activateMcpCandidates(input: {
       ],
     );
     activated += 1;
+  }
+
+  if (activated > 0) {
+    void emitPlatformWebhook({
+      event: "import.capabilities.activated",
+      payload: {
+        job_id: input.jobId,
+        import_type: "mcp",
+        activated,
+        candidate_names: input.candidateNames,
+        provider_id: activation.providerId,
+      },
+    });
   }
 
   return { activated };

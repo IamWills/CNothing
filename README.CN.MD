@@ -67,9 +67,11 @@ KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET=
 # Microsoft、Notion 同理
 ```
 
-自定义 Provider：Console **Providers** 页或 `POST /v2/oauth/providers`（需 Admin Bearer Token）。
+自定义 Provider：Console **Providers** 页或 `POST /v2/oauth/providers`（需 Admin Bearer Token）。内置模板目录：`GET /v2/platform/provider-templates`；从 `.env` 同步凭据：`POST /v2/admin/oauth/sync-env`。
 
 OpenAPI 导入：Console **Import** 页或 `POST /v2/import/openapi` → 审核候选 → `POST /v2/capabilities/from-openapi`（无需 `connector_id`，默认走 gateway connector）。
+
+平台 Webhook（可选）：设置 `KEYSERVICE_PLATFORM_WEBHOOK_URL` 接收 `oauth.connection.created`、`grant.approved`、`import.capabilities.activated` 事件。
 
 ## v2：Agent 能力授权平台（兼容）
 

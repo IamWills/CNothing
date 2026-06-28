@@ -9,7 +9,8 @@ import { oauthConnectionService, oauthProviderService } from "../v2/oauth-connec
 import { sanitizeAgentResponse } from "../v2/secret-redaction";
 import { activateOpenApiCandidates, activateMcpCandidates, findImportJob, importMcpManifest, importOpenApi } from "../v2/import.service";
 import { revokeGrant } from "../v2/v2.repository";
-import { getV25PlatformStatus } from "../v2/v2.5-bootstrap.service";
+import { getV25PlatformStatus, syncBuiltinProviderCredentialsFromEnv, seedBuiltinCapabilities } from "../v2/v2.5-bootstrap.service";
+import { listProviderTemplateCatalog } from "../v2/provider-template.service";
 import { requireUserSession } from "../v2/user-session";
 
 function inferBaseUrl(request: Request): string {
@@ -137,6 +138,22 @@ export async function handleV25OAuthRequest(request: Request): Promise<Response>
     requireAdminAccess(request);
     const items = await oauthProviderService.listAdminProviders();
     return Response.json({ ok: true, items });
+  }
+
+  if (request.method === "POST" && path === "/v2/admin/oauth/sync-env") {
+    requireAdminAccess(request);
+    const body =
+      request.headers.get("content-type")?.includes("application/json")
+        ? await parseJsonBody(request)
+        : {};
+    await syncBuiltinProviderCredentialsFromEnv();
+    if (body.seed_capabilities !== false) {
+      await seedBuiltinCapabilities();
+    }
+    return Response.json({
+      ok: true,
+      ...(await getV25PlatformStatus()),
+    });
   }
 
   if (request.method === "GET" && path === "/v2/oauth/providers") {
@@ -355,6 +372,9 @@ export async function handleV25PlatformRequest(request: Request): Promise<Respon
   const path = new URL(request.url).pathname;
   if (request.method === "GET" && path === "/v2/platform/v2.5/status") {
     return Response.json({ ok: true, ...(await getV25PlatformStatus()) });
+  }
+  if (request.method === "GET" && path === "/v2/platform/provider-templates") {
+    return Response.json({ ok: true, items: await listProviderTemplateCatalog() });
   }
   return null;
 }

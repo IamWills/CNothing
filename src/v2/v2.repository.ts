@@ -50,6 +50,7 @@ function mapAgentRow(row: Record<string, unknown>): AgentRecord {
     name: String(row.name),
     public_key_pem: row.public_key_pem ? String(row.public_key_pem) : null,
     owner_user_id: String(row.owner_user_id),
+    tenant_id: row.tenant_id ? String(row.tenant_id) : "default",
     status: String(row.status) as AgentRecord["status"],
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
@@ -165,6 +166,7 @@ function mapPendingConfirmationRow(row: Record<string, unknown>): PendingConfirm
 export async function createAgent(input: {
   name: string;
   owner_user_id: string;
+  tenant_id?: string;
   public_key_pem?: string;
   metadata?: JsonObject;
 }): Promise<{ agent: AgentRecord; access_token: string }> {
@@ -172,8 +174,8 @@ export async function createAgent(input: {
   const accessToken = generateAgentAccessToken();
   const result = await pool.query(
     `
-      INSERT INTO cap_agents (id, name, public_key_pem, owner_user_id, access_token_hash, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      INSERT INTO cap_agents (id, name, public_key_pem, owner_user_id, tenant_id, access_token_hash, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
       RETURNING *
     `,
     [
@@ -181,6 +183,7 @@ export async function createAgent(input: {
       input.name,
       input.public_key_pem ?? null,
       input.owner_user_id,
+      input.tenant_id?.trim() || "default",
       hashAgentToken(accessToken),
       JSON.stringify(input.metadata ?? {}),
     ],
@@ -191,7 +194,7 @@ export async function createAgent(input: {
 export async function findAgentByAccessToken(token: string): Promise<AgentRecord | null> {
   const result = await pool.query(
     `
-      SELECT id, name, public_key_pem, owner_user_id, status, metadata, created_at, updated_at
+      SELECT *
       FROM cap_agents
       WHERE access_token_hash = $1 AND status = 'active'
     `,
@@ -213,12 +216,22 @@ export async function findAgentByName(name: string): Promise<AgentRecord | null>
   return result.rows[0] ? mapAgentRow(result.rows[0]) : null;
 }
 
-export async function listAgents(ownerUserId?: string): Promise<AgentRecord[]> {
-  const result = ownerUserId
-    ? await pool.query(`SELECT * FROM cap_agents WHERE owner_user_id = $1 ORDER BY created_at DESC`, [
-        ownerUserId,
-      ])
-    : await pool.query(`SELECT * FROM cap_agents ORDER BY created_at DESC`);
+export async function listAgents(filter?: {
+  owner_user_id?: string;
+  tenant_id?: string;
+}): Promise<AgentRecord[]> {
+  const conditions: string[] = [];
+  const values: string[] = [];
+  if (filter?.owner_user_id) {
+    values.push(filter.owner_user_id);
+    conditions.push(`owner_user_id = $${values.length}`);
+  }
+  if (filter?.tenant_id) {
+    values.push(filter.tenant_id);
+    conditions.push(`tenant_id = $${values.length}`);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const result = await pool.query(`SELECT * FROM cap_agents ${where} ORDER BY created_at DESC`, values);
   return result.rows.map(mapAgentRow);
 }
 

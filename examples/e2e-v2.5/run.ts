@@ -233,6 +233,80 @@ async function main() {
     }
   }
 
+  console.log("v2.5 E2E: scenario D — OpenAPI import + activate + invoke");
+  const mockHttpPort = Number(process.env.CNOTHING_E2E_MOCK_HTTP_PORT ?? "3200");
+  const mockHttpServer = Bun.serve({
+    port: mockHttpPort,
+    fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname === "/widgets" && req.method === "GET") {
+        return Response.json({ items: [{ id: "w1", name: "Widget One" }] });
+      }
+      return Response.json({ message: "not found" }, { status: 404 });
+    },
+  });
+
+  try {
+    const openApiDoc = JSON.stringify({
+      openapi: "3.0.0",
+      info: { title: "E2E Widgets" },
+      servers: [{ url: `http://127.0.0.1:${mockHttpPort}` }],
+      paths: {
+        "/widgets": {
+          get: { operationId: "listWidgets", summary: "List widgets" },
+        },
+      },
+    });
+
+    const importJob = await request<{
+      ok: true;
+      job: { id: string; status: string; candidates: Array<{ name: string }> };
+    }>("/v2/import/openapi", {
+      method: "POST",
+      body: JSON.stringify({ content: openApiDoc, provider_slug: "e2ewidgets" }),
+    });
+    assert(importJob.status === 201, "Expected OpenAPI import 201");
+    assert(importJob.data.job.status === "completed", "Expected completed import job");
+    const candidateName = importJob.data.job.candidates[0]?.name;
+    assert(candidateName === "e2ewidgets.listWidgets", `Unexpected candidate: ${candidateName}`);
+
+    const activated = await request<{ ok: true; activated: number }>("/v2/capabilities/from-openapi", {
+      method: "POST",
+      body: JSON.stringify({
+        job_id: importJob.data.job.id,
+        candidate_names: [candidateName!],
+      }),
+    });
+    assert(activated.data.activated === 1, "Expected one activated capability");
+
+    await request("/v2/grants", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: testUserId,
+        agent_id: agent.data.agent.id,
+        capability: candidateName,
+      }),
+    });
+
+    const importedInvoke = await request<{ ok?: boolean; result?: { items?: unknown[] } }>(
+      "/v2/agent/invoke",
+      {
+        method: "POST",
+        agentToken,
+        admin: false,
+        body: JSON.stringify({
+          capability: candidateName,
+          input: {},
+        }),
+      },
+    );
+    assert(importedInvoke.status === 200, "Expected successful OpenAPI import invoke");
+    assert(importedInvoke.data.ok === true, "Expected ok=true");
+    assert(Array.isArray(importedInvoke.data.result?.items), "Expected widgets array in result");
+  } finally {
+    mockHttpServer.stop();
+  }
+
   console.log("v2.5 E2E: all checks passed");
 }
 

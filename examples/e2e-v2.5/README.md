@@ -27,6 +27,7 @@ The script verifies:
 5. Authorization request returns `approval_url` without leaking tokens
 6. **Scenario C**: with an admin-created grant for `github.delete_repo`, invoke returns **202** with `pending: true` and `confirmation_id` (high-risk policy)
 7. **Scenario A** (when server has `KEYSERVICE_E2E_INTERNAL=1` and `KEYSERVICE_GITHUB_API_BASE_URL` pointing at mock): seed OAuth connection → approve grant → invoke `github.create_issue` successfully without token leak
+8. **Scenario D**: OpenAPI import → activate via gateway connector → grant → HTTP invoke against mock server (`/widgets`)
 
 Server env for full scenario A in CI/local:
 

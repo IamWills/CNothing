@@ -18,6 +18,7 @@ import {
 import {
   isPendingAuthorizationUserId,
 } from "./authorization-user";
+import { emitPlatformWebhook } from "./platform-webhook.service";
 import { findOAuthProviderBySlug } from "./oauth.repository";
 
 export class AgentAuthorizationV25Service {
@@ -179,6 +180,18 @@ export class AgentAuthorizationV25Service {
       metadata: {
         authorization_request_id: request.id,
         connection_id: input.connectionId,
+      },
+    });
+
+    void emitPlatformWebhook({
+      event: "grant.approved",
+      payload: {
+        grant_id: grant.id,
+        agent_id: request.agent_id,
+        user_id: input.userId,
+        capability: capability.name,
+        connection_id: input.connectionId,
+        provider_id: provider?.id ?? null,
       },
     });
 

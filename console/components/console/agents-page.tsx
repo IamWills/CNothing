@@ -23,7 +23,7 @@ export function AgentsPage() {
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", owner_user_id: "user123" });
+  const [form, setForm] = React.useState({ name: "", owner_user_id: "user123", tenant_id: "default" });
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -110,6 +110,15 @@ export function AgentsPage() {
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="tenant-id">Tenant ID</Label>
+              <Input
+                id="tenant-id"
+                value={form.tenant_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, tenant_id: event.target.value }))}
+                placeholder="default"
+              />
+            </div>
             <Button type="submit" className="w-full">
               Register agent
             </Button>
@@ -143,7 +152,10 @@ export function AgentsPage() {
                       <p className="font-medium text-slate-900">{agent.name}</p>
                       <Badge>{agent.status}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-slate-600">Owner: {agent.owner_user_id}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Owner: {agent.owner_user_id}
+                      {agent.tenant_id && agent.tenant_id !== "default" ? ` · Tenant: ${agent.tenant_id}` : null}
+                    </p>
                     <p className="mt-1 font-mono text-xs text-slate-500">{agent.id}</p>
                   </div>
                   <div className="text-sm text-slate-500">{formatDate(agent.created_at)}</div>

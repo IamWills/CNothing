@@ -15,8 +15,11 @@ import { useConsoleConnection } from "@/hooks/use-console-connection";
 import {
   createOAuthProvider,
   fetchOAuthProvidersAdmin,
+  fetchProviderTemplates,
+  syncOAuthProvidersFromEnv,
   updateOAuthProviderCredentials,
   type V25OAuthProviderAdmin,
+  type V25ProviderTemplate,
 } from "@/lib/api-v2";
 import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
 
@@ -36,6 +39,7 @@ const emptyCreateForm = {
 export function ProvidersPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const [providers, setProviders] = React.useState<V25OAuthProviderAdmin[]>([]);
+  const [templates, setTemplates] = React.useState<V25ProviderTemplate[]>([]);
   const [createForm, setCreateForm] = React.useState(emptyCreateForm);
   const [credentialForms, setCredentialForms] = React.useState<
     Record<string, { client_id: string; client_secret: string }>
@@ -48,11 +52,15 @@ export function ProvidersPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchOAuthProvidersAdmin(connection);
-      setProviders(response.items);
+      const [providerResponse, templateResponse] = await Promise.all([
+        fetchOAuthProvidersAdmin(connection),
+        fetchProviderTemplates(connection),
+      ]);
+      setProviders(providerResponse.items);
+      setTemplates(templateResponse.items);
       setCredentialForms((prev) => {
         const next = { ...prev };
-        for (const provider of response.items) {
+        for (const provider of providerResponse.items) {
           if (!next[provider.id]) {
             next[provider.id] = {
               client_id: provider.client_id ?? "",
@@ -131,6 +139,19 @@ export function ProvidersPage() {
     }
   }
 
+  async function handleSyncFromEnv() {
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const response = await syncOAuthProvidersFromEnv(connection);
+      const connectable = response.oauth_providers.filter((item) => item.connectable).length;
+      setStatusMessage(`Synced OAuth credentials from environment (${connectable} connectable providers).`);
+      await refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Environment sync failed.");
+    }
+  }
+
   return (
     <PageFrame
       title="OAuth Providers"
@@ -157,6 +178,41 @@ export function ProvidersPage() {
       {statusMessage ? (
         <Card className="border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{statusMessage}</Card>
       ) : null}
+
+      <Card className="p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">Built-in provider templates</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Set env vars on the server, then sync credentials into the OAuth registry.
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => void handleSyncFromEnv()}>
+            Sync from .env
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {templates.map((template) => (
+            <div
+              key={template.slug}
+              className="rounded-md border border-slate-200 p-4"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{template.display_name}</span>
+                <Badge variant="outline">{template.slug}</Badge>
+                {template.connectable ? (
+                  <Badge className="bg-emerald-100 text-emerald-800">Connectable</Badge>
+                ) : (
+                  <Badge className="bg-amber-100 text-amber-800">{template.status}</Badge>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {template.capability_count} capabilities · {template.env_client_id_key ?? "no env key"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <Card className="p-5">
         <div className="mb-4 flex items-center gap-2">

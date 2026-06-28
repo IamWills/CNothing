@@ -17,6 +17,7 @@ export type AgentRecord = {
   name: string;
   public_key_pem: string | null;
   owner_user_id: string;
+  tenant_id: string;
   status: AgentStatus;
   metadata: JsonObject;
   created_at: string;

@@ -33,6 +33,29 @@ sudo systemctl start keyservice-sync.service
 journalctl -u keyservice-sync.service -n 50 --no-pager
 ```
 
+## OAuth providers (v2.5)
+
+Built-in providers (GitHub, Google, Microsoft, Slack, Notion) read credentials from `.env` on startup and via admin sync.
+
+Append credentials without overwriting existing values:
+
+```bash
+KEYSERVICE_GOOGLE_OAUTH_CLIENT_ID=... \
+KEYSERVICE_GOOGLE_OAUTH_CLIENT_SECRET=... \
+sudo /var/www/keyservice/deploy/configure-v2-oauth-providers.sh /var/www/keyservice/.env
+sudo systemctl restart keyservice.service
+```
+
+Or use Console **Providers → Sync from .env** (`POST /v2/admin/oauth/sync-env`).
+
+Optional platform lifecycle webhook:
+
+```bash
+KEYSERVICE_PLATFORM_WEBHOOK_URL=https://your-app.example/hooks/cnothing
+```
+
+Events: `oauth.connection.created`, `grant.approved`, `import.capabilities.activated`.
+
 ## Environment variables (v2)
 
 Required (existing):

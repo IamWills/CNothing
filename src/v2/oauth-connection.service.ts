@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import config from "../config";
 import { encodeBase64Url } from "../crypto/base64url";
 import { ValidationError, NotFoundError, ForbiddenError } from "../utils/errors";
+import { emitPlatformWebhook } from "./platform-webhook.service";
 import {
   consumeOAuthConnectState,
   createOAuthConnectState,
@@ -208,6 +209,16 @@ export class OAuthConnectionService {
       provider_id: provider.id,
       connection_id: connection.id,
       action: "oauth.connect.completed",
+    });
+
+    void emitPlatformWebhook({
+      event: "oauth.connection.created",
+      payload: {
+        connection_id: connection.id,
+        user_id: userId,
+        provider_id: provider.id,
+        provider_slug: provider.slug,
+      },
     });
 
     const redirectUrl =

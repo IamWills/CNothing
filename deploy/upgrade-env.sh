@@ -37,6 +37,16 @@ append_if_missing "KEYSERVICE_PLATFORM_AGENT_NAME" "cnothing-platform-agent"
 append_if_missing "KEYSERVICE_SEARCH_API_URL" "https://search.morethinkings.com"
 append_if_missing "KEYSERVICE_SEARCH_AUTO_BOOTSTRAP" "1"
 
+append_if_missing "KEYSERVICE_GOOGLE_OAUTH_CLIENT_ID" ""
+append_if_missing "KEYSERVICE_GOOGLE_OAUTH_CLIENT_SECRET" ""
+append_if_missing "KEYSERVICE_MICROSOFT_OAUTH_CLIENT_ID" ""
+append_if_missing "KEYSERVICE_MICROSOFT_OAUTH_CLIENT_SECRET" ""
+append_if_missing "KEYSERVICE_SLACK_OAUTH_CLIENT_ID" ""
+append_if_missing "KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET" ""
+append_if_missing "KEYSERVICE_NOTION_OAUTH_CLIENT_ID" ""
+append_if_missing "KEYSERVICE_NOTION_OAUTH_CLIENT_SECRET" ""
+append_if_missing "KEYSERVICE_PLATFORM_WEBHOOK_URL" ""
+
 # GitHub OAuth / API (set via deploy/configure-v2-github.sh — values are not auto-generated)
 # KEYSERVICE_GITHUB_OAUTH_CLIENT_ID=
 # KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET=

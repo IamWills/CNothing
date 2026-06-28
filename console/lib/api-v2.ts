@@ -4,11 +4,26 @@ export type V2Agent = {
   id: string;
   name: string;
   owner_user_id: string;
+  tenant_id?: string;
   status: string;
   public_key_pem: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+export type V25ProviderTemplate = {
+  slug: string;
+  display_name: string;
+  auth_type: string;
+  status: string;
+  connectable: boolean;
+  capability_count: number;
+  capabilities: string[];
+  env_client_id_key: string | null;
+  env_client_secret_key: string | null;
+  authorization_url: string | null;
+  documentation_url: string | null;
 };
 
 export type V2Connector = {
@@ -160,8 +175,14 @@ async function requestJson<T>(
   return data as T;
 }
 
-export async function fetchV2Agents(connection: ConsoleConnection, ownerUserId?: string) {
-  const query = ownerUserId ? `?owner_user_id=${encodeURIComponent(ownerUserId)}` : "";
+export async function fetchV2Agents(connection: ConsoleConnection, filter?: {
+  owner_user_id?: string;
+  tenant_id?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filter?.owner_user_id) params.set("owner_user_id", filter.owner_user_id);
+  if (filter?.tenant_id) params.set("tenant_id", filter.tenant_id);
+  const query = params.toString() ? `?${params.toString()}` : "";
   return requestJson<{ ok: true; items: V2Agent[] }>(connection, `/v2/agents${query}`);
 }
 
@@ -170,6 +191,7 @@ export async function registerV2Agent(
   payload: {
     name: string;
     owner_user_id: string;
+    tenant_id?: string;
     public_key_pem?: string;
     metadata?: Record<string, unknown>;
   },
@@ -686,4 +708,19 @@ export async function activateMcpCapabilities(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchProviderTemplates(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: V25ProviderTemplate[] }>(
+    connection,
+    "/v2/platform/provider-templates",
+  );
+}
+
+export async function syncOAuthProvidersFromEnv(connection: ConsoleConnection) {
+  return requestJson<{
+    ok: true;
+    version: string;
+    oauth_providers: Array<{ slug: string; status: string; connectable: boolean }>;
+  }>(connection, "/v2/admin/oauth/sync-env", { method: "POST", body: "{}" });
 }

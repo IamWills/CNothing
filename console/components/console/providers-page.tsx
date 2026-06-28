@@ -92,10 +92,12 @@ export function ProvidersPage({ adminBasePath, apiVersion = "v2.5" }: ProvidersP
   async function handleDiscover() {
     setErrorMessage("");
     try {
-      const response = await discoverOAuthProvider(connection, {
-        discovery_url: createForm.discovery_url.trim() || undefined,
-        issuer: createForm.issuer.trim() || undefined,
-      });
+      const payload: { discovery_url?: string; issuer?: string } = {};
+      const discoveryUrl = createForm.discovery_url.trim();
+      const issuer = createForm.issuer.trim();
+      if (discoveryUrl) payload.discovery_url = discoveryUrl;
+      if (issuer) payload.issuer = issuer;
+      const response = await discoverOAuthProvider(connection, payload);
       const discovered = response.discovered;
       setCreateForm((prev) => ({
         ...prev,

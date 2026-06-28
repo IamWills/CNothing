@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import {
   createOAuthProvider,
+  discoverOAuthProvider,
   fetchOAuthProvidersAdmin,
   fetchProviderTemplates,
   syncOAuthProvidersFromEnv,
@@ -26,6 +27,8 @@ import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
 const emptyCreateForm = {
   slug: "",
   display_name: "",
+  discovery_url: "",
+  issuer: "",
   authorization_url: "",
   token_url: "",
   userinfo_url: "",
@@ -36,7 +39,12 @@ const emptyCreateForm = {
   supported_scopes: '["openid"]',
 };
 
-export function ProvidersPage() {
+type ProvidersPageProps = {
+  adminBasePath?: string;
+  apiVersion?: "v2.5" | "v2.6";
+};
+
+export function ProvidersPage({ adminBasePath, apiVersion = "v2.5" }: ProvidersPageProps = {}) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const [providers, setProviders] = React.useState<V25OAuthProviderAdmin[]>([]);
   const [templates, setTemplates] = React.useState<V25ProviderTemplate[]>([]);
@@ -53,7 +61,7 @@ export function ProvidersPage() {
     setErrorMessage("");
     try {
       const [providerResponse, templateResponse] = await Promise.all([
-        fetchOAuthProvidersAdmin(connection),
+        fetchOAuthProvidersAdmin(connection, apiVersion),
         fetchProviderTemplates(connection),
       ]);
       setProviders(providerResponse.items);
@@ -81,6 +89,31 @@ export function ProvidersPage() {
     void refresh();
   }, [refresh]);
 
+  }, [connection, apiVersion]);
+
+  async function handleDiscover() {
+    setErrorMessage("");
+    try {
+      const response = await discoverOAuthProvider(connection, {
+        discovery_url: createForm.discovery_url.trim() || undefined,
+        issuer: createForm.issuer.trim() || undefined,
+      });
+      const discovered = response.discovered;
+      setCreateForm((prev) => ({
+        ...prev,
+        issuer: discovered.issuer,
+        authorization_url: discovered.authorization_url,
+        token_url: discovered.token_url,
+        userinfo_url: discovered.userinfo_url ?? "",
+        revoke_url: discovered.revoke_url ?? "",
+        supported_scopes: JSON.stringify(discovered.scopes_supported.length ? discovered.scopes_supported : JSON.parse(prev.supported_scopes)),
+      }));
+      setStatusMessage("OIDC discovery completed — review URLs before saving.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "OIDC discovery failed.");
+    }
+  }
+
   async function handleCreateProvider(event: React.FormEvent) {
     event.preventDefault();
     setErrorMessage("");
@@ -106,9 +139,11 @@ export function ProvidersPage() {
       if (tokenUrl) payload.token_url = tokenUrl;
       if (userinfoUrl) payload.userinfo_url = userinfoUrl;
       if (revokeUrl) payload.revoke_url = revokeUrl;
+      if (createForm.discovery_url.trim()) payload.discovery_url = createForm.discovery_url.trim();
+      if (createForm.issuer.trim()) payload.issuer = createForm.issuer.trim();
       if (clientId) payload.client_id = clientId;
       if (clientSecret) payload.client_secret = clientSecret;
-      const response = await createOAuthProvider(connection, payload);
+      const response = await createOAuthProvider(connection, payload, apiVersion);
       setStatusMessage(`Registered provider ${response.provider.display_name}.`);
       setCreateForm(emptyCreateForm);
       await refresh();
@@ -240,6 +275,32 @@ export function ProvidersPage() {
                 setCreateForm((prev) => ({ ...prev, display_name: event.target.value }))
               }
               required
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="discovery-url">OIDC Discovery URL (optional)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="discovery-url"
+                placeholder="https://accounts.google.com/.well-known/openid-configuration"
+                value={createForm.discovery_url}
+                onChange={(event) =>
+                  setCreateForm((prev) => ({ ...prev, discovery_url: event.target.value }))
+                }
+              />
+              {apiVersion === "v2.6" ? (
+                <Button type="button" variant="outline" onClick={() => void handleDiscover()}>
+                  Discover
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="issuer">Issuer</Label>
+            <Input
+              id="issuer"
+              value={createForm.issuer}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, issuer: event.target.value }))}
             />
           </div>
           <div className="space-y-2">

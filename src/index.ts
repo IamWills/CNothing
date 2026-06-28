@@ -13,6 +13,14 @@ import {
   handleV25OAuthRequest,
   handleV25PlatformRequest,
 } from "./api/v2.5.api";
+import {
+  handleV26AgentInvokeOnly,
+  handleV26ApproveRequest,
+  handleV26CapabilitiesRequest,
+  handleV26ImportRequest,
+  handleV26OAuthRequest,
+  handleV26PlatformRequest,
+} from "./api/v2.6.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
@@ -79,6 +87,7 @@ function renderHomePage(baseUrl: string): string {
     ["/openapi.json", "OpenAPI document (v1 legacy)"],
     ["/openapi-v2.json", "OpenAPI document (v2 capability platform)"],
     ["/openapi-v2.5.json", "OpenAPI document (v2.5 OAuth broker + capability gateway)"],
+    ["/openapi-v2.6.json", "OpenAPI document (v2.6 universal OAuth + zero-code import)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
     ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
     ["/v2/authorize/request", "Request user authorization for capabilities"],
@@ -234,6 +243,22 @@ async function router(request: Request): Promise<Response> {
     );
   }
 
+  if (pathname === "/openapi-v2.6.json" && request.method === "GET") {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const content = readFileSync(path.join(__dirname, "..", "openapi-v2.6.json"), "utf8");
+    return withCors(
+      new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+        },
+      }),
+      request,
+    );
+  }
+
   if (pathname === "/openapi-v2.5.json" && request.method === "GET") {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -276,6 +301,35 @@ async function router(request: Request): Promise<Response> {
     return withCors(await handleKeyRequest(request, baseUrl), request);
   }
 
+  if (pathname.startsWith("/v2.6/")) {
+    if (
+      pathname.startsWith("/v2.6/agent/") ||
+      pathname === "/v2.6/agent/invoke"
+    ) {
+      return withCors(await handleV26AgentInvokeOnly(request), request);
+    }
+    if (pathname.startsWith("/v2.6/oauth/")) {
+      return withCors(await handleV26OAuthRequest(request), request);
+    }
+    if (
+      pathname.startsWith("/v2.6/import/") ||
+      pathname.startsWith("/v2.6/capabilities/")
+    ) {
+      return withCors(await handleV26ImportRequest(request), request);
+    }
+    if (pathname.startsWith("/v2.6/approve/") && request.method === "POST") {
+      return withCors(await handleV26ApproveRequest(request), request);
+    }
+    const v26Platform = await handleV26PlatformRequest(request);
+    if (v26Platform) {
+      return withCors(v26Platform, request);
+    }
+    const v26Capabilities = await handleV26CapabilitiesRequest(request);
+    if (v26Capabilities) {
+      return withCors(v26Capabilities, request);
+    }
+  }
+
   if (pathname.startsWith("/v2/")) {
     if (pathname.startsWith("/v2/internal/e2e/")) {
       return withCors(await handleV2E2eInternalRequest(request), request);
@@ -292,7 +346,7 @@ async function router(request: Request): Promise<Response> {
     if (pathname.startsWith("/v2/admin/oauth/") || pathname.startsWith("/v2/oauth/")) {
       return withCors(await handleV25OAuthRequest(request), request);
     }
-    if (pathname.startsWith("/v2/import/") || pathname === "/v2/capabilities/from-openapi") {
+    if (pathname.startsWith("/v2/import/") || pathname.startsWith("/v2/capabilities/from-")) {
       return withCors(await handleV25ImportRequest(request), request);
     }
     if (pathname.startsWith("/v2/approve/") && request.method === "POST") {

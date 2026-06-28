@@ -1,7 +1,7 @@
 export type JsonObject = Record<string, unknown>;
 export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 
-export type CNothingAgentApiVersion = "v2" | "v2.5";
+export type CNothingAgentApiVersion = "v2" | "v2.5" | "v2.6";
 
 export type CNothingAgentClientConfig = {
   baseUrl: string;

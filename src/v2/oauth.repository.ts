@@ -54,6 +54,8 @@ function mapProviderRow(row: Record<string, unknown>): OAuthProviderRecord {
     slug: String(row.slug),
     display_name: String(row.display_name),
     auth_type: String(row.auth_type) as OAuthAuthType,
+    issuer: row.issuer ? String(row.issuer) : null,
+    discovery_url: row.discovery_url ? String(row.discovery_url) : null,
     authorization_url: row.authorization_url ? String(row.authorization_url) : null,
     token_url: row.token_url ? String(row.token_url) : null,
     userinfo_url: row.userinfo_url ? String(row.userinfo_url) : null,
@@ -67,7 +69,7 @@ function mapProviderRow(row: Record<string, unknown>): OAuthProviderRecord {
     default_scopes: asStringArray(row.default_scopes),
     supported_scopes: asStringArray(row.supported_scopes),
     pkce_required: Boolean(row.pkce_required),
-    token_auth_method: String(row.token_auth_method ?? "client_secret_post"),
+    token_auth_method: String(row.token_auth_method ?? "client_secret_post") as OAuthProviderRecord["token_auth_method"],
     status: String(row.status) as OAuthProviderStatus,
     is_builtin: Boolean(row.is_builtin),
     metadata: normalizeMetadata(row.metadata),
@@ -116,25 +118,33 @@ export function toProviderPublic(provider: OAuthProviderRecord): OAuthProviderPu
 }
 
 export type OAuthProviderAdminView = OAuthProviderPublic & {
+  issuer: string | null;
+  discovery_url: string | null;
   authorization_url: string | null;
   token_url: string | null;
   userinfo_url: string | null;
   revoke_url: string | null;
+  jwks_url: string | null;
   client_id: string | null;
   has_client_secret: boolean;
   pkce_required: boolean;
+  token_auth_method: OAuthProviderRecord["token_auth_method"];
 };
 
 export function toProviderAdmin(provider: OAuthProviderRecord): OAuthProviderAdminView {
   return {
     ...toProviderPublic(provider),
+    issuer: provider.issuer,
+    discovery_url: provider.discovery_url,
     authorization_url: provider.authorization_url,
     token_url: provider.token_url,
     userinfo_url: provider.userinfo_url,
     revoke_url: provider.revoke_url,
+    jwks_url: provider.jwks_url,
     client_id: provider.client_id,
     has_client_secret: Boolean(provider.encrypted_client_secret),
     pkce_required: provider.pkce_required,
+    token_auth_method: provider.token_auth_method,
   };
 }
 
@@ -166,6 +176,8 @@ export async function createOAuthProvider(input: {
   slug: string;
   display_name: string;
   auth_type: OAuthAuthType;
+  issuer?: string | null;
+  discovery_url?: string | null;
   authorization_url?: string;
   token_url?: string;
   userinfo_url?: string;
@@ -176,23 +188,29 @@ export async function createOAuthProvider(input: {
   default_scopes?: string[];
   supported_scopes?: string[];
   pkce_required?: boolean;
-  token_auth_method?: string;
+  token_auth_method?: OAuthProviderRecord["token_auth_method"];
   metadata?: JsonObject;
 }): Promise<OAuthProviderRecord> {
   const id = randomUUID();
   const encryptedSecret = input.client_secret ? packEncrypted(input.client_secret) : null;
-  const status = input.client_id?.trim() ? "active" : "unconfigured";
+  const tokenAuthMethod = input.token_auth_method ?? "client_secret_post";
+  const hasSecretOrPublic =
+    tokenAuthMethod === "none" || Boolean(input.client_secret) || Boolean(encryptedSecret);
+  const status =
+    input.client_id?.trim() && (tokenAuthMethod === "none" || hasSecretOrPublic)
+      ? "active"
+      : "unconfigured";
 
   await pool.query(
     `
       INSERT INTO cap_oauth_providers (
-        id, slug, display_name, auth_type,
+        id, slug, display_name, auth_type, issuer, discovery_url,
         authorization_url, token_url, userinfo_url, revoke_url, jwks_url,
         client_id, encrypted_client_secret,
         default_scopes, supported_scopes, pkce_required, token_auth_method,
         status, is_builtin, metadata
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,FALSE,$17
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,FALSE,$19
       )
     `,
     [
@@ -200,6 +218,8 @@ export async function createOAuthProvider(input: {
       input.slug,
       input.display_name,
       input.auth_type,
+      input.issuer ?? null,
+      input.discovery_url ?? null,
       input.authorization_url ?? null,
       input.token_url ?? null,
       input.userinfo_url ?? null,
@@ -210,7 +230,7 @@ export async function createOAuthProvider(input: {
       JSON.stringify(input.default_scopes ?? []),
       JSON.stringify(input.supported_scopes ?? []),
       input.pkce_required ?? true,
-      input.token_auth_method ?? "client_secret_post",
+      tokenAuthMethod,
       status,
       JSON.stringify(input.metadata ?? {}),
     ],
@@ -358,6 +378,13 @@ export async function updateOAuthConnectionTokens(input: {
 export async function markConnectionReconnectRequired(id: string): Promise<void> {
   await pool.query(
     `UPDATE cap_oauth_connections SET status = 'reconnect_required', updated_at = NOW() WHERE id = $1`,
+    [id],
+  );
+}
+
+export async function markConnectionExpired(id: string): Promise<void> {
+  await pool.query(
+    `UPDATE cap_oauth_connections SET status = 'expired', updated_at = NOW() WHERE id = $1`,
     [id],
   );
 }

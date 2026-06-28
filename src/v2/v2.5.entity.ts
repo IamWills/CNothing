@@ -8,7 +8,8 @@ import type {
 
 export type OAuthAuthType = "oauth2" | "oidc" | "api_key" | "custom";
 export type OAuthProviderStatus = "active" | "unconfigured" | "disabled";
-export type OAuthConnectionStatus = "active" | "reconnect_required" | "revoked";
+export type OAuthConnectionStatus = "active" | "expired" | "reconnect_required" | "revoked";
+export type OAuthTokenAuthMethod = "client_secret_basic" | "client_secret_post" | "none";
 export type CapabilitySource =
   | "built_in"
   | "openapi_import"
@@ -25,6 +26,8 @@ export type OAuthProviderRecord = {
   slug: string;
   display_name: string;
   auth_type: OAuthAuthType;
+  issuer: string | null;
+  discovery_url: string | null;
   authorization_url: string | null;
   token_url: string | null;
   userinfo_url: string | null;
@@ -36,7 +39,7 @@ export type OAuthProviderRecord = {
   default_scopes: string[];
   supported_scopes: string[];
   pkce_required: boolean;
-  token_auth_method: string;
+  token_auth_method: OAuthTokenAuthMethod;
   status: OAuthProviderStatus;
   is_builtin: boolean;
   metadata: JsonObject;

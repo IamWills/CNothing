@@ -103,7 +103,11 @@ export async function parseOpenApiDocument(content: string): Promise<JsonObject>
   if (trimmed.startsWith("{")) {
     return JSON.parse(trimmed) as JsonObject;
   }
-  throw new Error("YAML OpenAPI import requires JSON for now; convert YAML to JSON");
+  if (trimmed.startsWith("---") || trimmed.includes("\nopenapi:") || trimmed.startsWith("openapi:")) {
+    const { parseMinimalYaml } = await import("./openapi-yaml.util");
+    return parseMinimalYaml(trimmed) as JsonObject;
+  }
+  throw new Error("OpenAPI document must be JSON or YAML");
 }
 
 export { generateCandidatesFromOpenApi } from "./import-openapi.util";
@@ -131,8 +135,19 @@ export async function importOpenApi(input: {
         .replace(/[^\w]+/g, "_")
         .slice(0, 32);
 
+    let providerSupportedScopes: string[] = [];
+    if (input.providerId) {
+      const { findOAuthProviderById } = await import("./oauth.repository");
+      const provider = await findOAuthProviderById(input.providerId);
+      providerSupportedScopes = provider?.supported_scopes ?? [];
+    } else if (input.providerSlug) {
+      const provider = await findOAuthProviderBySlug(input.providerSlug);
+      providerSupportedScopes = provider?.supported_scopes ?? [];
+    }
+
     const candidates = generateCandidatesFromOpenApi(doc, providerSlug, {
       sourceUrl: input.sourceUrl,
+      providerSupportedScopes,
     });
     await updateImportJob({
       id: job.id,

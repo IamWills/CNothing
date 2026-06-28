@@ -31,7 +31,12 @@ function candidateKey(candidate: V25ImportCandidate): string {
   return candidate.name;
 }
 
-export function ImportPage() {
+type ImportPageProps = {
+  adminBasePath?: string;
+  apiVersion?: "v2.5" | "v2.6";
+};
+
+export function ImportPage({ apiVersion = "v2.5" }: ImportPageProps = {}) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const [mode, setMode] = React.useState<ImportMode>("openapi");
   const [providers, setProviders] = React.useState<V25OAuthProvider[]>([]);
@@ -96,7 +101,7 @@ export function ImportPage() {
         if (filename) openApiPayload.filename = filename;
         if (slug) openApiPayload.provider_slug = slug;
         if (providerId) openApiPayload.provider_id = providerId;
-        const response = await importOpenApiSpec(connection, openApiPayload);
+        const response = await importOpenApiSpec(connection, openApiPayload, apiVersion);
         setJob(response.job);
         if (response.job.status === "failed") {
           throw new Error(response.job.error_message ?? "OpenAPI import failed.");
@@ -143,7 +148,7 @@ export function ImportPage() {
       const response =
         job.import_type === "mcp"
           ? await activateMcpCapabilities(connection, payload)
-          : await activateOpenApiCapabilities(connection, payload);
+          : await activateOpenApiCapabilities(connection, payload, apiVersion);
       setStatusMessage(`Activated ${response.activated} capabilities via the gateway connector.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Activation failed.");

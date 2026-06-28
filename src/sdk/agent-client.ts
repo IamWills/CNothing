@@ -83,6 +83,16 @@ export class CNothingAgentClient {
     return this.apiVersion;
   }
 
+  private agentApiBase(): string {
+    if (this.apiVersion === "v2.6") {
+      return "/v2.6/agent";
+    }
+    if (this.apiVersion === "v2.5") {
+      return "/v2/agent";
+    }
+    throw new CNothingAgentError("Agent capability API requires apiVersion v2.5 or v2.6", 400);
+  }
+
   async listCapabilities(): Promise<AgentCapabilityView[]> {
     if (this.apiVersion === "v2") {
       const { data } = await requestJson<{ ok: true; items: AgentCapabilityView[] }>(
@@ -109,7 +119,7 @@ export class CNothingAgentClient {
     const { data } = await requestJson<{ ok: true; items: AgentCapabilityView[] }>(
       this.fetchImpl,
       this.baseUrl,
-      "/v2/agent/capabilities",
+      `${this.agentApiBase()}/capabilities`,
       this.accessToken,
     );
     return data.items;
@@ -118,7 +128,8 @@ export class CNothingAgentClient {
   async invoke(
     input: InvokeCapabilityRequest,
   ): Promise<InvokeCapabilitySuccess | InvokeCapabilityPending> {
-    const path = this.apiVersion === "v2" ? "/v2/capabilities/invoke" : "/v2/agent/invoke";
+    const path =
+      this.apiVersion === "v2" ? "/v2/capabilities/invoke" : `${this.agentApiBase()}/invoke`;
     const body =
       this.apiVersion === "v2"
         ? JSON.stringify(input)
@@ -204,7 +215,7 @@ export class CNothingAgentClient {
     const { data } = await requestJson<AgentAuthorizationResponse>(
       this.fetchImpl,
       this.baseUrl,
-      "/v2/agent/authorizations",
+      `${this.agentApiBase()}/authorizations`,
       this.accessToken,
       {
         method: "POST",
@@ -234,7 +245,7 @@ export class CNothingAgentClient {
     const { data } = await requestJson<AgentAuthorizationStatusResponse>(
       this.fetchImpl,
       this.baseUrl,
-      `/v2/agent/authorizations/${encodeURIComponent(authorizationId)}`,
+      `${this.agentApiBase()}/authorizations/${encodeURIComponent(authorizationId)}`,
       this.accessToken,
     );
     return data;
@@ -270,13 +281,13 @@ export class CNothingAgentClient {
 
   async listGrants(): Promise<AgentGrantSummary[]> {
     if (this.apiVersion === "v2") {
-      throw new CNothingAgentError("listGrants requires apiVersion v2.5", 400);
+      throw new CNothingAgentError("listGrants requires apiVersion v2.5 or v2.6", 400);
     }
 
     const { data } = await requestJson<{ ok: true; items: AgentGrantSummary[] }>(
       this.fetchImpl,
       this.baseUrl,
-      "/v2/agent/grants",
+      `${this.agentApiBase()}/grants`,
       this.accessToken,
     );
     return data.items;
@@ -284,13 +295,13 @@ export class CNothingAgentClient {
 
   async revokeGrant(grantId: string): Promise<{ ok: true; grant_id: string; status: string }> {
     if (this.apiVersion === "v2") {
-      throw new CNothingAgentError("revokeGrant requires apiVersion v2.5", 400);
+      throw new CNothingAgentError("revokeGrant requires apiVersion v2.5 or v2.6", 400);
     }
 
     const { data } = await requestJson<{ ok: true; grant_id: string; status: string }>(
       this.fetchImpl,
       this.baseUrl,
-      "/v2/agent/grants/revoke",
+      `${this.agentApiBase()}/grants/revoke`,
       this.accessToken,
       {
         method: "POST",

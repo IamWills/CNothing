@@ -26,8 +26,8 @@ function generatePkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-function buildCallbackUrl(apiBaseUrl: string, providerSlug: string): string {
-  return `${apiBaseUrl.replace(/\/+$/, "")}/v2/oauth/callback/${encodeURIComponent(providerSlug)}`;
+function buildCallbackUrl(apiBaseUrl: string, providerSlug: string, apiVersion: "v2" | "v2.6" = "v2"): string {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/${apiVersion}/oauth/callback/${encodeURIComponent(providerSlug)}`;
 }
 
 function isAllowedRedirect(url: string): boolean {
@@ -54,6 +54,7 @@ export class OAuthConnectionService {
     apiBaseUrl: string;
     redirectAfter?: string;
     scopes?: string[];
+    oauthApiVersion?: "v2" | "v2.6";
   }) {
     const provider = input.providerId
       ? await findOAuthProviderById(input.providerId)
@@ -92,10 +93,11 @@ export class OAuthConnectionService {
         ? input.scopes
         : provider.default_scopes;
 
+    const oauthApiVersion = input.oauthApiVersion ?? "v2";
     const authorizationUrl = this.buildAuthorizationUrl({
       provider,
       state: connectState.state,
-      redirectUri: buildCallbackUrl(input.apiBaseUrl, provider.slug),
+      redirectUri: buildCallbackUrl(input.apiBaseUrl, provider.slug, oauthApiVersion),
       scopes,
       codeChallenge: pkce?.challenge,
     });
@@ -156,6 +158,7 @@ export class OAuthConnectionService {
     code: string;
     state: string;
     apiBaseUrl: string;
+    oauthApiVersion?: "v2" | "v2.6";
   }) {
     const provider = await findOAuthProviderBySlug(input.providerSlug);
     if (!provider) {
@@ -177,16 +180,21 @@ export class OAuthConnectionService {
     }
 
     const clientSecret = getProviderClientSecret(provider);
-    if (!clientSecret) {
+    const usesPublicClient = provider.token_auth_method === "none";
+    if (!usesPublicClient && !clientSecret) {
       throw new ForbiddenError("OAuth provider client secret not configured");
     }
 
-    const redirectUri = buildCallbackUrl(input.apiBaseUrl, provider.slug);
+    const redirectUri = buildCallbackUrl(
+      input.apiBaseUrl,
+      provider.slug,
+      input.oauthApiVersion ?? "v2",
+    );
     const tokenPayload = await this.exchangeCodeForTokens({
       provider,
       code: input.code,
       redirectUri,
-      clientSecret,
+      clientSecret: clientSecret ?? "",
       codeVerifier: connectState.code_verifier,
     });
 
@@ -254,8 +262,11 @@ export class OAuthConnectionService {
       code: input.code,
       redirect_uri: input.redirectUri,
       client_id: input.provider.client_id!,
-      client_secret: input.clientSecret,
     });
+
+    if (input.provider.token_auth_method !== "none") {
+      body.set("client_secret", input.clientSecret);
+    }
 
     if (input.codeVerifier) {
       body.set("code_verifier", input.codeVerifier);
@@ -266,7 +277,7 @@ export class OAuthConnectionService {
       "content-type": "application/x-www-form-urlencoded",
     };
 
-    if (input.provider.token_auth_method === "client_secret_basic") {
+    if (input.provider.token_auth_method === "client_secret_basic" && input.clientSecret) {
       const basic = Buffer.from(`${input.provider.client_id}:${input.clientSecret}`).toString("base64");
       headers.authorization = `Basic ${basic}`;
       body.delete("client_secret");
@@ -376,7 +387,8 @@ export class OAuthConnectionService {
     }
 
     const clientSecret = getProviderClientSecret(provider);
-    if (!clientSecret) {
+    const usesPublicClient = provider.token_auth_method === "none";
+    if (!usesPublicClient && !clientSecret) {
       await markConnectionReconnectRequired(connectionId);
       return false;
     }
@@ -386,15 +398,23 @@ export class OAuthConnectionService {
         grant_type: "refresh_token",
         refresh_token: refreshToken,
         client_id: provider.client_id!,
-        client_secret: clientSecret,
       });
+      if (clientSecret && provider.token_auth_method !== "none") {
+        body.set("client_secret", clientSecret);
+      }
+
+      const headers: Record<string, string> = {
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      };
+      if (provider.token_auth_method === "client_secret_basic" && clientSecret) {
+        headers.authorization = `Basic ${Buffer.from(`${provider.client_id}:${clientSecret}`).toString("base64")}`;
+        body.delete("client_secret");
+      }
 
       const response = await fetch(provider.token_url, {
         method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/x-www-form-urlencoded",
-        },
+        headers,
         body,
       });
 
@@ -553,10 +573,25 @@ export class OAuthProviderService {
     return toProviderPublic(provider);
   }
 
-  async createProvider(input: Parameters<typeof import("./oauth.repository").createOAuthProvider>[0]) {
-    const { createOAuthProvider, toProviderPublic } = await import("./oauth.repository");
-    const provider = await createOAuthProvider(input);
-    return toProviderPublic(provider);
+  async createProvider(
+    input: Parameters<typeof import("./oauth.repository").createOAuthProvider>[0] & {
+      discovery_url?: string;
+      issuer?: string;
+    },
+  ) {
+    const { mergeDiscoveredProviderInput } = await import("./oidc-provider-discovery.service");
+    const { createOAuthProvider, toProviderAdmin } = await import("./oauth.repository");
+    const merged = await mergeDiscoveredProviderInput({
+      ...input,
+      auth_type: input.auth_type === "oidc" ? "oidc" : "oauth2",
+    });
+    const provider = await createOAuthProvider(merged);
+    return toProviderAdmin(provider);
+  }
+
+  async discoverProvider(input: { discovery_url?: string; issuer?: string }) {
+    const { discoverOAuthProvider } = await import("./oidc-provider-discovery.service");
+    return discoverOAuthProvider(input);
   }
 
   async listAdminProviders() {

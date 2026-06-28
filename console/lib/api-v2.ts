@@ -532,11 +532,60 @@ export async function fetchOAuthProviders(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V25OAuthProvider[] }>(connection, "/v2/oauth/providers");
 }
 
-export async function fetchOAuthProvidersAdmin(connection: ConsoleConnection) {
+export type CnothingApiVersion = "v2.5" | "v2.6";
+
+function apiPaths(version: CnothingApiVersion = "v2.5") {
+  if (version === "v2.6") {
+    return {
+      oauthProvidersAdmin: "/v2.6/oauth/providers",
+      oauthProvidersCreate: "/v2.6/oauth/providers",
+      oauthDiscover: "/v2.6/oauth/providers/discover",
+      importOpenApi: "/v2.6/import/openapi",
+      importOpenApiJob: (id: string) => `/v2.6/import/openapi/${encodeURIComponent(id)}`,
+      activateOpenApi: "/v2.6/capabilities/generate-from-openapi",
+      capabilities: "/v2.6/capabilities",
+    };
+  }
+  return {
+    oauthProvidersAdmin: "/v2/admin/oauth/providers",
+    oauthProvidersCreate: "/v2/oauth/providers",
+    oauthDiscover: "",
+    importOpenApi: "/v2/import/openapi",
+    importOpenApiJob: (id: string) => `/v2/import/openapi/${encodeURIComponent(id)}`,
+    activateOpenApi: "/v2/capabilities/from-openapi",
+    capabilities: "/v2/capabilities",
+  };
+}
+
+export async function fetchOAuthProvidersAdmin(
+  connection: ConsoleConnection,
+  apiVersion: CnothingApiVersion = "v2.5",
+) {
   return requestJson<{ ok: true; items: V25OAuthProviderAdmin[] }>(
     connection,
-    "/v2/admin/oauth/providers",
+    apiPaths(apiVersion).oauthProvidersAdmin,
   );
+}
+
+export async function discoverOAuthProvider(
+  connection: ConsoleConnection,
+  payload: { discovery_url?: string; issuer?: string },
+) {
+  return requestJson<{
+    ok: true;
+    discovered: {
+      issuer: string;
+      authorization_url: string;
+      token_url: string;
+      userinfo_url: string | null;
+      jwks_url: string | null;
+      revoke_url: string | null;
+      scopes_supported: string[];
+    };
+  }>(connection, "/v2.6/oauth/providers/discover", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createOAuthProvider(
@@ -545,21 +594,30 @@ export async function createOAuthProvider(
     slug: string;
     display_name: string;
     auth_type?: string;
+    issuer?: string;
+    discovery_url?: string;
     authorization_url?: string;
     token_url?: string;
     userinfo_url?: string;
     revoke_url?: string;
+    jwks_url?: string;
     client_id?: string;
     client_secret?: string;
     default_scopes?: string[];
     supported_scopes?: string[];
     pkce_required?: boolean;
+    token_auth_method?: string;
   },
+  apiVersion: CnothingApiVersion = "v2.5",
 ) {
-  return requestJson<{ ok: true; provider: V25OAuthProvider }>(connection, "/v2/oauth/providers", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return requestJson<{ ok: true; provider: V25OAuthProviderAdmin }>(
+    connection,
+    apiPaths(apiVersion).oauthProvidersCreate,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function updateOAuthProviderCredentials(
@@ -643,17 +701,22 @@ export async function importOpenApiSpec(
     provider_id?: string;
     provider_slug?: string;
   },
+  apiVersion: CnothingApiVersion = "v2.5",
 ) {
-  return requestJson<{ ok: true; job: V25ImportJob }>(connection, "/v2/import/openapi", {
+  return requestJson<{ ok: true; job: V25ImportJob }>(connection, apiPaths(apiVersion).importOpenApi, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export async function fetchOpenApiImportJob(connection: ConsoleConnection, jobId: string) {
+export async function fetchOpenApiImportJob(
+  connection: ConsoleConnection,
+  jobId: string,
+  apiVersion: CnothingApiVersion = "v2.5",
+) {
   return requestJson<{ ok: true; job: V25ImportJob }>(
     connection,
-    `/v2/import/openapi/${encodeURIComponent(jobId)}`,
+    apiPaths(apiVersion).importOpenApiJob(jobId),
   );
 }
 
@@ -666,8 +729,9 @@ export async function activateOpenApiCapabilities(
     provider_slug?: string;
     connector_id?: string;
   },
+  apiVersion: CnothingApiVersion = "v2.5",
 ) {
-  return requestJson<{ ok: true; activated: number }>(connection, "/v2/capabilities/from-openapi", {
+  return requestJson<{ ok: true; activated: number }>(connection, apiPaths(apiVersion).activateOpenApi, {
     method: "POST",
     body: JSON.stringify(payload),
   });

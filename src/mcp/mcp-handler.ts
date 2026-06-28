@@ -1,16 +1,21 @@
 import config from "../config";
 import { MCP_SERVER_INSTRUCTIONS } from "../catalog/mcp-instructions";
 import { MCP_V2_AUTH_WORKFLOW_URI } from "../catalog/mcp-v2-auth-workflow";
-import { listMcpInternalTools, listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
-import { KeyService } from "../core/key-service";
+import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
 import { ForbiddenError } from "../utils/errors";
 import { agentAuthorizationV25Service } from "../v2/agent-authorization-v25.service";
 import { invocationGatewayService } from "../v2/invocation-gateway.service";
 import { sanitizeAgentResponse } from "../v2/secret-redaction";
-import { V1_DEPRECATED_MCP_TOOLS, v1DeprecationMeta } from "../v2/deprecation";
 import { findAgentByAccessToken, revokeGrant } from "../v2/v2.repository";
 
-const legacyService = new KeyService();
+const V26_AGENT_MCP_TOOLS = new Set([
+  "list_capabilities",
+  "request_authorization",
+  "get_authorization_status",
+  "invoke_capability",
+  "list_grants",
+  "revoke_grant",
+]);
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -56,20 +61,6 @@ async function requireAgentFromMcpArgs(args: Record<string, unknown>) {
   return agent;
 }
 
-function wrapDeprecatedToolResult(toolName: string, result: unknown): unknown {
-  if (!V1_DEPRECATED_MCP_TOOLS.has(toolName)) {
-    return result;
-  }
-  const deprecation = {
-    ...v1DeprecationMeta(apiBaseUrl()),
-    warning: `Tool "${toolName}" is deprecated internal API. Use v2.5 agent tools instead.`,
-  };
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    return { ...(result as Record<string, unknown>), _deprecation: deprecation };
-  }
-  return { value: result, _deprecation: deprecation };
-}
-
 function readCapabilityName(args: Record<string, unknown>): string {
   if (typeof args.capability === "string" && args.capability.trim()) {
     return args.capability.trim();
@@ -96,7 +87,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
       case "initialize":
         result = {
           protocolVersion: config.protocolVersion,
-          serverInfo: { name: config.serviceName, version: "2.5.0" },
+          serverInfo: { name: config.serviceName, version: "2.6.0" },
           instructions: MCP_SERVER_INSTRUCTIONS,
           capabilities: {
             resources: { subscribe: false, listChanged: false },
@@ -125,6 +116,13 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
           params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
             ? (params.arguments as Record<string, unknown>)
             : {};
+
+        if (!V26_AGENT_MCP_TOOLS.has(name)) {
+          return jsonRpcError(id, -32601, "Tool not available on public MCP surface", {
+            tool: name,
+            allowed_tools: [...V26_AGENT_MCP_TOOLS],
+          });
+        }
 
         switch (name) {
           case "invoke_capability": {
@@ -224,39 +222,8 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             break;
           }
 
-          case "get_authai_public_key":
-            result = legacyService.getAuthaiPublicKey();
-            break;
-          case "authai_register":
-            result = await legacyService.registerClient(args);
-            break;
-          case "authai_refresh":
-            result = await legacyService.refreshChallenge(args);
-            break;
-          case "authai_key_holder_challenge":
-            result = await legacyService.createKeyHolderChallenge(args);
-            break;
-          case "authai_key_holder_verify":
-            result = await legacyService.verifyKeyHolderChallenge(args);
-            break;
-          case "authai_key_holder_sign_challenge":
-            result = await legacyService.createKeyHolderSignChallenge(args);
-            break;
-          case "authai_key_holder_verify_signature":
-            result = await legacyService.verifyKeyHolderSignature(args);
-            break;
-          case "kv_save":
-            result = await legacyService.saveKv(args);
-            break;
-          case "kv_read":
-            result = await legacyService.readKv(args);
-            break;
           default:
             return jsonRpcError(id, -32601, "Method not found", { tool: name });
-        }
-
-        if (typeof result !== "undefined") {
-          result = wrapDeprecatedToolResult(name, result);
         }
         break;
       }
@@ -279,7 +246,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 export function handleMcpInfo(baseUrl: string) {
   return {
     name: config.serviceName,
-    version: "2.5.0",
+    version: "2.6.0",
     protocolVersion: config.protocolVersion,
     instructions: MCP_SERVER_INSTRUCTIONS,
     capabilities: {
@@ -294,9 +261,9 @@ export function handleMcpInfo(baseUrl: string) {
     discovery: {
       manifest: `${baseUrl}/mcp/manifest`,
       v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
+      openapi_v26: `${baseUrl}/openapi-v2.6.json`,
       openapi_v25: `${baseUrl}/openapi-v2.5.json`,
       openapi_v2: `${baseUrl}/openapi-v2.json`,
-      internal_tools: listMcpInternalTools().map((tool) => tool.name),
       skills_index: `${baseUrl}/skills/index.json`,
       skills_text: `${baseUrl}/skills.txt`,
       getting_started: `${baseUrl}/getting-started.md`,

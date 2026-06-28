@@ -13,6 +13,8 @@ const buttonVariants = cva(
           "bg-[color:var(--brand)] text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] hover:opacity-95",
         secondary:
           "bg-[color:var(--surface)] text-[color:var(--foreground)] border border-[color:var(--border)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]",
+        outline:
+          "border border-[color:var(--border)] bg-transparent text-[color:var(--foreground)] hover:bg-[color:var(--surface)]/80",
         ghost: "bg-transparent text-[color:var(--foreground)] hover:bg-[color:var(--surface)]/80",
       },
       size: {

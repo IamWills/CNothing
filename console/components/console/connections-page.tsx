@@ -58,9 +58,14 @@ export function ConnectionsPage() {
     <PageFrame
       title="OAuth Connections"
       description="Third-party connections with encrypted tokens stored by CNothing."
-      actions={<ReloadIconButton loading={loading} onClick={() => void refresh()} />}
+      actions={<ReloadIconButton disabled={loading} onReload={() => void refresh()} />}
     >
-      <ConnectionPanel draft={draft} setDraft={setDraft} onSave={saveDraft} />
+      <ConnectionPanel
+        draft={draft}
+        onDraftChange={setDraft}
+        onApply={saveDraft}
+        connection={connection}
+      />
 
       {!isLoggedIn ? (
         <Card className="p-4 text-sm text-slate-600">Sign in to view your connections.</Card>

@@ -115,6 +115,29 @@ export function toProviderPublic(provider: OAuthProviderRecord): OAuthProviderPu
   };
 }
 
+export type OAuthProviderAdminView = OAuthProviderPublic & {
+  authorization_url: string | null;
+  token_url: string | null;
+  userinfo_url: string | null;
+  revoke_url: string | null;
+  client_id: string | null;
+  has_client_secret: boolean;
+  pkce_required: boolean;
+};
+
+export function toProviderAdmin(provider: OAuthProviderRecord): OAuthProviderAdminView {
+  return {
+    ...toProviderPublic(provider),
+    authorization_url: provider.authorization_url,
+    token_url: provider.token_url,
+    userinfo_url: provider.userinfo_url,
+    revoke_url: provider.revoke_url,
+    client_id: provider.client_id,
+    has_client_secret: Boolean(provider.encrypted_client_secret),
+    pkce_required: provider.pkce_required,
+  };
+}
+
 export function getProviderClientSecret(provider: OAuthProviderRecord): string | null {
   if (!provider.encrypted_client_secret) {
     return null;

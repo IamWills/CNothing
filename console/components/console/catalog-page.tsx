@@ -46,7 +46,7 @@ export function CatalogPage() {
   return (
     <PageFrame
       title="Catalog"
-      description="Browse the MCP tool contracts, public resources, and skill markdown that CNothing exposes to humans and AI agents."
+      description="Browse agent-facing MCP tools and platform capabilities. Connect OAuth providers, import OpenAPI/MCP specs, then invoke by capability name — no custom connector required."
       actions={
         <ReloadIconButton onReload={() => void refreshCatalog()} disabled={loading} />
       }

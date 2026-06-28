@@ -547,6 +547,25 @@ export class OAuthProviderService {
     const provider = await createOAuthProvider(input);
     return toProviderPublic(provider);
   }
+
+  async listAdminProviders() {
+    const { listOAuthProviders, toProviderAdmin } = await import("./oauth.repository");
+    const providers = await listOAuthProviders();
+    return providers.map(toProviderAdmin);
+  }
+
+  async updateProviderCredentials(input: {
+    id: string;
+    client_id: string;
+    client_secret?: string;
+  }) {
+    const { updateOAuthProviderCredentials, toProviderAdmin } = await import("./oauth.repository");
+    const provider = await updateOAuthProviderCredentials(input);
+    if (!provider) {
+      throw new NotFoundError("OAuth provider not found");
+    }
+    return toProviderAdmin(provider);
+  }
 }
 
 export const oauthProviderService = new OAuthProviderService();

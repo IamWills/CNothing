@@ -133,6 +133,12 @@ export async function handleV25OAuthRequest(request: Request): Promise<Response>
   const segments = path.split("/").filter(Boolean);
   const apiBaseUrl = inferBaseUrl(request);
 
+  if (request.method === "GET" && path === "/v2/admin/oauth/providers") {
+    requireAdminAccess(request);
+    const items = await oauthProviderService.listAdminProviders();
+    return Response.json({ ok: true, items });
+  }
+
   if (request.method === "GET" && path === "/v2/oauth/providers") {
     const items = await oauthProviderService.listPublicProviders();
     return Response.json({ ok: true, items });
@@ -156,6 +162,24 @@ export async function handleV25OAuthRequest(request: Request): Promise<Response>
       pkce_required: body.pkce_required !== false,
     });
     return Response.json({ ok: true, provider }, { status: 201 });
+  }
+
+  if (
+    request.method === "PATCH" &&
+    segments.length === 5 &&
+    segments[0] === "v2" &&
+    segments[1] === "oauth" &&
+    segments[2] === "providers" &&
+    segments[4] === "credentials"
+  ) {
+    requireAdminAccess(request);
+    const body = await parseJsonBody(request);
+    const provider = await oauthProviderService.updateProviderCredentials({
+      id: decodeURIComponent(segments[3] ?? ""),
+      client_id: readRequiredString(body, "client_id"),
+      client_secret: typeof body.client_secret === "string" ? body.client_secret : undefined,
+    });
+    return Response.json({ ok: true, provider });
   }
 
   if (

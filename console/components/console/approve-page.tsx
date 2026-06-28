@@ -66,7 +66,12 @@ export function ApprovePage({ authorizationId }: { authorizationId: string }) {
   if (!request) {
     return (
       <PageFrame title="Approve Capability" description="Loading authorization request…">
-        <ConnectionPanel draft={draft} setDraft={setDraft} onSave={saveDraft} />
+        <ConnectionPanel
+          draft={draft}
+          onDraftChange={setDraft}
+          onApply={saveDraft}
+          connection={connection}
+        />
         {errorMessage ? <Card className="p-4 text-sm text-red-700">{errorMessage}</Card> : null}
       </PageFrame>
     );
@@ -77,7 +82,12 @@ export function ApprovePage({ authorizationId }: { authorizationId: string }) {
       title="Approve Agent Capability"
       description="Select an OAuth connection and approve the capability grant. Tokens are never shared with the agent."
     >
-      <ConnectionPanel draft={draft} setDraft={setDraft} onSave={saveDraft} />
+      <ConnectionPanel
+        draft={draft}
+        onDraftChange={setDraft}
+        onApply={saveDraft}
+        connection={connection}
+      />
 
       <Card className="mb-4 p-5">
         <div className="flex items-center gap-2">

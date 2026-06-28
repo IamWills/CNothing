@@ -86,13 +86,17 @@ export function ImportPage() {
         if (!openApiForm.url.trim() && !openApiForm.content.trim()) {
           throw new Error("Paste OpenAPI JSON or provide a URL.");
         }
-        const response = await importOpenApiSpec(connection, {
-          url: openApiForm.url.trim() || undefined,
-          content: openApiForm.content.trim() || undefined,
-          filename: openApiForm.filename.trim() || undefined,
-          provider_slug: openApiForm.provider_slug.trim() || undefined,
-          provider_id: providerId || undefined,
-        });
+        const openApiPayload: Parameters<typeof importOpenApiSpec>[1] = {};
+        const url = openApiForm.url.trim();
+        const content = openApiForm.content.trim();
+        const filename = openApiForm.filename.trim();
+        const slug = openApiForm.provider_slug.trim();
+        if (url) openApiPayload.url = url;
+        if (content) openApiPayload.content = content;
+        if (filename) openApiPayload.filename = filename;
+        if (slug) openApiPayload.provider_slug = slug;
+        if (providerId) openApiPayload.provider_id = providerId;
+        const response = await importOpenApiSpec(connection, openApiPayload);
         setJob(response.job);
         if (response.job.status === "failed") {
           throw new Error(response.job.error_message ?? "OpenAPI import failed.");
@@ -103,11 +107,11 @@ export function ImportPage() {
         if (mcpForm.server_url.trim()) {
           manifest.server_url = mcpForm.server_url.trim();
         }
-        const response = await importMcpManifestSpec(connection, {
-          manifest,
-          provider_slug: mcpForm.provider_slug.trim() || undefined,
-          provider_id: providerId || undefined,
-        });
+        const mcpPayload: Parameters<typeof importMcpManifestSpec>[1] = { manifest };
+        const mcpSlug = mcpForm.provider_slug.trim();
+        if (mcpSlug) mcpPayload.provider_slug = mcpSlug;
+        if (providerId) mcpPayload.provider_id = providerId;
+        const response = await importMcpManifestSpec(connection, mcpPayload);
         setJob(response.job);
         if (response.job.status === "failed") {
           throw new Error(response.job.error_message ?? "MCP import failed.");
@@ -129,12 +133,13 @@ export function ImportPage() {
     setStatusMessage("");
     setLoading(true);
     try {
-      const payload = {
+      const payload: Parameters<typeof activateOpenApiCapabilities>[1] = {
         job_id: job.id,
         candidate_names: selectedNames,
-        provider_id: providerId || undefined,
-        provider_slug: providerSlug.trim() || undefined,
       };
+      const slug = providerSlug.trim();
+      if (providerId) payload.provider_id = providerId;
+      if (slug) payload.provider_slug = slug;
       const response =
         job.import_type === "mcp"
           ? await activateMcpCapabilities(connection, payload)

@@ -50,7 +50,7 @@ export function ConnectPage() {
         typeof window !== "undefined" ? `${window.location.origin}/connections` : undefined;
       const response = await startOAuthConnect(connection, {
         provider_slug: provider.slug,
-        redirect_after: redirectAfter,
+        ...(redirectAfter ? { redirect_after: redirectAfter } : {}),
       });
       window.location.href = response.authorization_url;
     } catch (error) {
@@ -62,9 +62,14 @@ export function ConnectPage() {
     <PageFrame
       title="Connect Providers"
       description="Connect OAuth2/OIDC providers once. CNothing stores tokens encrypted — agents never receive them."
-      actions={<ReloadIconButton loading={loading} onClick={() => void refresh()} />}
+      actions={<ReloadIconButton disabled={loading} onReload={() => void refresh()} />}
     >
-      <ConnectionPanel draft={draft} setDraft={setDraft} onSave={saveDraft} />
+      <ConnectionPanel
+        draft={draft}
+        onDraftChange={setDraft}
+        onApply={saveDraft}
+        connection={connection}
+      />
 
       {errorMessage ? (
         <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</Card>
@@ -105,7 +110,11 @@ export function ConnectPage() {
           <h3 className="font-semibold">Custom OAuth Provider</h3>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          Register custom providers via admin API: <code>POST /v2/oauth/providers</code>
+          Register and configure providers on the{" "}
+          <a href="/providers" className="font-medium text-[#ca279c] underline">
+            Providers
+          </a>{" "}
+          page, then return here to connect.
         </p>
       </Card>
     </PageFrame>

@@ -481,6 +481,16 @@ export type V25OAuthProvider = {
   connectable: boolean;
 };
 
+export type V25OAuthProviderAdmin = V25OAuthProvider & {
+  authorization_url: string | null;
+  token_url: string | null;
+  userinfo_url: string | null;
+  revoke_url: string | null;
+  client_id: string | null;
+  has_client_secret: boolean;
+  pkce_required: boolean;
+};
+
 export type V25OAuthConnection = {
   id: string;
   user_id: string;
@@ -498,6 +508,48 @@ export type V25OAuthConnection = {
 
 export async function fetchOAuthProviders(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V25OAuthProvider[] }>(connection, "/v2/oauth/providers");
+}
+
+export async function fetchOAuthProvidersAdmin(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: V25OAuthProviderAdmin[] }>(
+    connection,
+    "/v2/admin/oauth/providers",
+  );
+}
+
+export async function createOAuthProvider(
+  connection: ConsoleConnection,
+  payload: {
+    slug: string;
+    display_name: string;
+    auth_type?: string;
+    authorization_url?: string;
+    token_url?: string;
+    userinfo_url?: string;
+    revoke_url?: string;
+    client_id?: string;
+    client_secret?: string;
+    default_scopes?: string[];
+    supported_scopes?: string[];
+    pkce_required?: boolean;
+  },
+) {
+  return requestJson<{ ok: true; provider: V25OAuthProvider }>(connection, "/v2/oauth/providers", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateOAuthProviderCredentials(
+  connection: ConsoleConnection,
+  providerId: string,
+  payload: { client_id: string; client_secret?: string },
+) {
+  return requestJson<{ ok: true; provider: V25OAuthProviderAdmin }>(
+    connection,
+    `/v2/oauth/providers/${encodeURIComponent(providerId)}/credentials`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
 }
 
 export async function startOAuthConnect(

@@ -289,7 +289,7 @@ async function router(request: Request): Promise<Response> {
     ) {
       return withCors(await handleV25AgentRequest(request), request);
     }
-    if (pathname.startsWith("/v2/oauth/")) {
+    if (pathname.startsWith("/v2/admin/oauth/") || pathname.startsWith("/v2/oauth/")) {
       return withCors(await handleV25OAuthRequest(request), request);
     }
     if (pathname.startsWith("/v2/import/") || pathname === "/v2/capabilities/from-openapi") {

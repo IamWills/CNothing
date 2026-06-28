@@ -49,7 +49,7 @@ await agent.invoke({
 - MCP 工具（仅 v2.5）：`list_capabilities`、`request_authorization`、`get_authorization_status`、`invoke_capability`、`list_grants`、`revoke_grant`
 - 内置 Capability：GitHub / Google Gmail / Slack 等（见 `src/v2/builtin-providers.ts`）
 - 端到端验证：`bun run e2e:v2.5`
-- Console：`/connect`、`/connections`、`/approve/:id`、`/grants`、`/audit`
+- Console：`/providers`、`/connect`、`/import`、`/connections`、`/approve/:id`、`/grants`、`/audit`
 
 **安全边界：** Agent 只获得 Capability 授权（Grant），永远不接触 OAuth token、refresh token、client secret 或 API key。
 
@@ -67,9 +67,9 @@ KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET=
 # Microsoft、Notion 同理
 ```
 
-自定义 Provider：`POST /v2/oauth/providers`（需 Admin Bearer Token）。
+自定义 Provider：Console **Providers** 页或 `POST /v2/oauth/providers`（需 Admin Bearer Token）。
 
-OpenAPI 导入：`POST /v2/import/openapi` → 审核候选 → `POST /v2/capabilities/from-openapi`。
+OpenAPI 导入：Console **Import** 页或 `POST /v2/import/openapi` → 审核候选 → `POST /v2/capabilities/from-openapi`（无需 `connector_id`，默认走 gateway connector）。
 
 ## v2：Agent 能力授权平台（兼容）
 
@@ -83,7 +83,7 @@ CNothing v2 仍可用，但新 Agent 应优先使用 **v2.5 SDK**（默认 `apiV
 
 - API 规范：[`openapi-v2.json`](./openapi-v2.json)
 - MCP 工具：`invoke_capability`、`list_capabilities`、`request_authorization`
-- 示例 Connector：`examples/github-connector`、`examples/slack-connector`、`examples/webhook-connector`
+- 示例 Connector（高级/遗留）：`examples/github-connector` 等 — 新集成优先走 OAuth + Import，无需部署 Connector 进程
 - 端到端验证：`bun run e2e:v2`
 
 **v1 AuthAI + Encrypted KV** 在兼容期内仍可用，但已**废弃**（响应含 `Deprecation` / `Sunset` 头与 `_deprecation` 字段）。迁移见 `GET /v2/platform/migration`。

@@ -194,50 +194,50 @@ export function HomePage() {
       <Card className="space-y-4">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-[color:var(--brand)]" />
-          <h2 className="text-lg font-semibold">v2 Quick Start</h2>
+          <h2 className="text-lg font-semibold">v2.5 Platform Quick Start</h2>
         </div>
         <p className="max-w-3xl text-sm text-slate-600">
-          CNothing v2 is an Agent Capability Authorization Platform. Agents invoke business capabilities;
-          connectors hold credentials; users authorize capabilities — not secrets.
+          Connect OAuth once, import OpenAPI or MCP specs, grant capabilities to agents — no custom connector
+          deployment required.
         </p>
         <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 text-sm text-slate-700">
           <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>1. Register infrastructure</strong>
+            <strong>1. Configure providers</strong>
             <p className="mt-2 text-slate-600">
-              <a href="/capabilities" className="underline">Capabilities</a> → register Connector + capabilities.
-              Run <code className="text-xs">examples/github-connector/bootstrap.ts</code> for GitHub demo.
+              <a href="/providers" className="underline">Providers</a> → register OAuth client credentials.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>2. Register an agent</strong>
+            <strong>2. Import capabilities</strong>
+            <p className="mt-2 text-slate-600">
+              <a href="/import" className="underline">Import</a> → OpenAPI or MCP manifest → activate selected tools.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
+            <strong>3. Register an agent</strong>
             <p className="mt-2 text-slate-600">
               <a href="/agents" className="underline">Agents</a> → copy the agent access token (shown once).
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>3. User sign-in</strong>
+            <strong>4. User connects OAuth</strong>
             <p className="mt-2 text-slate-600">
-              <a href="/login" className="underline">Login</a> → issue one-time token, sign in as user.
+              <a href="/connect" className="underline">Connect</a> → user links GitHub or other providers once.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>4. Authorize capabilities</strong>
+            <strong>5. Authorize & invoke</strong>
             <p className="mt-2 text-slate-600">
-              Agent calls <code className="text-xs">POST /v2/authorize/request</code> → user approves at{" "}
-              <code className="text-xs">/authorize/:id</code> or <a href="/grants" className="underline">Grants</a>.
-            </p>
-          </li>
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>5. Invoke</strong>
-            <p className="mt-2 text-slate-600">
-              Agent calls <code className="text-xs">POST /v2/capabilities/invoke</code> with capability name + input.
+              Agent calls <code className="text-xs">POST /v2/agent/authorizations</code> → user approves at{" "}
+              <code className="text-xs">/approve/:id</code> →{" "}
+              <code className="text-xs">POST /v2/agent/invoke</code>.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
             <strong>6. Audit</strong>
             <p className="mt-2 text-slate-600">
               Review policy decisions at <a href="/audit" className="underline">Audit</a>.
-              API spec: <a href="/openapi-v2.json" className="underline">openapi-v2.json</a>.
+              API spec: <a href="/openapi-v2.5.json" className="underline">openapi-v2.5.json</a>.
             </p>
           </li>
         </ol>

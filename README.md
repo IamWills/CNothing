@@ -27,36 +27,20 @@ CNothing v2.5 removes the need for a dedicated connector per OAuth provider:
 - API spec: [`openapi-v2.5.json`](./openapi-v2.5.json)
 - MCP tools (v2.5 only): `list_capabilities`, `request_authorization`, `get_authorization_status`, `invoke_capability`, `list_grants`, `revoke_grant`
 - E2E: `bun run e2e:v2.5`
-- Console: `/connect`, `/connections`, `/approve/:id`, `/grants`, `/audit`
+- Console: `/providers`, `/connect`, `/import`, `/connections`, `/approve/:id`, `/grants`, `/audit`
 
 **Security boundary:** agents receive capability permissions (grants), never OAuth tokens, refresh tokens, client secrets, or API keys.
 
-## v2: Agent Capability Authorization Platform (Recommended)
+Configure OAuth providers in Console **Providers** or via `POST /v2/oauth/providers`. Import third-party APIs at **Import** (`POST /v2/import/openapi` or MCP manifest) — activation uses the built-in gateway connector; `connector_id` is optional.
 
-CNothing v2 is the **primary integration path** for new AI agents:
+## v2: Agent Capability Authorization Platform (Legacy)
 
-- Agents call **`POST /v2/capabilities/invoke`** with a business capability name (e.g. `github.create_issue`) — no envelopes, no `recipient_public_key`
-- **Connectors** hold third-party credentials locally; CNothing validates grants and forwards requests
-- **Users** authorize capabilities (not secrets) via Console or OAuth-style approval flows
-- **Policy engine** enforces risk levels, confirmations, and audit
+CNothing v2 remains available for existing integrations. **New agents should use v2.5** (SDK default `apiVersion: "v2.5"`):
 
-```ts
-import { CNothingAgentClient } from "cnothing";
-
-const agent = new CNothingAgentClient({
-  baseUrl: "https://cnothing.com",
-  accessToken: process.env.AGENT_ACCESS_TOKEN!,
-});
-
-await agent.invoke({
-  capability: "github.create_issue",
-  input: { repo: "org/repo", title: "Bug report" },
-});
-```
-
-- API spec: [`openapi-v2.json`](./openapi-v2.json)
-- MCP tools: `invoke_capability`, `list_capabilities`, `request_authorization`
-- Example connectors: `examples/github-connector`, `examples/slack-connector`, `examples/webhook-connector`
+- Legacy invoke: `POST /v2/capabilities/invoke`
+- Legacy authorization: `POST /v2/authorize/request`
+- Opt into v2 API explicitly: `new CNothingAgentClient({ ..., apiVersion: "v2" })`
+- **Connectors** (optional advanced path) hold third-party credentials locally; example apps live under `examples/*-connector`
 - E2E validation: `bun run e2e:v2`
 
 **v1 AuthAI + Encrypted KV** remains available during a compatibility period but is **deprecated** (see `Deprecation` / `Sunset` headers and `_deprecation` in JSON responses). Migrate via `GET /v2/platform/migration`.

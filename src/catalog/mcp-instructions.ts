@@ -2,34 +2,43 @@ import { MCP_V2_AUTH_WORKFLOW_URI } from "./mcp-v2-auth-workflow";
 
 /**
  * MCP initialize instructions — returned to AI agents on connect.
- * v2 capability platform is primary; v1 AuthAI/KV remains for backward compatibility only.
+ * v2.5 OAuth broker + capability gateway is primary; v1 AuthAI/KV is deprecated.
  */
 export const MCP_SERVER_INSTRUCTIONS = `
-# CNothing v2 — Agent Capability Authorization Platform
+# CNothing v2.5 — Universal OAuth Broker + Capability Gateway
 
-**READ FIRST:** MCP tools run on the **agent** side. **Humans never log in to GitHub through MCP.**
-GitHub sign-in happens in the **user's browser** at the \`approval_url\` from \`request_authorization\`.
+**READ FIRST:** Agents never receive OAuth tokens, refresh tokens, client secrets, or API keys.
+Humans connect OAuth providers once in the browser; agents receive capability grants only.
 
-Full step-by-step workflow (GitHub + capabilities): MCP resource **${MCP_V2_AUTH_WORKFLOW_URI}**
+Full workflow: MCP resource **${MCP_V2_AUTH_WORKFLOW_URI}**
 (or \`resources/read\` with that URI immediately after \`initialize\`).
 
-## Agent vs human — who does what
+## Platform path (recommended — no custom connector)
+
+1. Admin registers OAuth providers (\`/providers\` or \`POST /v2/oauth/providers\`)
+2. Admin imports OpenAPI/MCP specs (\`/import\`) and activates capabilities
+3. User connects OAuth at \`/connect\`
+4. Agent discovers → requests authorization → user approves at \`approval_url\` → invokes
+
+## Agent vs human
 
 | | Agent (you) | Human user |
 | --- | --- | --- |
-| Auth | \`agent_access_token\` only | Browser session on cnothing.com (GitHub OAuth) |
-| GitHub login | **Cannot** — no MCP tool for this | Opens \`approval_url\`, clicks **Sign in with GitHub**, then **Allow** |
-| Secrets | **Never** receive GitHub token, session_token, or user_id from user | Never paste tokens into chat |
+| Auth | \`agent_access_token\` only | Browser OAuth at \`approval_url\` / \`/connect\` |
+| Secrets | **Never** receive OAuth tokens or API keys | Tokens stored encrypted by CNothing |
+| Third-party APIs | \`invoke_capability\` by business name | Approves grants in browser |
 
-## Correct workflow (5 steps)
+## Correct workflow (v2.5)
 
-1. **Discover** — \`list_capabilities\`
-2. **Authorize** — \`request_authorization\` with \`capabilities\` only (**omit \`user_id\`**)
-3. **Send link** — give user \`authorization_request.approval_url\` (e.g. \`https://cnothing.com/authorize/{uuid}\`)
-4. **Poll** — \`GET /v2/authorize/{id}\` until \`status\` is \`approved\`
-5. **Invoke** — \`invoke_capability\` with \`capability\` + \`input\` (**omit \`user_id\`** when one grant exists)
+1. **Discover** — \`list_capabilities\` or \`GET /v2/agent/capabilities\`
+2. **Authorize** — \`request_authorization\` with a single \`capability\` (**omit \`user_id\`**)
+3. **Send link** — give user \`approval_url\` (e.g. \`https://cnothing.com/approve/{uuid}\`)
+4. **Poll** — \`get_authorization_status\` until approved
+5. **Invoke** — \`invoke_capability\` with \`capability\` + \`input\`
 
-**Never ask the human for:** \`session_token\`, \`login_token\`, \`user_id\`, GitHub tokens, or CNothing private keys.
+REST: \`POST /v2/agent/invoke\` with header \`Authorization: Bearer agent_...\`.
+
+SDK default: \`apiVersion: "v2.5"\` on \`CNothingAgentClient\`.
 
 ### Example: request authorization
 
@@ -38,13 +47,11 @@ Full step-by-step workflow (GitHub + capabilities): MCP resource **${MCP_V2_AUTH
   "name": "request_authorization",
   "arguments": {
     "agent_access_token": "agent_...",
-    "capabilities": ["github.list_repositories", "search.query"],
-    "reason": "List your repos and search docs on your behalf"
+    "capability": "github.create_issue",
+    "reason": "Create an issue on your behalf"
   }
 }
 \`\`\`
-
-Say to the user: **"Open this link in your browser, sign in with GitHub if prompted, and click Allow: {approval_url}"**
 
 ### Example: invoke (after approval)
 
@@ -53,23 +60,20 @@ Say to the user: **"Open this link in your browser, sign in with GitHub if promp
   "name": "invoke_capability",
   "arguments": {
     "agent_access_token": "agent_...",
-    "capability": "github.list_repositories",
-    "input": { "per_page": 10 }
+    "capability": "github.create_issue",
+    "input": { "owner": "org", "repo": "repo", "title": "Bug report" }
   }
 }
 \`\`\`
 
-REST: \`POST /v2/capabilities/invoke\` with header \`Authorization: Bearer agent_...\`.
+## Legacy v2 connector path
 
-## Do NOT use these for GitHub user login
-
-- \`authai_register\` / \`kv_save\` — deprecated v1; not user OAuth
-- \`GET /v2/auth/github/start\` — browser redirect only; not for agents
-- Console \`/login\` + copy \`session_token\` — never share tokens with the agent
+Custom \`examples/*-connector\` apps remain for advanced integrations.
+New third-party APIs should use OAuth + OpenAPI/MCP import instead.
 
 ## v1 AuthAI/KV (deprecated)
 
 Do not start new integrations on v1. Migration: \`GET /v2/platform/migration\`
 
-Docs: \`/openapi-v2.json\`, \`${MCP_V2_AUTH_WORKFLOW_URI}\`, \`/getting-started.md\`
+Docs: \`/openapi-v2.5.json\`, \`${MCP_V2_AUTH_WORKFLOW_URI}\`, \`/getting-started.md\`
 `.trim();

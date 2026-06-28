@@ -133,8 +133,12 @@ export function CapabilitiesPage() {
         <Card className="space-y-4 p-6">
           <div className="flex items-center gap-2">
             <Plug className="h-5 w-5 text-[color:var(--brand)]" />
-            <h2 className="text-lg font-semibold">Register connector</h2>
+            <h2 className="text-lg font-semibold">Legacy connector (advanced)</h2>
           </div>
+          <p className="text-sm text-slate-600">
+            Prefer <a href="/import" className="underline">Import</a> for new integrations. Use this only for
+            custom callback-based connectors.
+          </p>
           <form className="space-y-4" onSubmit={(event) => void handleRegisterConnector(event)}>
             <div className="space-y-2">
               <Label>Provider</Label>

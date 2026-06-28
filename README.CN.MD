@@ -24,6 +24,27 @@ CNothing v2.5 不再需要为每个第三方网站手写专用 Connector：
 // 4. POST /v2/agent/invoke          { capability, input }
 ```
 
+```ts
+import { CNothingAgentClient } from "cnothing";
+
+const agent = new CNothingAgentClient({
+  baseUrl: "https://cnothing.com",
+  accessToken: process.env.AGENT_ACCESS_TOKEN!,
+  // 默认 apiVersion: "v2.5"
+});
+
+const auth = await agent.requestAuthorization({
+  capability: "github.create_issue",
+  reason: "自动创建 issue",
+});
+// 将 auth.approval_url 发给用户，用户在浏览器完成 OAuth + 批准
+
+await agent.invoke({
+  capability: "github.create_issue",
+  input: { owner: "org", repo: "repo", title: "Bug report" },
+});
+```
+
 - API 规范：[`openapi-v2.5.json`](./openapi-v2.5.json)
 - MCP 工具（仅 v2.5）：`list_capabilities`、`request_authorization`、`get_authorization_status`、`invoke_capability`、`list_grants`、`revoke_grant`
 - 内置 Capability：GitHub / Google Gmail / Slack 等（见 `src/v2/builtin-providers.ts`）
@@ -50,28 +71,15 @@ KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET=
 
 OpenAPI 导入：`POST /v2/import/openapi` → 审核候选 → `POST /v2/capabilities/from-openapi`。
 
-## v2：Agent 能力授权平台（推荐）
+## v2：Agent 能力授权平台（兼容）
 
-CNothing v2 是新 AI Agent 的**主集成路径**：
+CNothing v2 仍可用，但新 Agent 应优先使用 **v2.5 SDK**（默认 `apiVersion: "v2.5"`）：
 
-- Agent 调用 **`POST /v2/capabilities/invoke`**，传入业务能力名（如 `github.create_issue`）——无需 envelope、无需 `recipient_public_key`
+- Legacy 端点：`POST /v2/capabilities/invoke`、`POST /v2/authorize/request`
+- 如需继续使用 v2 API：`new CNothingAgentClient({ ..., apiVersion: "v2" })`
 - **Connector** 在本地保管第三方凭据；CNothing 校验 Grant 并转发请求
 - **用户**在 Console 或 OAuth 风格审批流中授权的是**能力**，不是 Secret
 - **策略引擎**按风险等级执行确认策略并写入审计
-
-```ts
-import { CNothingAgentClient } from "cnothing";
-
-const agent = new CNothingAgentClient({
-  baseUrl: "https://cnothing.com",
-  accessToken: process.env.AGENT_ACCESS_TOKEN!,
-});
-
-await agent.invoke({
-  capability: "github.create_issue",
-  input: { repo: "org/repo", title: "Bug report" },
-});
-```
 
 - API 规范：[`openapi-v2.json`](./openapi-v2.json)
 - MCP 工具：`invoke_capability`、`list_capabilities`、`request_authorization`

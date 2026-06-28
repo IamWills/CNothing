@@ -5,13 +5,21 @@ export {
   CNothingAgentError,
 } from "./agent-client";
 export type {
+  AgentAuthorizationResponse,
+  AgentAuthorizationStatusResponse,
+  AgentCapabilityView,
+  AgentGrantSummary,
+  AuthorizationRequiredResponse,
   AuthorizationRequestResponse,
   AuthorizationRequestStatusResponse,
   CapabilitySummary,
+  CNothingAgentApiVersion,
   CNothingAgentClientConfig,
   InvokeCapabilityPending,
   InvokeCapabilityRequest,
   InvokeCapabilitySuccess,
+  RequestAuthorizationV25Input,
+  RequestAuthorizationV2Input,
 } from "./agent-entity";
 export {
   buildAuthEnvelope,

@@ -11,16 +11,16 @@ import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  approveAuthorizationRequest,
-  buildGitHubStartUrl,
-  buildOidcStartUrl,
-  denyAuthorizationRequest,
-  fetchAuthMe,
-  fetchAuthProviders,
-  fetchAuthorizationRequest,
+  approveV3AuthorizationRequest,
+  buildV3GitHubStartUrl,
+  buildV3OidcStartUrl,
+  denyV3AuthorizationRequest,
+  fetchV3AuthMe,
+  fetchV3AuthProviders,
+  fetchV3AuthorizationRequest,
   type V2AuthProvider,
   type V2AuthorizationRequest,
-} from "@/lib/api-v2";
+} from "@/lib/api-v3";
 import { formatDate } from "@/lib/console-utils";
 
 const PENDING_USER_ID = "__pending__";
@@ -41,7 +41,7 @@ export function AuthorizePage({ requestId }: { requestId: string }) {
 
   const syncCookieSession = React.useCallback(async () => {
     try {
-      const me = await fetchAuthMe(connection);
+      const me = await fetchV3AuthMe(connection);
       syncSessionFromServer({
         userId: me.user_id,
         expiresAt: me.expires_at,
@@ -56,7 +56,7 @@ export function AuthorizePage({ requestId }: { requestId: string }) {
     setErrorMessage("");
     try {
       await syncCookieSession();
-      const response = await fetchAuthorizationRequest(connection, requestId);
+      const response = await fetchV3AuthorizationRequest(connection, requestId);
       setRequest(response.authorization_request);
       setSelectedCapabilities(response.authorization_request.requested_capabilities);
     } catch (error) {
@@ -68,7 +68,7 @@ export function AuthorizePage({ requestId }: { requestId: string }) {
 
   React.useEffect(() => {
     void refresh();
-    void fetchAuthProviders(connection)
+    void fetchV3AuthProviders(connection)
       .then((response) => setAuthProviders(response.items))
       .catch(() => setAuthProviders([]));
   }, [connection, refresh]);
@@ -84,7 +84,7 @@ export function AuthorizePage({ requestId }: { requestId: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      await approveAuthorizationRequest(connection, {
+      await approveV3AuthorizationRequest(connection, {
         authorization_request_id: request.id,
         granted_capabilities: selectedCapabilities,
       });
@@ -100,7 +100,7 @@ export function AuthorizePage({ requestId }: { requestId: string }) {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      await denyAuthorizationRequest(connection, request.id);
+      await denyV3AuthorizationRequest(connection, request.id);
       setStatusMessage("Authorization denied.");
       await refresh();
     } catch (error) {
@@ -224,10 +224,10 @@ export function AuthorizePage({ requestId }: { requestId: string }) {
                             variant="secondary"
                             onClick={() => {
                               if (provider.type === "github") {
-                                window.location.href = buildGitHubStartUrl(connection, authorizeUrl);
+                                window.location.href = buildV3GitHubStartUrl(connection, authorizeUrl);
                                 return;
                               }
-                              window.location.href = buildOidcStartUrl(
+                              window.location.href = buildV3OidcStartUrl(
                                 connection,
                                 provider.name,
                                 authorizeUrl,

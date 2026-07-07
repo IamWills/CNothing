@@ -9,7 +9,8 @@ import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { fetchV2Audit, type V2AuditEvent } from "@/lib/api-v2";
+import { fetchV3Audit } from "@/lib/api-v3";
+import type { V2AuditEvent } from "@/lib/api-v2";
 import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
@@ -23,7 +24,7 @@ export function AuditPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchV2Audit(connection, 100);
+      const response = await fetchV3Audit(connection, 100);
       setEvents(response.items);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load audit events.");

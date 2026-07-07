@@ -18,6 +18,8 @@ export type {
   InvokeCapabilityPending,
   InvokeCapabilityRequest,
   InvokeCapabilitySuccess,
+  ProviderProposalRequest,
+  ProviderProposalView,
   RequestAuthorizationV25Input,
   RequestAuthorizationV2Input,
 } from "./agent-entity";

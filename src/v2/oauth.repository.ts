@@ -13,6 +13,14 @@ import type {
   OAuthProviderRecord,
   OAuthProviderStatus,
 } from "./v2.5.entity";
+import {
+  exchangeConnectionTokensInVault,
+  readConnectionAccessToken,
+  readConnectionRefreshToken,
+  readProviderClientSecret,
+  storeConnectionTokensInVault,
+  storeProviderClientSecretInVault,
+} from "../v3/oauth-vault-bridge.service";
 
 function normalizeMetadata(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -65,6 +73,11 @@ function mapProviderRow(row: Record<string, unknown>): OAuthProviderRecord {
     encrypted_client_secret: row.encrypted_client_secret
       ? Buffer.from(row.encrypted_client_secret as Buffer)
       : null,
+    client_secret_vault_id: row.client_secret_vault_id ? String(row.client_secret_vault_id) : null,
+    device_authorization_endpoint: row.device_authorization_endpoint
+      ? String(row.device_authorization_endpoint)
+      : null,
+    registration_endpoint: row.registration_endpoint ? String(row.registration_endpoint) : null,
     secret_alg: String(row.secret_alg ?? "aes-256-gcm/master-key"),
     default_scopes: asStringArray(row.default_scopes),
     supported_scopes: asStringArray(row.supported_scopes),
@@ -82,12 +95,19 @@ function mapConnectionRow(row: Record<string, unknown>): OAuthConnectionRecord {
   return {
     id: String(row.id),
     user_id: String(row.user_id),
+    tenant_id: row.tenant_id ? String(row.tenant_id) : "default",
     provider_id: String(row.provider_id),
     provider_account_id: String(row.provider_account_id),
     display_name: String(row.display_name ?? ""),
-    encrypted_access_token: Buffer.from(row.encrypted_access_token as Buffer),
+    encrypted_access_token: row.encrypted_access_token
+      ? Buffer.from(row.encrypted_access_token as Buffer)
+      : null,
     encrypted_refresh_token: row.encrypted_refresh_token
       ? Buffer.from(row.encrypted_refresh_token as Buffer)
+      : null,
+    access_token_secret_id: row.access_token_secret_id ? String(row.access_token_secret_id) : null,
+    refresh_token_secret_id: row.refresh_token_secret_id
+      ? String(row.refresh_token_secret_id)
       : null,
     token_alg: String(row.token_alg ?? "aes-256-gcm/master-key"),
     expires_at: row.expires_at ? asIso(row.expires_at) : null,
@@ -104,6 +124,11 @@ function mapConnectionRow(row: Record<string, unknown>): OAuthConnectionRecord {
 export function toProviderPublic(provider: OAuthProviderRecord): OAuthProviderPublic {
   const connectable =
     provider.status === "active" && Boolean(provider.client_id?.trim());
+  const supportsDeviceFlow = Boolean(
+    provider.device_authorization_endpoint?.trim() ||
+      (typeof provider.metadata?.device_authorization_endpoint === "string" &&
+        provider.metadata.device_authorization_endpoint),
+  );
   return {
     id: provider.id,
     slug: provider.slug,
@@ -114,6 +139,7 @@ export function toProviderPublic(provider: OAuthProviderRecord): OAuthProviderPu
     status: provider.status,
     is_builtin: provider.is_builtin,
     connectable,
+    supports_device_flow: supportsDeviceFlow,
   };
 }
 
@@ -142,17 +168,16 @@ export function toProviderAdmin(provider: OAuthProviderRecord): OAuthProviderAdm
     revoke_url: provider.revoke_url,
     jwks_url: provider.jwks_url,
     client_id: provider.client_id,
-    has_client_secret: Boolean(provider.encrypted_client_secret),
+    has_client_secret: Boolean(
+      provider.encrypted_client_secret || provider.client_secret_vault_id,
+    ),
     pkce_required: provider.pkce_required,
     token_auth_method: provider.token_auth_method,
   };
 }
 
-export function getProviderClientSecret(provider: OAuthProviderRecord): string | null {
-  if (!provider.encrypted_client_secret) {
-    return null;
-  }
-  return unpackEncrypted(provider.encrypted_client_secret);
+export async function getProviderClientSecret(provider: OAuthProviderRecord): Promise<string | null> {
+  return readProviderClientSecret(provider);
 }
 
 export async function findOAuthProviderById(id: string): Promise<OAuthProviderRecord | null> {
@@ -189,28 +214,38 @@ export async function createOAuthProvider(input: {
   supported_scopes?: string[];
   pkce_required?: boolean;
   token_auth_method?: OAuthProviderRecord["token_auth_method"];
+  registration_endpoint?: string;
+  device_authorization_endpoint?: string;
   metadata?: JsonObject;
 }): Promise<OAuthProviderRecord> {
   const id = randomUUID();
-  const encryptedSecret = input.client_secret ? packEncrypted(input.client_secret) : null;
   const tokenAuthMethod = input.token_auth_method ?? "client_secret_post";
   const hasSecretOrPublic =
-    tokenAuthMethod === "none" || Boolean(input.client_secret) || Boolean(encryptedSecret);
+    tokenAuthMethod === "none" || Boolean(input.client_secret?.trim());
   const status =
     input.client_id?.trim() && (tokenAuthMethod === "none" || hasSecretOrPublic)
       ? "active"
       : "unconfigured";
+
+  let clientSecretVaultId: string | null = null;
+  if (input.client_secret?.trim()) {
+    clientSecretVaultId = await storeProviderClientSecretInVault({
+      providerId: id,
+      clientSecret: input.client_secret.trim(),
+    });
+  }
 
   await pool.query(
     `
       INSERT INTO cap_oauth_providers (
         id, slug, display_name, auth_type, issuer, discovery_url,
         authorization_url, token_url, userinfo_url, revoke_url, jwks_url,
-        client_id, encrypted_client_secret,
+        client_id, encrypted_client_secret, client_secret_vault_id,
+        registration_endpoint, device_authorization_endpoint,
         default_scopes, supported_scopes, pkce_required, token_auth_method,
         status, is_builtin, metadata
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,FALSE,$19
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,FALSE,$22
       )
     `,
     [
@@ -226,7 +261,10 @@ export async function createOAuthProvider(input: {
       input.revoke_url ?? null,
       input.jwks_url ?? null,
       input.client_id ?? null,
-      encryptedSecret,
+      null,
+      clientSecretVaultId,
+      input.registration_endpoint ?? null,
+      input.device_authorization_endpoint ?? null,
       JSON.stringify(input.default_scopes ?? []),
       JSON.stringify(input.supported_scopes ?? []),
       input.pkce_required ?? true,
@@ -244,18 +282,26 @@ export async function updateOAuthProviderCredentials(input: {
   client_id: string;
   client_secret?: string;
 }): Promise<OAuthProviderRecord | null> {
-  const encryptedSecret = input.client_secret ? packEncrypted(input.client_secret) : null;
+  let clientSecretVaultId: string | null = null;
+  if (input.client_secret?.trim()) {
+    clientSecretVaultId = await storeProviderClientSecretInVault({
+      providerId: input.id,
+      clientSecret: input.client_secret.trim(),
+    });
+  }
+
   const result = await pool.query(
     `
       UPDATE cap_oauth_providers
       SET client_id = $2::text,
-          encrypted_client_secret = COALESCE($3, encrypted_client_secret),
+          encrypted_client_secret = NULL,
+          client_secret_vault_id = COALESCE($3, client_secret_vault_id),
           status = CASE WHEN $2::text IS NOT NULL AND $2::text <> '' THEN 'active' ELSE status END,
           updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
-    [input.id, input.client_id, encryptedSecret],
+    [input.id, input.client_id, clientSecretVaultId],
   );
   const row = result.rows[0];
   return row ? mapProviderRow(row) : null;
@@ -263,6 +309,7 @@ export async function updateOAuthProviderCredentials(input: {
 
 export async function createOAuthConnection(input: {
   user_id: string;
+  tenant_id?: string;
   provider_id: string;
   provider_account_id: string;
   display_name: string;
@@ -274,22 +321,33 @@ export async function createOAuthConnection(input: {
   metadata?: JsonObject;
 }): Promise<OAuthConnectionRecord> {
   const id = randomUUID();
+  const tenantId = input.tenant_id ?? "default";
+  const secretIds = await storeConnectionTokensInVault({
+    connectionId: id,
+    tenantId,
+    accessToken: input.access_token,
+    refreshToken: input.refresh_token,
+    expiresAt: input.expires_at ?? null,
+  });
+
   await pool.query(
     `
       INSERT INTO cap_oauth_connections (
-        id, user_id, provider_id, provider_account_id, display_name,
+        id, user_id, tenant_id, provider_id, provider_account_id, display_name,
         encrypted_access_token, encrypted_refresh_token,
+        access_token_secret_id, refresh_token_secret_id,
         expires_at, scopes, token_type, status, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11)
+      ) VALUES ($1,$2,$3,$4,$5,$6,NULL,NULL,$7,$8,$9,$10,$11,'active',$12)
     `,
     [
       id,
       input.user_id,
+      tenantId,
       input.provider_id,
       input.provider_account_id,
       input.display_name,
-      packEncrypted(input.access_token),
-      input.refresh_token ? packEncrypted(input.refresh_token) : null,
+      secretIds.access_token_secret_id,
+      secretIds.refresh_token_secret_id,
       input.expires_at ?? null,
       JSON.stringify(input.scopes ?? []),
       input.token_type ?? "Bearer",
@@ -305,20 +363,26 @@ export async function findOAuthConnectionById(id: string): Promise<OAuthConnecti
   return row ? mapConnectionRow(row) : null;
 }
 
-export async function listOAuthConnectionsForUser(userId: string): Promise<OAuthConnectionPublic[]> {
+export async function listOAuthConnectionsForUser(
+  userId: string,
+  tenantId?: string,
+): Promise<OAuthConnectionPublic[]> {
   const result = await pool.query(
     `
       SELECT c.*, p.slug AS provider_slug, p.display_name AS provider_display_name
       FROM cap_oauth_connections c
       JOIN cap_oauth_providers p ON p.id = c.provider_id
-      WHERE c.user_id = $1 AND c.status <> 'revoked'
+      WHERE c.user_id = $1
+        AND c.status <> 'revoked'
+        AND ($2::text IS NULL OR c.tenant_id = $2)
       ORDER BY c.created_at DESC
     `,
-    [userId],
+    [userId, tenantId ?? null],
   );
   return result.rows.map((row) => ({
     id: String(row.id),
     user_id: String(row.user_id),
+    tenant_id: String(row.tenant_id ?? "default"),
     provider_id: String(row.provider_id),
     provider_slug: String(row.provider_slug),
     provider_display_name: String(row.provider_display_name),
@@ -353,11 +417,25 @@ export async function updateOAuthConnectionTokens(input: {
   scopes?: string[];
   status?: OAuthConnectionStatus;
 }): Promise<void> {
+  const connection = await findOAuthConnectionById(input.id);
+  if (!connection) {
+    throw new Error("OAuth connection not found");
+  }
+
+  const secretIds = await exchangeConnectionTokensInVault({
+    connection,
+    accessToken: input.access_token,
+    refreshToken: input.refresh_token,
+    expiresAt: input.expires_at,
+  });
+
   await pool.query(
     `
       UPDATE cap_oauth_connections
-      SET encrypted_access_token = $2,
-          encrypted_refresh_token = COALESCE($3, encrypted_refresh_token),
+      SET encrypted_access_token = NULL,
+          encrypted_refresh_token = NULL,
+          access_token_secret_id = $2,
+          refresh_token_secret_id = $3,
           expires_at = $4,
           scopes = COALESCE($5, scopes),
           status = COALESCE($6, status),
@@ -366,8 +444,8 @@ export async function updateOAuthConnectionTokens(input: {
     `,
     [
       input.id,
-      packEncrypted(input.access_token),
-      input.refresh_token ? packEncrypted(input.refresh_token) : null,
+      secretIds.access_token_secret_id,
+      secretIds.refresh_token_secret_id,
       input.expires_at ?? null,
       input.scopes ? JSON.stringify(input.scopes) : null,
       input.status ?? null,
@@ -396,15 +474,14 @@ export async function touchOAuthConnection(id: string): Promise<void> {
   );
 }
 
-export function getConnectionAccessToken(connection: OAuthConnectionRecord): string {
-  return unpackEncrypted(connection.encrypted_access_token);
+export async function getConnectionAccessToken(connection: OAuthConnectionRecord): Promise<string> {
+  return readConnectionAccessToken(connection);
 }
 
-export function getConnectionRefreshToken(connection: OAuthConnectionRecord): string | null {
-  if (!connection.encrypted_refresh_token) {
-    return null;
-  }
-  return unpackEncrypted(connection.encrypted_refresh_token);
+export async function getConnectionRefreshToken(
+  connection: OAuthConnectionRecord,
+): Promise<string | null> {
+  return readConnectionRefreshToken(connection);
 }
 
 export async function createOAuthConnectState(input: {
@@ -414,14 +491,15 @@ export async function createOAuthConnectState(input: {
   code_verifier?: string;
   purpose?: string;
   ttl_seconds?: number;
+  metadata?: JsonObject;
 }): Promise<OAuthConnectStateRecord> {
   const id = randomUUID();
   const state = randomBytes(24).toString("base64url");
   const result = await pool.query(
     `
       INSERT INTO cap_oauth_connect_states (
-        id, provider_id, user_id, state, code_verifier, redirect_after, purpose, expires_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval)
+        id, provider_id, user_id, state, code_verifier, redirect_after, purpose, expires_at, metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval, $9)
       RETURNING *
     `,
     [
@@ -433,6 +511,7 @@ export async function createOAuthConnectState(input: {
       input.redirect_after ?? null,
       input.purpose ?? "connection",
       String(input.ttl_seconds ?? 600),
+      JSON.stringify(input.metadata ?? {}),
     ],
   );
   const row = result.rows[0]!;

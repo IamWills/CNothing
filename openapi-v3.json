@@ -1,0 +1,409 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CNothing v3.0 API",
+    "version": "3.0.0",
+    "description": "Universal Trust Broker for AI Agents. Agent-facing endpoints never return OAuth tokens, refresh tokens, client secrets, API keys, cookies, or passwords. Secrets stay in CNothing; capabilities belong to Agent."
+  },
+  "servers": [{ "url": "https://cnothing.com" }],
+  "tags": [
+    { "name": "Platform", "description": "Trust Broker platform status" },
+    { "name": "Agent", "description": "Agent-facing Trust Broker API (no secrets returned)" },
+    { "name": "Providers", "description": "Universal Provider Registry" },
+    { "name": "OAuth", "description": "OAuth/OIDC Broker for user connections" },
+    { "name": "Import", "description": "OpenAPI / MCP capability import" },
+    { "name": "Admin", "description": "Administrative APIs (metadata only for vault)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "AgentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Agent access token"
+      },
+      "UserSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "cnothing_session"
+      },
+      "AdminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Admin bearer token"
+      }
+    },
+    "schemas": {
+      "ProviderProposal": {
+        "type": "object",
+        "description": "Public metadata only — never includes secrets",
+        "properties": {
+          "id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "validated", "created", "rejected", "failed"]
+          },
+          "provider_name": { "type": "string" },
+          "proposed_slug": { "type": "string" },
+          "provider_id": { "type": "string", "nullable": true },
+          "connectable": { "type": "boolean" },
+          "credential_setup_required": { "type": "boolean" },
+          "scopes": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ProviderProposalRequest": {
+        "type": "object",
+        "required": ["provider_name"],
+        "properties": {
+          "provider_name": { "type": "string" },
+          "issuer_url": { "type": "string", "format": "uri" },
+          "discovery_url": { "type": "string", "format": "uri" },
+          "authorization_url": { "type": "string", "format": "uri" },
+          "token_url": { "type": "string", "format": "uri" },
+          "jwks_url": { "type": "string", "format": "uri" },
+          "userinfo_url": { "type": "string", "format": "uri" },
+          "registration_endpoint": { "type": "string", "format": "uri" },
+          "openapi_url": { "type": "string", "format": "uri" },
+          "mcp_url": { "type": "string", "format": "uri" },
+          "scopes": { "type": "array", "items": { "type": "string" } },
+          "description": { "type": "string" },
+          "logo_url": { "type": "string", "format": "uri" },
+          "api_base_url": { "type": "string", "format": "uri" },
+          "risk_suggestion": { "type": "string" },
+          "slug": { "type": "string" }
+        }
+      },
+      "AgentCapability": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "description": { "type": "string" },
+          "capability_type": { "type": "string" },
+          "risk_level": { "type": "string" },
+          "required_scopes": { "type": "array", "items": { "type": "string" } },
+          "authorized": { "type": "boolean" }
+        }
+      },
+      "InvokeRequest": {
+        "type": "object",
+        "required": ["capability"],
+        "properties": {
+          "capability": { "type": "string" },
+          "input": { "type": "object" },
+          "confirmation_id": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v3/platform/status": {
+      "get": {
+        "tags": ["Platform"],
+        "summary": "Trust Broker platform status",
+        "responses": {
+          "200": {
+            "description": "Platform modules and counts"
+          }
+        }
+      }
+    },
+    "/v3/providers/proposals": {
+      "post": {
+        "tags": ["Providers"],
+        "summary": "Agent submits a provider proposal (auto-discovery, no human confirmation)",
+        "security": [{ "AgentBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProviderProposalRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Proposal processed — provider may be auto-created"
+          }
+        }
+      }
+    },
+    "/v3/providers/proposals/{id}": {
+      "get": {
+        "tags": ["Providers"],
+        "summary": "Get provider proposal status",
+        "security": [{ "AgentBearer": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Proposal status" } }
+      }
+    },
+    "/v3/providers": {
+      "get": {
+        "tags": ["Providers"],
+        "summary": "List public provider metadata",
+        "responses": { "200": { "description": "Provider list (no secrets)" } }
+      }
+    },
+    "/v3/agent/capabilities": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "List capabilities available to agent",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Capability list" } }
+      }
+    },
+    "/v3/agent/authorizations": {
+      "post": {
+        "tags": ["Agent"],
+        "summary": "Request user authorization for a capability",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "201": { "description": "Authorization request created" } }
+      }
+    },
+    "/v3/agent/invoke": {
+      "post": {
+        "tags": ["Agent"],
+        "summary": "Invoke a capability through the Trust Broker",
+        "security": [{ "AgentBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/InvokeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Business result only — no secrets" },
+          "202": { "description": "Pending user confirmation" },
+          "403": { "description": "Authorization required" }
+        }
+      }
+    },
+    "/v3/oauth/connect/start": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Start user OAuth connection",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Authorization URL for user login" } }
+      }
+    },
+    "/v3/oauth/device/start": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Start OAuth 2.0 Device Authorization Flow",
+        "security": [{ "UserSession": [] }],
+        "responses": { "201": { "description": "Device flow session with user_code" } }
+      }
+    },
+    "/v3/oauth/device/poll": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Poll device flow until authorized",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "pending | completed | expired | denied" } }
+      }
+    },
+    "/v3/auth/login-tokens": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Issue one-time user login token (admin)",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "201": { "description": "Login token issued" } }
+      }
+    },
+    "/v3/auth/login": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Exchange login token for user session",
+        "responses": { "200": { "description": "User session created (Set-Cookie)" } }
+      }
+    },
+    "/v3/auth/logout": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Revoke user session",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Session revoked" } }
+      }
+    },
+    "/v3/auth/me": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "Current user session",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Session metadata" } }
+      }
+    },
+    "/v3/auth/providers": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "List identity providers for Console sign-in",
+        "responses": { "200": { "description": "GitHub / OIDC providers" } }
+      }
+    },
+    "/v3/authorize/{id}": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "View authorization request (user approval UI)",
+        "responses": { "200": { "description": "Authorization request details" } }
+      }
+    },
+    "/v3/authorize/approve": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Approve capability authorization request",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Authorization approved" } }
+      }
+    },
+    "/v3/authorize/deny": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Deny capability authorization request",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Authorization denied" } }
+      }
+    },
+    "/v3/approve/{authorizationId}": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Approve agent authorization with OAuth connection",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Grant approved with connection" } }
+      }
+    },
+    "/v3/confirmations/pending": {
+      "get": {
+        "tags": ["OAuth"],
+        "summary": "List pending high-risk invoke confirmations",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Pending confirmations" } }
+      }
+    },
+    "/v3/confirmations/approve": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Approve pending invoke confirmation",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Confirmation approved" } }
+      }
+    },
+    "/v3/confirmations/reject": {
+      "post": {
+        "tags": ["OAuth"],
+        "summary": "Reject pending invoke confirmation",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Confirmation rejected" } }
+      }
+    },
+    "/v3/agents/register": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Register agent (admin)",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "201": { "description": "Agent registered with access token" } }
+      }
+    },
+    "/v3/agents": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List agents",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Agent list" } }
+      }
+    },
+    "/v3/grants": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List grants",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Grant list" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create grant",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "201": { "description": "Grant created" } }
+      }
+    },
+    "/v3/grants/revoke": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Revoke grant",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Grant revoked" } }
+      }
+    },
+    "/v3/agent/grants": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "List grants for agent",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Grant list (no secrets)" } }
+      }
+    },
+    "/v3/agent/grants/revoke": {
+      "post": {
+        "tags": ["Agent"],
+        "summary": "Revoke grant owned by agent",
+        "security": [{ "AgentBearer": [] }],
+        "responses": { "200": { "description": "Grant revoked" } }
+      }
+    },
+    "/v3/capabilities": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List all capabilities (admin)",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Capability list with scopes" } }
+      }
+    },
+    "/v3/import/openapi": {
+      "post": {
+        "tags": ["Import"],
+        "summary": "Submit OpenAPI URL or document for capability generation",
+        "security": [{ "AgentBearer": [] }, { "AdminBearer": [] }],
+        "responses": { "201": { "description": "Import job created" } }
+      }
+    },
+    "/v3/import/mcp": {
+      "post": {
+        "tags": ["Import"],
+        "summary": "Submit MCP URL for capability generation",
+        "security": [{ "AgentBearer": [] }, { "AdminBearer": [] }],
+        "responses": { "201": { "description": "Import job created" } }
+      }
+    },
+    "/v3/capabilities/generate-from-openapi": {
+      "post": {
+        "tags": ["Import"],
+        "summary": "User approves OpenAPI import candidates",
+        "security": [{ "UserSession": [] }],
+        "responses": { "200": { "description": "Capabilities activated" } }
+      }
+    },
+    "/v3/admin/vault/secrets": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List vault secret metadata (never returns plaintext)",
+        "security": [{ "AdminBearer": [] }],
+        "parameters": [
+          { "name": "owner_type", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "owner_id", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Secret metadata list" } }
+      }
+    },
+    "/v3/audit": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Trust audit log (no secrets)",
+        "security": [{ "AdminBearer": [] }],
+        "responses": { "200": { "description": "Audit events" } }
+      }
+    }
+  }
+}

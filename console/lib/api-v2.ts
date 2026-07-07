@@ -501,6 +501,7 @@ export type V25OAuthProvider = {
   status: string;
   is_builtin: boolean;
   connectable: boolean;
+  supports_device_flow?: boolean;
 };
 
 export type V25OAuthProviderAdmin = V25OAuthProvider & {
@@ -532,9 +533,20 @@ export async function fetchOAuthProviders(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V25OAuthProvider[] }>(connection, "/v2/oauth/providers");
 }
 
-export type CnothingApiVersion = "v2.5" | "v2.6";
+export type CnothingApiVersion = "v2.5" | "v2.6" | "v3";
 
 function apiPaths(version: CnothingApiVersion = "v2.5") {
+  if (version === "v3") {
+    return {
+      oauthProvidersAdmin: "/v3/providers",
+      oauthProvidersCreate: "/v3/providers/proposals",
+      oauthDiscover: "",
+      importOpenApi: "/v3/import/openapi",
+      importOpenApiJob: (id: string) => `/v3/import/openapi/${encodeURIComponent(id)}`,
+      activateOpenApi: "/v3/capabilities/generate-from-openapi",
+      capabilities: "/v3/capabilities",
+    };
+  }
   if (version === "v2.6") {
     return {
       oauthProvidersAdmin: "/v2.6/oauth/providers",

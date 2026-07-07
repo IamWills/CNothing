@@ -14,24 +14,24 @@ import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  approvePendingConfirmation,
-  createV2Grant,
-  fetchPendingConfirmations,
-  fetchV2Agents,
-  fetchV2Capabilities,
-  fetchV2Grants,
-  rejectPendingConfirmation,
-  revokeV2Grant,
-  type V2Grant,
+  approveV3PendingConfirmation,
+  createV3Grant,
+  fetchV3Agents,
+  fetchV3Capabilities,
+  fetchV3Grants,
+  fetchV3PendingConfirmations,
+  rejectV3PendingConfirmation,
+  revokeV3Grant,
   type V2PendingConfirmation,
-} from "@/lib/api-v2";
+  type V3Grant,
+} from "@/lib/api-v3";
 import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function GrantsPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const { session } = useUserSession();
-  const [grants, setGrants] = React.useState<V2Grant[]>([]);
+  const [grants, setGrants] = React.useState<V3Grant[]>([]);
   const [pending, setPending] = React.useState<V2PendingConfirmation[]>([]);
   const [agentOptions, setAgentOptions] = React.useState<Array<{ id: string; name: string }>>([]);
   const [capabilityOptions, setCapabilityOptions] = React.useState<Array<{ name: string }>>([]);
@@ -49,10 +49,10 @@ export function GrantsPage() {
     setErrorMessage("");
     try {
       const [grantsResponse, pendingResponse, agentsResponse, capabilitiesResponse] = await Promise.all([
-        fetchV2Grants(connection),
-        fetchPendingConfirmations(connection, session?.sessionToken),
-        fetchV2Agents(connection),
-        fetchV2Capabilities(connection),
+        fetchV3Grants(connection),
+        fetchV3PendingConfirmations(connection, session?.sessionToken),
+        fetchV3Agents(connection),
+        fetchV3Capabilities(connection),
       ]);
       setGrants(grantsResponse.items);
       setPending(pendingResponse.items);
@@ -79,7 +79,7 @@ export function GrantsPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      await createV2Grant(connection, form);
+      await createV3Grant(connection, form);
       setStatusMessage(`Granted ${form.capability} to agent.`);
       await refresh();
     } catch (error) {
@@ -90,7 +90,7 @@ export function GrantsPage() {
   async function handleRevoke(grantId: string) {
     setErrorMessage("");
     try {
-      await revokeV2Grant(connection, grantId);
+      await revokeV3Grant(connection, grantId);
       setStatusMessage("Grant revoked.");
       await refresh();
     } catch (error) {
@@ -101,7 +101,7 @@ export function GrantsPage() {
   async function handleApproveConfirmation(confirmationId: string) {
     setErrorMessage("");
     try {
-      await approvePendingConfirmation(connection, confirmationId, session?.sessionToken);
+      await approveV3PendingConfirmation(connection, confirmationId, session?.sessionToken);
       setStatusMessage("Confirmation approved. Agent can retry invoke with confirmation_id.");
       await refresh();
     } catch (error) {
@@ -112,7 +112,7 @@ export function GrantsPage() {
   async function handleRejectConfirmation(confirmationId: string) {
     setErrorMessage("");
     try {
-      await rejectPendingConfirmation(connection, confirmationId, session?.sessionToken);
+      await rejectV3PendingConfirmation(connection, confirmationId, session?.sessionToken);
       setStatusMessage("Confirmation rejected.");
       await refresh();
     } catch (error) {
@@ -123,7 +123,7 @@ export function GrantsPage() {
   return (
     <PageFrame
       title="Grants & Confirmations"
-      description="Users authorize agents to use specific capabilities. High-risk invocations require explicit confirmation."
+      description="Users authorize agents via v3 Trust Broker grants. High-risk invocations still require explicit confirmation."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />

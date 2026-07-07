@@ -353,6 +353,7 @@ export async function createGrant(input: {
   user_id: string;
   agent_id: string;
   capability_id: string;
+  tenant_id?: string;
   scopes?: string[];
   expires_at?: string;
   metadata?: JsonObject;
@@ -376,10 +377,10 @@ export async function createGrant(input: {
   const result = await pool.query(
     `
       INSERT INTO cap_grants (
-        id, user_id, agent_id, capability_id, scopes, expires_at, metadata,
+        id, user_id, agent_id, capability_id, tenant_id, scopes, expires_at, metadata,
         provider_id, connection_id, grant_status
       )
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, $9, $10, $11)
       RETURNING *
     `,
     [
@@ -387,6 +388,7 @@ export async function createGrant(input: {
       input.user_id,
       input.agent_id,
       input.capability_id,
+      input.tenant_id ?? "default",
       JSON.stringify(input.scopes ?? []),
       input.expires_at ?? null,
       JSON.stringify(input.metadata ?? {}),
@@ -487,6 +489,7 @@ export async function listGrants(filter?: {
 export async function listGrantSummaries(filter?: {
   user_id?: string;
   agent_id?: string;
+  tenant_id?: string;
 }): Promise<GrantSummary[]> {
   const clauses: string[] = ["g.revoked = FALSE"];
   const values: string[] = [];
@@ -497,6 +500,10 @@ export async function listGrantSummaries(filter?: {
   if (filter?.agent_id) {
     values.push(filter.agent_id);
     clauses.push(`g.agent_id = $${values.length}`);
+  }
+  if (filter?.tenant_id) {
+    values.push(filter.tenant_id);
+    clauses.push(`g.tenant_id = $${values.length}`);
   }
   const where = `WHERE ${clauses.join(" AND ")}`;
   const result = await pool.query(

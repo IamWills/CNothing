@@ -21,6 +21,7 @@ import {
   handleV26OAuthRequest,
   handleV26PlatformRequest,
 } from "./api/v2.6.api";
+import { handleV3Request } from "./api/v3.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
@@ -28,6 +29,7 @@ import { runStartupBootstrap } from "./v2/platform-bootstrap.service";
 import { runSearchStartupBootstrap } from "./v2/search-bootstrap.service";
 import { runV25StartupBootstrap } from "./v2/v2.5-bootstrap.service";
 import { migrateCredentialsToOAuthConnections } from "./v2/credential-migration.service";
+import { migrateOAuthTokensToVault } from "./v3/oauth-token-vault-migration.service";
 import { handleV2E2eInternalRequest } from "./api/v2-e2e-internal.api";
 import { applySecurityMiddleware } from "./middleware/security";
 import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
@@ -88,6 +90,9 @@ function renderHomePage(baseUrl: string): string {
     ["/openapi-v2.json", "OpenAPI document (v2 capability platform)"],
     ["/openapi-v2.5.json", "OpenAPI document (v2.5 OAuth broker + capability gateway)"],
     ["/openapi-v2.6.json", "OpenAPI document (v2.6 universal OAuth + zero-code import)"],
+    ["/openapi-v3.json", "OpenAPI document (v3.0 Universal Trust Broker for AI Agents)"],
+    ["/v3/agent/invoke", "Invoke a capability (v3 Trust Broker — no secrets returned)"],
+    ["/v3/providers/proposals", "Agent submits provider proposal (public metadata only)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
     ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
     ["/v2/authorize/request", "Request user authorization for capabilities"],
@@ -253,6 +258,17 @@ async function router(request: Request): Promise<Response> {
     return serveOpenApiDocument(request, "openapi-v2.6.json");
   }
 
+  if (pathname === "/openapi-v3.json" && isOpenApiDocumentRequest(request)) {
+    return serveOpenApiDocument(request, "openapi-v3.json");
+  }
+
+  if (pathname.startsWith("/v3/")) {
+    const v3Response = await handleV3Request(request);
+    if (v3Response) {
+      return withCors(v3Response, request);
+    }
+  }
+
   if (pathname === "/openapi-v2.5.json" && isOpenApiDocumentRequest(request)) {
     return serveOpenApiDocument(request, "openapi-v2.5.json");
   }
@@ -356,6 +372,7 @@ async function main(): Promise<void> {
   await runSearchStartupBootstrap();
   await runV25StartupBootstrap();
   await migrateCredentialsToOAuthConnections();
+  await migrateOAuthTokensToVault();
   Bun.serve({
     port: config.port,
     fetch: (request: Request) => {

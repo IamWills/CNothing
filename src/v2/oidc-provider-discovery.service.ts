@@ -8,6 +8,8 @@ export type DiscoveredOAuthProvider = {
   userinfo_url: string | null;
   jwks_url: string | null;
   revoke_url: string | null;
+  registration_endpoint: string | null;
+  device_authorization_endpoint: string | null;
   scopes_supported: string[];
 };
 
@@ -18,6 +20,8 @@ type OpenIdDiscoveryDocument = {
   userinfo_endpoint?: string;
   jwks_uri?: string;
   revocation_endpoint?: string;
+  registration_endpoint?: string;
+  device_authorization_endpoint?: string;
   scopes_supported?: string[];
 };
 
@@ -63,6 +67,10 @@ export async function discoverOAuthProvider(input: {
     userinfo_url: doc.userinfo_endpoint ? String(doc.userinfo_endpoint) : null,
     jwks_url: doc.jwks_uri ? String(doc.jwks_uri) : null,
     revoke_url: doc.revocation_endpoint ? String(doc.revocation_endpoint) : null,
+    registration_endpoint: doc.registration_endpoint ? String(doc.registration_endpoint) : null,
+    device_authorization_endpoint: doc.device_authorization_endpoint
+      ? String(doc.device_authorization_endpoint)
+      : null,
     scopes_supported: Array.isArray(doc.scopes_supported)
       ? doc.scopes_supported.map(String)
       : [],
@@ -80,6 +88,8 @@ export function mergeDiscoveredProviderInput(input: {
   userinfo_url?: string;
   revoke_url?: string;
   jwks_url?: string;
+  registration_endpoint?: string;
+  device_authorization_endpoint?: string;
   client_id?: string;
   client_secret?: string;
   default_scopes?: string[];
@@ -98,6 +108,8 @@ export function mergeDiscoveredProviderInput(input: {
   userinfo_url?: string;
   revoke_url?: string;
   jwks_url?: string;
+  registration_endpoint?: string;
+  device_authorization_endpoint?: string;
   client_id?: string;
   client_secret?: string;
   default_scopes?: string[];
@@ -140,6 +152,10 @@ export function mergeDiscoveredProviderInput(input: {
       userinfo_url: input.userinfo_url ?? discovered.userinfo_url ?? undefined,
       revoke_url: input.revoke_url ?? discovered.revoke_url ?? undefined,
       jwks_url: input.jwks_url ?? discovered.jwks_url ?? undefined,
+      registration_endpoint:
+        input.registration_endpoint ?? discovered.registration_endpoint ?? undefined,
+      device_authorization_endpoint:
+        input.device_authorization_endpoint ?? discovered.device_authorization_endpoint ?? undefined,
       client_id: input.client_id,
       client_secret: input.client_secret,
       default_scopes: input.default_scopes,

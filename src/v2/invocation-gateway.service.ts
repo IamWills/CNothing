@@ -81,6 +81,7 @@ async function resolveAccessToken(input: {
   userId: string;
   connectionId: string | null;
   capabilityName: string;
+  agentTenantId?: string;
 }): Promise<string | null> {
   if (input.connectionId) {
     let connection = await findOAuthConnectionById(input.connectionId);
@@ -88,6 +89,15 @@ async function resolveAccessToken(input: {
       throw new ForbiddenError("OAuth connection unavailable", {
         error_code: "connection_unavailable",
       });
+    }
+
+    if (input.agentTenantId) {
+      const { normalizeTenantId } = await import("../v3/tenant-context.service");
+      if (normalizeTenantId(connection.tenant_id) !== normalizeTenantId(input.agentTenantId)) {
+        throw new ForbiddenError("OAuth connection tenant mismatch", {
+          error_code: "tenant_mismatch",
+        });
+      }
     }
 
     if (
@@ -104,7 +114,7 @@ async function resolveAccessToken(input: {
     }
 
     await touchOAuthConnection(connection.id);
-    return getConnectionAccessToken(connection);
+    return await getConnectionAccessToken(connection);
   }
 
   if (input.capabilityName.startsWith("github.")) {
@@ -368,6 +378,7 @@ export class InvocationGatewayService {
         input: input.input,
         userId: input.userId,
         agentId: input.agent.id,
+        agentTenantId: input.agent.tenant_id,
         connectionId: input.connectionId,
         grantScopes: input.grantScopes,
         requestId: input.requestId,
@@ -438,6 +449,7 @@ export class InvocationGatewayService {
     input: JsonObject;
     userId: string;
     agentId: string;
+    agentTenantId: string;
     connectionId: string | null;
     grantScopes: string[];
     requestId: string;
@@ -446,6 +458,7 @@ export class InvocationGatewayService {
       userId: input.userId,
       connectionId: input.connectionId,
       capabilityName: input.capability.name,
+      agentTenantId: input.agentTenantId,
     });
 
     const invocationType = readCapabilityInvocationType(input.capability);

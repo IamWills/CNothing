@@ -10,6 +10,8 @@ import type {
   InvokeCapabilityPending,
   InvokeCapabilityRequest,
   InvokeCapabilitySuccess,
+  ProviderProposalRequest,
+  ProviderProposalView,
   RequestAuthorizationV25Input,
   RequestAuthorizationV2Input,
 } from "./agent-entity";
@@ -84,13 +86,16 @@ export class CNothingAgentClient {
   }
 
   private agentApiBase(): string {
+    if (this.apiVersion === "v3") {
+      return "/v3/agent";
+    }
     if (this.apiVersion === "v2.6") {
       return "/v2.6/agent";
     }
     if (this.apiVersion === "v2.5") {
       return "/v2/agent";
     }
-    throw new CNothingAgentError("Agent capability API requires apiVersion v2.5 or v2.6", 400);
+    throw new CNothingAgentError("Agent capability API requires apiVersion v2.5, v2.6, or v3", 400);
   }
 
   async listCapabilities(): Promise<AgentCapabilityView[]> {
@@ -281,7 +286,7 @@ export class CNothingAgentClient {
 
   async listGrants(): Promise<AgentGrantSummary[]> {
     if (this.apiVersion === "v2") {
-      throw new CNothingAgentError("listGrants requires apiVersion v2.5 or v2.6", 400);
+      throw new CNothingAgentError("listGrants requires apiVersion v2.5, v2.6, or v3", 400);
     }
 
     const { data } = await requestJson<{ ok: true; items: AgentGrantSummary[] }>(
@@ -295,7 +300,7 @@ export class CNothingAgentClient {
 
   async revokeGrant(grantId: string): Promise<{ ok: true; grant_id: string; status: string }> {
     if (this.apiVersion === "v2") {
-      throw new CNothingAgentError("revokeGrant requires apiVersion v2.5 or v2.6", 400);
+      throw new CNothingAgentError("revokeGrant requires apiVersion v2.5, v2.6, or v3", 400);
     }
 
     const { data } = await requestJson<{ ok: true; grant_id: string; status: string }>(
@@ -309,6 +314,38 @@ export class CNothingAgentClient {
       },
     );
     return data;
+  }
+
+  async submitProviderProposal(input: ProviderProposalRequest): Promise<ProviderProposalView> {
+    if (this.apiVersion !== "v3") {
+      throw new CNothingAgentError("submitProviderProposal requires apiVersion v3", 400);
+    }
+
+    const { data } = await requestJson<{ ok: true; proposal: ProviderProposalView }>(
+      this.fetchImpl,
+      this.baseUrl,
+      "/v3/providers/proposals",
+      this.accessToken,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+    return data.proposal;
+  }
+
+  async getProviderProposal(proposalId: string): Promise<ProviderProposalView> {
+    if (this.apiVersion !== "v3") {
+      throw new CNothingAgentError("getProviderProposal requires apiVersion v3", 400);
+    }
+
+    const { data } = await requestJson<{ ok: true; proposal: ProviderProposalView }>(
+      this.fetchImpl,
+      this.baseUrl,
+      `/v3/providers/proposals/${encodeURIComponent(proposalId)}`,
+      this.accessToken,
+    );
+    return data.proposal;
   }
 }
 

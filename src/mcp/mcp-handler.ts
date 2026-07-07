@@ -8,6 +8,9 @@ import { invocationGatewayService } from "../v2/invocation-gateway.service";
 import { sanitizeAgentResponse } from "../v2/secret-redaction";
 import { findAgentByAccessToken, revokeGrant } from "../v2/v2.repository";
 
+import { oauthProviderService } from "../v2/oauth-connection.service";
+import { providerProposalService } from "../v3/provider-proposal.service";
+
 const V26_AGENT_MCP_TOOLS = new Set([
   "list_capabilities",
   "request_authorization",
@@ -16,6 +19,14 @@ const V26_AGENT_MCP_TOOLS = new Set([
   "list_grants",
   "revoke_grant",
 ]);
+
+const V3_AGENT_MCP_TOOLS = new Set([
+  "submit_provider_proposal",
+  "get_provider_proposal",
+  "list_providers",
+]);
+
+const PUBLIC_AGENT_MCP_TOOLS = new Set([...V26_AGENT_MCP_TOOLS, ...V3_AGENT_MCP_TOOLS]);
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -87,7 +98,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
       case "initialize":
         result = {
           protocolVersion: config.protocolVersion,
-          serverInfo: { name: config.serviceName, version: "2.6.0" },
+          serverInfo: { name: config.serviceName, version: "3.0.0" },
           instructions: MCP_SERVER_INSTRUCTIONS,
           capabilities: {
             resources: { subscribe: false, listChanged: false },
@@ -117,10 +128,10 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             ? (params.arguments as Record<string, unknown>)
             : {};
 
-        if (!V26_AGENT_MCP_TOOLS.has(name)) {
+        if (!PUBLIC_AGENT_MCP_TOOLS.has(name)) {
           return jsonRpcError(id, -32601, "Tool not available on public MCP surface", {
             tool: name,
-            allowed_tools: [...V26_AGENT_MCP_TOOLS],
+            allowed_tools: [...PUBLIC_AGENT_MCP_TOOLS],
           });
         }
 
@@ -222,6 +233,61 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             break;
           }
 
+          case "submit_provider_proposal": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const providerName =
+              typeof args.provider_name === "string" ? args.provider_name.trim() : "";
+            if (!providerName) {
+              return jsonRpcError(id, -32000, "provider_name is required");
+            }
+            result = sanitizeAgentResponse({
+              ok: true,
+              proposal: await providerProposalService.submitProposal({
+                agent,
+                apiBaseUrl: apiBaseUrl(),
+                body: {
+                  provider_name: providerName,
+                  discovery_url:
+                    typeof args.discovery_url === "string" ? args.discovery_url : undefined,
+                  issuer_url: typeof args.issuer_url === "string" ? args.issuer_url : undefined,
+                  authorization_url:
+                    typeof args.authorization_url === "string" ? args.authorization_url : undefined,
+                  token_url: typeof args.token_url === "string" ? args.token_url : undefined,
+                  registration_endpoint:
+                    typeof args.registration_endpoint === "string"
+                      ? args.registration_endpoint
+                      : undefined,
+                  openapi_url: typeof args.openapi_url === "string" ? args.openapi_url : undefined,
+                  mcp_url: typeof args.mcp_url === "string" ? args.mcp_url : undefined,
+                  scopes: Array.isArray(args.scopes) ? args.scopes.map(String) : undefined,
+                  slug: typeof args.slug === "string" ? args.slug : undefined,
+                },
+              }),
+            });
+            break;
+          }
+
+          case "get_provider_proposal": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const proposalId =
+              typeof args.proposal_id === "string" ? args.proposal_id.trim() : "";
+            if (!proposalId) {
+              return jsonRpcError(id, -32000, "proposal_id is required");
+            }
+            result = sanitizeAgentResponse({
+              ok: true,
+              proposal: await providerProposalService.getProposal({ agent, proposalId }),
+            });
+            break;
+          }
+
+          case "list_providers": {
+            await requireAgentFromMcpArgs(args);
+            const items = await oauthProviderService.listPublicProviders();
+            result = sanitizeAgentResponse({ ok: true, items });
+            break;
+          }
+
           default:
             return jsonRpcError(id, -32601, "Method not found", { tool: name });
         }
@@ -246,7 +312,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 export function handleMcpInfo(baseUrl: string) {
   return {
     name: config.serviceName,
-    version: "2.6.0",
+    version: "3.0.0",
     protocolVersion: config.protocolVersion,
     instructions: MCP_SERVER_INSTRUCTIONS,
     capabilities: {
@@ -261,6 +327,7 @@ export function handleMcpInfo(baseUrl: string) {
     discovery: {
       manifest: `${baseUrl}/mcp/manifest`,
       v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
+      openapi_v3: `${baseUrl}/openapi-v3.json`,
       openapi_v26: `${baseUrl}/openapi-v2.6.json`,
       openapi_v25: `${baseUrl}/openapi-v2.5.json`,
       openapi_v2: `${baseUrl}/openapi-v2.json`,

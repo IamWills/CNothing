@@ -26,7 +26,11 @@ function generatePkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-function buildCallbackUrl(apiBaseUrl: string, providerSlug: string, apiVersion: "v2" | "v2.6" = "v2"): string {
+function buildCallbackUrl(
+  apiBaseUrl: string,
+  providerSlug: string,
+  apiVersion: "v2" | "v2.6" | "v3" = "v2",
+): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/${apiVersion}/oauth/callback/${encodeURIComponent(providerSlug)}`;
 }
 
@@ -54,7 +58,8 @@ export class OAuthConnectionService {
     apiBaseUrl: string;
     redirectAfter?: string;
     scopes?: string[];
-    oauthApiVersion?: "v2" | "v2.6";
+    oauthApiVersion?: "v2" | "v2.6" | "v3";
+    tenantId?: string;
   }) {
     const provider = input.providerId
       ? await findOAuthProviderById(input.providerId)
@@ -86,6 +91,7 @@ export class OAuthConnectionService {
       redirect_after: redirectAfter,
       code_verifier: pkce?.verifier,
       purpose: "connection",
+      metadata: { tenant_id: input.tenantId ?? "default" },
     });
 
     const scopes =
@@ -158,7 +164,7 @@ export class OAuthConnectionService {
     code: string;
     state: string;
     apiBaseUrl: string;
-    oauthApiVersion?: "v2" | "v2.6";
+    oauthApiVersion?: "v2" | "v2.6" | "v3";
   }) {
     const provider = await findOAuthProviderBySlug(input.providerSlug);
     if (!provider) {
@@ -179,7 +185,7 @@ export class OAuthConnectionService {
       });
     }
 
-    const clientSecret = getProviderClientSecret(provider);
+    const clientSecret = await getProviderClientSecret(provider);
     const usesPublicClient = provider.token_auth_method === "none";
     if (!usesPublicClient && !clientSecret) {
       throw new ForbiddenError("OAuth provider client secret not configured");
@@ -199,8 +205,13 @@ export class OAuthConnectionService {
     });
 
     const profile = await this.fetchProfile(provider, tokenPayload.access_token);
+    const tenantId =
+      typeof connectState.metadata?.tenant_id === "string"
+        ? connectState.metadata.tenant_id
+        : "default";
     const connection = await createOAuthConnection({
       user_id: userId,
+      tenant_id: tenantId,
       provider_id: provider.id,
       provider_account_id: profile.accountId,
       display_name: profile.displayName,
@@ -320,6 +331,13 @@ export class OAuthConnectionService {
     };
   }
 
+  async fetchConnectionProfile(
+    provider: OAuthProviderRecord,
+    accessToken: string,
+  ): Promise<{ accountId: string; displayName: string; metadata: Record<string, unknown> }> {
+    return this.fetchProfile(provider, accessToken);
+  }
+
   private async fetchProfile(
     provider: OAuthProviderRecord,
     accessToken: string,
@@ -380,13 +398,13 @@ export class OAuthConnectionService {
       return false;
     }
 
-    const refreshToken = (await import("./oauth.repository")).getConnectionRefreshToken(connection);
+    const refreshToken = await (await import("./oauth.repository")).getConnectionRefreshToken(connection);
     if (!refreshToken) {
       await markConnectionReconnectRequired(connectionId);
       return false;
     }
 
-    const clientSecret = getProviderClientSecret(provider);
+    const clientSecret = await getProviderClientSecret(provider);
     const usesPublicClient = provider.token_auth_method === "none";
     if (!usesPublicClient && !clientSecret) {
       await markConnectionReconnectRequired(connectionId);
@@ -455,8 +473,8 @@ export class OAuthConnectionService {
     }
   }
 
-  async listConnections(userId: string) {
-    return listOAuthConnectionsForUser(userId);
+  async listConnections(userId: string, tenantId?: string) {
+    return listOAuthConnectionsForUser(userId, tenantId);
   }
 
   async revokeConnection(connectionId: string, userId: string) {
@@ -471,8 +489,8 @@ export class OAuthConnectionService {
     if (provider) {
       await this.revokeRemoteTokens({
         provider,
-        accessToken: getConnectionAccessToken(connection),
-        refreshToken: getConnectionRefreshToken(connection),
+        accessToken: await getConnectionAccessToken(connection),
+        refreshToken: await getConnectionRefreshToken(connection),
       });
     }
 
@@ -504,7 +522,7 @@ export class OAuthConnectionService {
       }
 
       if (input.provider.slug === "github" && input.provider.client_id) {
-        const clientSecret = getProviderClientSecret(input.provider);
+        const clientSecret = await getProviderClientSecret(input.provider);
         if (clientSecret) {
           const basic = Buffer.from(`${input.provider.client_id}:${clientSecret}`).toString("base64");
           await fetch(`https://api.github.com/applications/${input.provider.client_id}/grant`, {
@@ -534,7 +552,7 @@ export class OAuthConnectionService {
         if (input.provider.client_id) {
           body.set("client_id", input.provider.client_id);
         }
-        const clientSecret = getProviderClientSecret(input.provider);
+        const clientSecret = await getProviderClientSecret(input.provider);
         if (clientSecret) {
           body.set("client_secret", clientSecret);
         }

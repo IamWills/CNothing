@@ -11,10 +11,10 @@ import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  fetchOAuthConnections,
-  revokeOAuthConnection,
+  fetchV3OAuthConnections,
+  revokeV3OAuthConnection,
   type V25OAuthConnection,
-} from "@/lib/api-v2";
+} from "@/lib/api-v3";
 import { formatDate } from "@/lib/console-utils";
 
 export function ConnectionsPage() {
@@ -32,7 +32,7 @@ export function ConnectionsPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchOAuthConnections(connection);
+      const response = await fetchV3OAuthConnections(connection);
       setItems(response.items);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load connections.");
@@ -47,7 +47,7 @@ export function ConnectionsPage() {
 
   async function handleRevoke(connectionId: string) {
     try {
-      await revokeOAuthConnection(connection, connectionId);
+      await revokeV3OAuthConnection(connection, connectionId);
       await refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to revoke connection.");

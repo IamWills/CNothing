@@ -41,10 +41,10 @@ const emptyCreateForm = {
 
 type ProvidersPageProps = {
   adminBasePath?: string;
-  apiVersion?: "v2.5" | "v2.6";
+  apiVersion?: "v2.5" | "v2.6" | "v3";
 };
 
-export function ProvidersPage({ adminBasePath, apiVersion = "v2.5" }: ProvidersPageProps = {}) {
+export function ProvidersPage({ adminBasePath, apiVersion = "v3" }: ProvidersPageProps = {}) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const [providers, setProviders] = React.useState<V25OAuthProviderAdmin[]>([]);
   const [templates, setTemplates] = React.useState<V25ProviderTemplate[]>([]);

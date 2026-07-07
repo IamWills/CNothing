@@ -10,12 +10,12 @@ import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  approveV25Authorization,
-  fetchAuthorizationRequest,
-  fetchOAuthConnections,
-  type V25OAuthConnection,
+  approveV3Authorization,
+  fetchV3AuthorizationRequest,
+  fetchV3OAuthConnections,
   type V2AuthorizationRequest,
-} from "@/lib/api-v2";
+} from "@/lib/api-v3";
+import type { V25OAuthConnection } from "@/lib/api-v2";
 
 export function ApprovePage({ authorizationId }: { authorizationId: string }) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
@@ -27,13 +27,13 @@ export function ApprovePage({ authorizationId }: { authorizationId: string }) {
   const [errorMessage, setErrorMessage] = React.useState("");
 
   React.useEffect(() => {
-    void fetchAuthorizationRequest(connection, authorizationId)
+    void fetchV3AuthorizationRequest(connection, authorizationId)
       .then((response) => setRequest(response.authorization_request))
       .catch((error) =>
         setErrorMessage(error instanceof Error ? error.message : "Unable to load authorization."),
       );
     if (isLoggedIn) {
-      void fetchOAuthConnections(connection)
+      void fetchV3OAuthConnections(connection)
         .then((response) => {
           setConnections(response.items.filter((item) => item.status === "active"));
           if (response.items[0]) {
@@ -54,7 +54,7 @@ export function ApprovePage({ authorizationId }: { authorizationId: string }) {
       return;
     }
     try {
-      await approveV25Authorization(connection, authorizationId, {
+      await approveV3Authorization(connection, authorizationId, {
         connection_id: selectedConnectionId,
       });
       setStatusMessage("Capability grant approved.");

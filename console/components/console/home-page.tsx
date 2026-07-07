@@ -11,13 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { fetchAuthaiPublicKey, fetchClients, fetchMcpCatalog, fetchSkills, type AuthaiPublicKey } from "@/lib/api";
+import { fetchPlatformStatus } from "@/lib/api-v2";
 import {
-  fetchPlatformStatus,
-  fetchV2Agents,
-  fetchV2Capabilities,
-  fetchV2Connectors,
-  fetchV2Grants,
-} from "@/lib/api-v2";
+  fetchV3Agents,
+  fetchV3Capabilities,
+  fetchV3Grants,
+  fetchV3PlatformStatus,
+  fetchV3Providers,
+} from "@/lib/api-v3";
 import { brand } from "@/lib/brand";
 import { homeChannelTabs } from "@/lib/channel-tabs";
 
@@ -47,8 +48,8 @@ const sections: Array<{
   },
   {
     href: "/agents",
-    title: "Agents (v2)",
-    description: "Register agents, capabilities, grants, and review capability invoke audit logs.",
+    title: "Agents (v3)",
+    description: "Register agents, manage grants, and review capability invoke audit logs via v3 Trust Broker.",
     icon: Bot,
   },
   {
@@ -101,8 +102,11 @@ export function HomePage() {
       }
 
       try {
-        const platformResponse = await fetchPlatformStatus(connection);
-        setPlatformVersion(platformResponse.platform.version);
+        const [platformResponse, v3Status] = await Promise.all([
+          fetchPlatformStatus(connection),
+          fetchV3PlatformStatus(connection),
+        ]);
+        setPlatformVersion(v3Status.version || platformResponse.platform.version);
         setV1SunsetAt(platformResponse.v1.sunset_at);
       } catch {
         setPlatformVersion("");
@@ -110,17 +114,17 @@ export function HomePage() {
       }
 
       try {
-        const [agentsResponse, capabilitiesResponse, grantsResponse, connectorsResponse] =
+        const [agentsResponse, capabilitiesResponse, grantsResponse, providersResponse] =
           await Promise.all([
-          fetchV2Agents(connection),
-          fetchV2Capabilities(connection),
-          fetchV2Grants(connection),
-          fetchV2Connectors(connection),
-        ]);
+            fetchV3Agents(connection),
+            fetchV3Capabilities(connection),
+            fetchV3Grants(connection),
+            fetchV3Providers(connection),
+          ]);
         setAgentCount(agentsResponse.items.length);
         setCapabilityCount(capabilitiesResponse.items.length);
         setGrantCount(grantsResponse.items.length);
-        setConnectorCount(connectorsResponse.items.length);
+        setConnectorCount(providersResponse.items.length);
       } catch (error) {
         setAgentCount(0);
         setCapabilityCount(0);
@@ -128,7 +132,7 @@ export function HomePage() {
         setConnectorCount(0);
         if (!statusMessage) {
           setStatusMessage(
-            error instanceof Error ? error.message : "Some v2 admin endpoints are unavailable.",
+            error instanceof Error ? error.message : "Some v3 admin endpoints are unavailable.",
           );
         }
       }

@@ -172,6 +172,7 @@ export class AgentAuthorizationV25Service {
       user_id: input.userId,
       agent_id: request.agent_id,
       capability_id: capability.id,
+      tenant_id: (await findAgentById(request.agent_id))?.tenant_id ?? "default",
       scopes,
       expires_at: input.expiresAt,
       provider_id: provider?.id,

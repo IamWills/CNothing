@@ -33,10 +33,10 @@ function candidateKey(candidate: V25ImportCandidate): string {
 
 type ImportPageProps = {
   adminBasePath?: string;
-  apiVersion?: "v2.5" | "v2.6";
+  apiVersion?: "v2.5" | "v2.6" | "v3";
 };
 
-export function ImportPage({ apiVersion = "v2.5" }: ImportPageProps = {}) {
+export function ImportPage({ apiVersion = "v3" }: ImportPageProps = {}) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const [mode, setMode] = React.useState<ImportMode>("openapi");
   const [providers, setProviders] = React.useState<V25OAuthProvider[]>([]);

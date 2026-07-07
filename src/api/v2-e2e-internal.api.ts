@@ -57,6 +57,40 @@ export async function handleV2E2eInternalRequest(request: Request): Promise<Resp
     });
   }
 
+  if (request.method === "POST" && path === "/v2/internal/e2e/seed-device-flow-provider") {
+    const body = await parseJsonBody(request);
+    const mockBaseUrl = readRequiredString(body, "mock_base_url").replace(/\/+$/, "");
+    const slug =
+      typeof body.slug === "string" && body.slug.trim()
+        ? body.slug.trim()
+        : `e2e-device-${Date.now()}`;
+
+    const { createOAuthProvider } = await import("../v2/oauth.repository");
+    const provider = await createOAuthProvider({
+      slug,
+      display_name: "E2E Device Flow Mock",
+      auth_type: "oauth2",
+      authorization_url: `${mockBaseUrl}/authorize`,
+      token_url: `${mockBaseUrl}/token`,
+      userinfo_url: `${mockBaseUrl}/userinfo`,
+      device_authorization_endpoint: `${mockBaseUrl}/device/code`,
+      client_id: "e2e-device-client",
+      client_secret: "e2e-device-secret",
+      default_scopes: ["read"],
+      supported_scopes: ["read"],
+      pkce_required: false,
+      token_auth_method: "client_secret_post",
+    });
+
+    return Response.json({
+      ok: true,
+      provider: {
+        id: provider.id,
+        slug: provider.slug,
+      },
+    });
+  }
+
   if (request.method === "POST" && path === "/v2/internal/e2e/approve-authorization") {
     const body = await parseJsonBody(request);
     const result = await agentAuthorizationV25Service.approveWithConnection({

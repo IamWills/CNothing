@@ -465,7 +465,7 @@ const MCP_RESOURCES: McpResourceDescriptor[] = [
 ];
 
 export function listMcpTools(): McpToolDescriptor[] {
-  return V25_AGENT_MCP_TOOLS;
+  return [...V25_AGENT_MCP_TOOLS, ...V3_AGENT_MCP_TOOLS];
 }
 
 export function listMcpInternalTools(): McpToolDescriptor[] {
@@ -556,6 +556,57 @@ const V25_AGENT_MCP_TOOLS: McpToolDescriptor[] = [
       },
     },
     useCases: ["Remove agent access to a capability."],
+  },
+];
+
+const V3_AGENT_MCP_TOOLS: McpToolDescriptor[] = [
+  {
+    name: "submit_provider_proposal",
+    description:
+      "Submit public OAuth/OpenAPI/MCP metadata to register a new provider. CNothing auto-discovers OIDC, validates URLs, and stores secrets in Vault — agent never receives client_secret or tokens.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token", "provider_name"],
+      properties: {
+        agent_access_token: { type: "string" },
+        provider_name: { type: "string" },
+        discovery_url: { type: "string" },
+        issuer_url: { type: "string" },
+        authorization_url: { type: "string" },
+        token_url: { type: "string" },
+        registration_endpoint: { type: "string" },
+        openapi_url: { type: "string" },
+        mcp_url: { type: "string" },
+        scopes: { type: "array", items: { type: "string" } },
+        slug: { type: "string" },
+      },
+    },
+    useCases: ["Auto-register GitHub-like providers without touching secrets."],
+  },
+  {
+    name: "get_provider_proposal",
+    description: "Poll provider proposal status after submit_provider_proposal.",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token", "proposal_id"],
+      properties: {
+        agent_access_token: { type: "string" },
+        proposal_id: { type: "string" },
+      },
+    },
+    useCases: ["Check whether provider is connectable or needs credential setup."],
+  },
+  {
+    name: "list_providers",
+    description: "List public provider metadata (no secrets).",
+    inputSchema: {
+      type: "object",
+      required: ["agent_access_token"],
+      properties: {
+        agent_access_token: { type: "string" },
+      },
+    },
+    useCases: ["Discover registered OAuth providers."],
   },
 ];
 

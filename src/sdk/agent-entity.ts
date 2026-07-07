@@ -1,13 +1,13 @@
 export type JsonObject = Record<string, unknown>;
 export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 
-export type CNothingAgentApiVersion = "v2" | "v2.5" | "v2.6";
+export type CNothingAgentApiVersion = "v2" | "v2.5" | "v2.6" | "v3";
 
 export type CNothingAgentClientConfig = {
   baseUrl: string;
   accessToken: string;
   fetch?: typeof fetch;
-  /** Defaults to v2.5 (OAuth broker + capability gateway). Set to v2 for legacy endpoints. */
+  /** Defaults to v2.5. Set to v3 for Universal Trust Broker. */
   apiVersion?: CNothingAgentApiVersion;
 };
 
@@ -85,6 +85,40 @@ export type AgentAuthorizationStatusResponse = {
     risk_level: string;
     scopes: string[];
   } | null;
+};
+
+export type ProviderProposalRequest = {
+  provider_name: string;
+  issuer_url?: string;
+  discovery_url?: string;
+  authorization_url?: string;
+  token_url?: string;
+  jwks_url?: string;
+  userinfo_url?: string;
+  registration_endpoint?: string;
+  openapi_url?: string;
+  mcp_url?: string;
+  scopes?: string[];
+  description?: string;
+  logo_url?: string;
+  api_base_url?: string;
+  risk_suggestion?: string;
+  slug?: string;
+};
+
+export type ProviderProposalView = {
+  id: string;
+  status: string;
+  provider_name: string;
+  proposed_slug: string;
+  provider_id: string | null;
+  connectable: boolean;
+  credential_setup_required: boolean;
+  scopes: string[];
+  validation_errors: string[];
+  risk_assessment: JsonObject;
+  created_at: string;
+  updated_at: string;
 };
 
 export type AgentGrantSummary = {

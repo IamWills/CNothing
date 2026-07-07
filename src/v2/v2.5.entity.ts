@@ -35,6 +35,9 @@ export type OAuthProviderRecord = {
   jwks_url: string | null;
   client_id: string | null;
   encrypted_client_secret: Buffer | null;
+  client_secret_vault_id: string | null;
+  device_authorization_endpoint: string | null;
+  registration_endpoint: string | null;
   secret_alg: string;
   default_scopes: string[];
   supported_scopes: string[];
@@ -57,16 +60,20 @@ export type OAuthProviderPublic = {
   status: OAuthProviderStatus;
   is_builtin: boolean;
   connectable: boolean;
+  supports_device_flow: boolean;
 };
 
 export type OAuthConnectionRecord = {
   id: string;
   user_id: string;
+  tenant_id: string;
   provider_id: string;
   provider_account_id: string;
   display_name: string;
-  encrypted_access_token: Buffer;
+  encrypted_access_token: Buffer | null;
   encrypted_refresh_token: Buffer | null;
+  access_token_secret_id: string | null;
+  refresh_token_secret_id: string | null;
   token_alg: string;
   expires_at: string | null;
   scopes: string[];
@@ -81,6 +88,7 @@ export type OAuthConnectionRecord = {
 export type OAuthConnectionPublic = {
   id: string;
   user_id: string;
+  tenant_id: string;
   provider_id: string;
   provider_slug: string;
   provider_display_name: string;

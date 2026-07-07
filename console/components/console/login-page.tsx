@@ -11,14 +11,14 @@ import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  buildGitHubStartUrl,
-  buildOidcStartUrl,
-  fetchAuthMe,
-  fetchAuthProviders,
-  issueLoginToken,
-  loginUser,
+  buildV3GitHubStartUrl,
+  buildV3OidcStartUrl,
+  fetchV3AuthMe,
+  fetchV3AuthProviders,
+  issueV3LoginToken,
+  loginV3User,
   type V2AuthProvider,
-} from "@/lib/api-v2";
+} from "@/lib/api-v3";
 
 export function LoginPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
@@ -31,7 +31,7 @@ export function LoginPage() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    void fetchAuthMe(connection)
+    void fetchV3AuthMe(connection)
       .then((response) => {
         syncSessionFromServer({
           userId: response.user_id,
@@ -57,7 +57,7 @@ export function LoginPage() {
   }, [connection, saveSession, syncSessionFromServer]);
 
   React.useEffect(() => {
-    void fetchAuthProviders(connection)
+    void fetchV3AuthProviders(connection)
       .then((response) => setAuthProviders(response.items))
       .catch(() => setAuthProviders([]));
   }, [connection]);
@@ -67,7 +67,7 @@ export function LoginPage() {
     setStatusMessage("");
     setIssuedToken(null);
     try {
-      const response = await issueLoginToken(connection, form.user_id);
+      const response = await issueV3LoginToken(connection, form.user_id);
       setIssuedToken(response.login_token);
       setForm((prev) => ({ ...prev, login_token: response.login_token }));
       setStatusMessage("One-time login token issued. Sign in within 15 minutes.");
@@ -82,7 +82,7 @@ export function LoginPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const response = await loginUser(connection, {
+      const response = await loginV3User(connection, {
         user_id: form.user_id,
         login_token: form.login_token,
       });
@@ -107,7 +107,7 @@ export function LoginPage() {
   return (
     <PageFrame
       title="User Sign In"
-      description="Sign in with GitHub, OIDC, or a one-time login token to approve agent authorization requests and high-risk capability confirmations."
+      description="Sign in with GitHub, OIDC, or a one-time login token via v3 user session API."
     >
       <ConnectionPanel
         draft={draft}
@@ -166,10 +166,10 @@ export function LoginPage() {
                     onClick={() => {
                       const redirectAfter = `${window.location.origin}/login`;
                       if (provider.type === "github") {
-                        window.location.href = buildGitHubStartUrl(connection, redirectAfter);
+                        window.location.href = buildV3GitHubStartUrl(connection, redirectAfter);
                         return;
                       }
-                      window.location.href = buildOidcStartUrl(connection, provider.name, redirectAfter);
+                      window.location.href = buildV3OidcStartUrl(connection, provider.name, redirectAfter);
                     }}
                   >
                     {provider.display_name}

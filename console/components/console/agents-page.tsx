@@ -12,13 +12,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { fetchV2Agents, registerV2Agent, type V2Agent } from "@/lib/api-v2";
+import { fetchV3Agents, registerV3Agent, type V3Agent } from "@/lib/api-v3";
 import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function AgentsPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const [agents, setAgents] = React.useState<V2Agent[]>([]);
+  const [agents, setAgents] = React.useState<V3Agent[]>([]);
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -29,7 +29,7 @@ export function AgentsPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchV2Agents(connection);
+      const response = await fetchV3Agents(connection);
       setAgents(response.items);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load agents.");
@@ -48,7 +48,7 @@ export function AgentsPage() {
     setStatusMessage("");
     setIssuedToken(null);
     try {
-      const response = await registerV2Agent(connection, form);
+      const response = await registerV3Agent(connection, form);
       setIssuedToken(response.access_token);
       setStatusMessage(`Registered agent ${response.agent.name}. Copy the access token now — it won't be shown again.`);
       await refresh();
@@ -60,7 +60,7 @@ export function AgentsPage() {
   return (
     <PageFrame
       title="Agents"
-      description="Register AI agents that invoke capabilities through CNothing v2. Agents receive permissions, never secrets."
+      description="Register AI agents for the v3 Trust Broker. Agents receive capabilities, never secrets."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />

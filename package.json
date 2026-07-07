@@ -1,7 +1,7 @@
 {
   "name": "cnothing",
-  "version": "0.1.5",
-  "description": "CNothing AuthAI + Encrypted KV server and SDK for AI-safe secret workflows",
+  "version": "0.2.0",
+  "description": "CNothing Universal Trust Broker for AI Agents — AuthAI, OAuth Broker, Capability Gateway, and Secret Vault",
   "type": "module",
   "main": "./dist/library.js",
   "types": "./dist/library.d.ts",
@@ -38,7 +38,8 @@
     "e2e:v2": "bun run examples/e2e-v2/run.ts",
     "e2e:v2.5": "bun run examples/e2e-v2.5/run.ts",
     "e2e:v2.6": "bun run examples/e2e-v2.6/run.ts",
-    "test": "bun test src/v2/__tests__ src/sdk/__tests__",
+    "e2e:v3": "bun run examples/e2e-v3/run.ts",
+    "test": "bun test src/v2/__tests__ src/v3/__tests__ src/sdk/__tests__",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"
   },

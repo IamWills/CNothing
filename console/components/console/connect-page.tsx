@@ -74,7 +74,7 @@ export function ConnectPage() {
               ? {
                   ...prev,
                   status: "completed",
-                  connectionId: result.connection_id,
+                  ...(result.connection_id ? { connectionId: result.connection_id } : {}),
                 }
               : null,
           );

@@ -297,10 +297,6 @@ export async function fetchV3Capabilities(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V3Capability[] }>(connection, "/v3/capabilities");
 }
 
-export async function fetchV3Capabilities(connection: ConsoleConnection) {
-  return requestJson<{ ok: true; items: V3Capability[] }>(connection, "/v3/capabilities");
-}
-
 export async function fetchV3AuthMe(connection: ConsoleConnection, userSessionToken?: string) {
   return requestJson<{
     ok: true;

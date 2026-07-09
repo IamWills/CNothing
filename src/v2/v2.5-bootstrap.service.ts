@@ -9,8 +9,9 @@ import {
   listOAuthProviders,
   updateOAuthProviderCredentials,
 } from "./oauth.repository";
-import { findConnectorByProvider, createCapability } from "./v2.repository";
+import { findConnectorByProvider, createCapability, findCapabilityByName } from "./v2.repository";
 import { PLATFORM_CONNECTOR_PROVIDER } from "./platform-connector.executor";
+import { updateCapabilityGatewayFields } from "../v3/gateway.repository";
 
 export async function syncBuiltinProviderCredentialsFromEnv(): Promise<void> {
   for (const slug of Object.keys(BUILTIN_PROVIDER_TEMPLATES)) {
@@ -73,16 +74,28 @@ export async function seedBuiltinCapabilities(): Promise<void> {
           risk_level: template.risk_level,
           metadata: {
             display_name: template.display_name,
-            connection_required: true,
+            connection_required: template.name !== "github.oauth.connect",
             source: template.source,
             invocation_type: template.invocation_type,
             invocation_config: template.invocation_config,
             policy_config: template.policy_config,
             provider_id: provider.id,
+            execution_type: template.execution_type ?? "oauth_api",
+            approval_policy: template.approval_policy ?? "none",
           },
         });
       } catch {
         // capability may already exist
+      }
+
+      const existing = await findCapabilityByName(template.name);
+      if (existing) {
+        await updateCapabilityGatewayFields({
+          id: existing.id,
+          execution_type: template.execution_type ?? "oauth_api",
+          approval_policy: template.approval_policy ?? "none",
+          provider: slug,
+        });
       }
     }
   }

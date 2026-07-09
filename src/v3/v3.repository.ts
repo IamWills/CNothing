@@ -61,9 +61,13 @@ function mapVaultRow(row: Record<string, unknown>): SecretVaultRecord {
     key_version: Number(row.key_version ?? 1),
     status: String(row.status) as SecretStatus,
     fingerprint: String(row.fingerprint),
+    secret_ref: String(row.secret_ref ?? row.id),
+    provider_id: row.provider_id ? String(row.provider_id) : null,
+    user_id: row.user_id ? String(row.user_id) : null,
     metadata: normalizeMetadata(row.metadata),
     expires_at: row.expires_at ? asIso(row.expires_at) : null,
     rotated_from_id: row.rotated_from_id ? String(row.rotated_from_id) : null,
+    rotated_at: row.rotated_at ? asIso(row.rotated_at) : null,
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
     revoked_at: row.revoked_at ? asIso(row.revoked_at) : null,
@@ -104,6 +108,8 @@ export async function insertVaultSecret(input: {
   metadata?: JsonObject;
   expires_at?: string | null;
   tenant_id?: string;
+  provider_id?: string | null;
+  user_id?: string | null;
 }): Promise<SecretVaultRecord> {
   const id = randomUUID();
   const fingerprint = createSha256Fingerprint(input.plaintext);
@@ -114,8 +120,8 @@ export async function insertVaultSecret(input: {
     `
       INSERT INTO cap_secret_vault (
         id, secret_type, owner_type, owner_id, encrypted_payload,
-        fingerprint, metadata, expires_at, tenant_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        fingerprint, metadata, expires_at, tenant_id, secret_ref, provider_id, user_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     `,
     [
       id,
@@ -127,6 +133,9 @@ export async function insertVaultSecret(input: {
       JSON.stringify(input.metadata ?? {}),
       input.expires_at ?? null,
       tenantId,
+      id,
+      input.provider_id ?? null,
+      input.user_id ?? null,
     ],
   );
 
@@ -360,16 +369,23 @@ export async function writeTrustAudit(input: {
   grant_id?: string | null;
   policy_id?: string | null;
   execution_id?: string | null;
+  approval_id?: string | null;
   latency_ms?: number | null;
   result_hash?: string | null;
+  ip?: string | null;
+  user_agent?: string | null;
+  input_summary?: string | null;
+  risk_level?: string | null;
+  result?: string | null;
   metadata?: JsonObject;
 }): Promise<void> {
   await pool.query(
     `
       INSERT INTO cap_trust_audit (
         id, event_type, tenant_id, agent_id, user_id, provider_id, capability_id,
-        grant_id, policy_id, execution_id, latency_ms, result_hash, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        grant_id, policy_id, execution_id, latency_ms, result_hash, metadata,
+        ip, user_agent, approval_id, input_summary, risk_level, result
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
     `,
     [
       randomUUID(),
@@ -385,7 +401,33 @@ export async function writeTrustAudit(input: {
       input.latency_ms ?? null,
       input.result_hash ?? null,
       JSON.stringify(input.metadata ?? {}),
+      input.ip ?? null,
+      input.user_agent ?? null,
+      input.approval_id ?? null,
+      input.input_summary ?? null,
+      input.risk_level ?? null,
+      input.result ?? null,
     ],
+  );
+}
+
+export async function findVaultSecretByRef(secretRef: string): Promise<SecretVaultRecord | null> {
+  const result = await pool.query(
+    `SELECT * FROM cap_secret_vault WHERE (secret_ref = $1 OR id = $1) LIMIT 1`,
+    [secretRef],
+  );
+  const row = result.rows[0];
+  return row ? mapVaultRow(row) : null;
+}
+
+export async function expireVaultSecret(secretId: string): Promise<void> {
+  await pool.query(
+    `
+      UPDATE cap_secret_vault
+      SET status = 'expired', updated_at = NOW()
+      WHERE id = $1 AND status = 'active'
+    `,
+    [secretId],
   );
 }
 

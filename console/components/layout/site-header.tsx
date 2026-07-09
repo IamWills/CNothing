@@ -15,7 +15,8 @@ const navigation: Array<{
 }> = [
   { href: "/", label: "Home", matches: ["/", "/readme"] },
   { href: "/catalog", label: "Catalog", icon: LayoutGrid, matches: ["/catalog"] },
-  { href: "/agents", label: "Agents", icon: Bot, matches: ["/agents", "/capabilities", "/grants", "/audit", "/authorize", "/login"] },
+  { href: "/agents", label: "Agents", icon: Bot, matches: ["/agents", "/capabilities", "/grants", "/audit", "/authorize", "/login", "/dashboard"] },
+  { href: "/dashboard/capabilities", label: "Dashboard", icon: LayoutGrid, matches: ["/dashboard"] },
   { href: "/clients", label: "Clients (v1)", icon: Users, matches: ["/clients", "/kv", "/migration"] },
   {
     href: "/standards",

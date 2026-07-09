@@ -103,6 +103,19 @@ function mapCapabilityRow(row: Record<string, unknown>): CapabilityRecord {
     invocation_type: row.invocation_type ? String(row.invocation_type) : null,
     invocation_config: invocationConfig,
     policy_config: policyConfig,
+    execution_type: (row.execution_type
+      ? String(row.execution_type)
+      : "oauth_api") as CapabilityRecord["execution_type"],
+    approval_policy: (row.approval_policy
+      ? String(row.approval_policy)
+      : "none") as CapabilityRecord["approval_policy"],
+    owner_user_id: row.owner_user_id ? String(row.owner_user_id) : null,
+    provider: row.provider
+      ? String(row.provider)
+      : String(row.name).includes(".")
+        ? String(row.name).split(".")[0]!
+        : null,
+    deleted_at: row.deleted_at ? asIso(row.deleted_at) : null,
     metadata,
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
@@ -336,7 +349,7 @@ export async function createCapability(input: {
 
 export async function findCapabilityByName(name: string): Promise<CapabilityRecord | null> {
   const result = await pool.query(
-    `SELECT * FROM cap_capabilities WHERE name = $1 AND status = 'active'`,
+    `SELECT * FROM cap_capabilities WHERE name = $1 AND status = 'active' AND deleted_at IS NULL`,
     [name],
   );
   return result.rows[0] ? mapCapabilityRow(result.rows[0]) : null;
@@ -344,7 +357,7 @@ export async function findCapabilityByName(name: string): Promise<CapabilityReco
 
 export async function listCapabilities(): Promise<CapabilityRecord[]> {
   const result = await pool.query(
-    `SELECT * FROM cap_capabilities WHERE status = 'active' ORDER BY name ASC`,
+    `SELECT * FROM cap_capabilities WHERE status = 'active' AND deleted_at IS NULL ORDER BY name ASC`,
   );
   return result.rows.map(mapCapabilityRow);
 }
@@ -926,7 +939,7 @@ export async function rejectPendingConfirmation(id: string): Promise<PendingConf
 }
 
 export async function writeInvokeAudit(input: {
-  user_id?: string;
+  user_id?: string | null;
   agent_id?: string;
   capability_id?: string;
   capability_name: string;
@@ -936,7 +949,7 @@ export async function writeInvokeAudit(input: {
   policy_decision: string;
   status: string;
   request_id?: string;
-  error_code?: string;
+  error_code?: string | null;
   metadata?: JsonObject;
   input_hash?: string;
   output_hash?: string;

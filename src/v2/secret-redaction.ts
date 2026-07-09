@@ -11,6 +11,12 @@ const SECRET_FIELD_PATTERNS = [
   /secret/i,
   /credential/i,
   /encrypted/i,
+  /^cookie$/i,
+  /session[_-]?cookie/i,
+  /mfa[_-]?secret/i,
+  /recovery[_-]?code/i,
+  /ssh[_-]?private[_-]?key/i,
+  /browser[_-]?session/i,
 ];
 
 const NON_SECRET_FIELD_NAMES = new Set([

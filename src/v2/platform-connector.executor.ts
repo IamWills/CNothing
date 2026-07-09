@@ -99,7 +99,8 @@ export async function executePlatformCapability(input: {
         timestamp: new Date().toISOString(),
       };
 
-    case "github.list_repositories": {
+    case "github.list_repositories":
+    case "github.list_repos": {
       const perPage = Number(input.input.per_page ?? 30);
       const type = String(input.input.type ?? "all");
       const data = await githubRequest(
@@ -114,6 +115,43 @@ export async function executePlatformCapability(input: {
     case "github.get_user": {
       const data = await githubRequest("/user", input.user_id, undefined, tokenOverride);
       return { user: data };
+    }
+
+    case "github.create_repo": {
+      const name = String(input.input.name ?? "").trim();
+      if (!name) {
+        throw new Error("input.name is required");
+      }
+      const org = typeof input.input.org === "string" ? input.input.org.trim() : "";
+      const body = {
+        name,
+        description:
+          typeof input.input.description === "string" ? input.input.description : undefined,
+        private: Boolean(input.input.private ?? false),
+        auto_init: Boolean(input.input.auto_init ?? false),
+      };
+      const path = org ? `/orgs/${encodeURIComponent(org)}/repos` : "/user/repos";
+      const data = await githubRequest(
+        path,
+        input.user_id,
+        { method: "POST", body: JSON.stringify(body) },
+        tokenOverride,
+      );
+      return {
+        repository: data,
+        full_name: (data as { full_name?: string }).full_name,
+        html_url: (data as { html_url?: string }).html_url,
+        private: (data as { private?: boolean }).private,
+      };
+    }
+
+    case "github.oauth.connect": {
+      const base = config.consoleUrl?.replace(/\/+$/, "") ?? config.publicBaseUrl;
+      return {
+        connect_url: `${base}/connect?provider=github`,
+        provider: "github",
+        message: "User must complete OAuth connect in browser. Agent never receives tokens.",
+      };
     }
 
     case "github.get_repository": {

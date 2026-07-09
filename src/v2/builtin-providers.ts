@@ -14,9 +14,41 @@ export type BuiltinCapabilityTemplate = {
   invocation_type: InvocationType;
   invocation_config: JsonObject;
   policy_config: JsonObject;
+  execution_type?: "oauth_api" | "api_key_api" | "browser" | "ssh" | "webhook" | "manual" | "hybrid";
+  approval_policy?:
+    | "none"
+    | "once"
+    | "once_per_scope"
+    | "once_per_resource"
+    | "every_time"
+    | "time_window"
+    | "amount_threshold"
+    | "manual_review";
 };
 
 export const GITHUB_CAPABILITY_TEMPLATES: BuiltinCapabilityTemplate[] = [
+  {
+    name: "github.oauth.connect",
+    display_name: "Connect GitHub OAuth",
+    description: "Return a user-facing URL to connect GitHub OAuth (never returns tokens)",
+    capability_type: "ACTION",
+    risk_level: "LOW",
+    scopes: [],
+    input_schema: { type: "object", properties: {} },
+    output_schema: {
+      type: "object",
+      properties: {
+        connect_url: { type: "string" },
+        provider: { type: "string" },
+      },
+    },
+    source: "provider_template",
+    invocation_type: "builtin",
+    invocation_config: { handler: "github.oauth.connect" },
+    policy_config: {},
+    execution_type: "oauth_api",
+    approval_policy: "none",
+  },
   {
     name: "github.list_repositories",
     display_name: "List Repositories",
@@ -33,6 +65,27 @@ export const GITHUB_CAPABILITY_TEMPLATES: BuiltinCapabilityTemplate[] = [
     invocation_type: "builtin",
     invocation_config: { handler: "github.list_repositories" },
     policy_config: {},
+    execution_type: "oauth_api",
+    approval_policy: "none",
+  },
+  {
+    name: "github.list_repos",
+    display_name: "List Repos",
+    description: "Alias of github.list_repositories",
+    capability_type: "QUERY",
+    risk_level: "LOW",
+    scopes: ["repo"],
+    input_schema: {
+      type: "object",
+      properties: { per_page: { type: "number" }, type: { type: "string" } },
+    },
+    output_schema: { type: "object" },
+    source: "provider_template",
+    invocation_type: "builtin",
+    invocation_config: { handler: "github.list_repos" },
+    policy_config: {},
+    execution_type: "oauth_api",
+    approval_policy: "none",
   },
   {
     name: "github.get_user",
@@ -47,6 +100,34 @@ export const GITHUB_CAPABILITY_TEMPLATES: BuiltinCapabilityTemplate[] = [
     invocation_type: "builtin",
     invocation_config: { handler: "github.get_user" },
     policy_config: {},
+    execution_type: "oauth_api",
+    approval_policy: "none",
+  },
+  {
+    name: "github.create_repo",
+    display_name: "Create Repository",
+    description: "Create a GitHub repository (requires approval once per repo name)",
+    capability_type: "ACTION",
+    risk_level: "MEDIUM",
+    scopes: ["repo"],
+    input_schema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        private: { type: "boolean" },
+        org: { type: "string", description: "Optional org; creates under user if omitted" },
+        auto_init: { type: "boolean" },
+      },
+    },
+    output_schema: { type: "object" },
+    source: "provider_template",
+    invocation_type: "builtin",
+    invocation_config: { handler: "github.create_repo" },
+    policy_config: {},
+    execution_type: "oauth_api",
+    approval_policy: "once_per_resource",
   },
   {
     name: "github.create_issue",
@@ -71,11 +152,13 @@ export const GITHUB_CAPABILITY_TEMPLATES: BuiltinCapabilityTemplate[] = [
     invocation_type: "builtin",
     invocation_config: { handler: "github.create_issue" },
     policy_config: {},
+    execution_type: "oauth_api",
+    approval_policy: "once_per_resource",
   },
   {
     name: "github.delete_repo",
     display_name: "Delete Repository",
-    description: "Delete a GitHub repository (high risk)",
+    description: "Delete a GitHub repository (high risk, denied by default policy)",
     capability_type: "ACTION",
     risk_level: "HIGH",
     scopes: ["delete_repo"],
@@ -89,6 +172,8 @@ export const GITHUB_CAPABILITY_TEMPLATES: BuiltinCapabilityTemplate[] = [
     invocation_type: "builtin",
     invocation_config: { handler: "github.delete_repo" },
     policy_config: { require_user_confirmation: true },
+    execution_type: "oauth_api",
+    approval_policy: "every_time",
   },
 ];
 

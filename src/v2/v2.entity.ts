@@ -48,6 +48,25 @@ export type CredentialRecord = {
   updated_at: string;
 };
 
+export type ExecutionType =
+  | "oauth_api"
+  | "api_key_api"
+  | "browser"
+  | "ssh"
+  | "webhook"
+  | "manual"
+  | "hybrid";
+
+export type ApprovalPolicy =
+  | "none"
+  | "once"
+  | "once_per_scope"
+  | "once_per_resource"
+  | "every_time"
+  | "time_window"
+  | "amount_threshold"
+  | "manual_review";
+
 export type CapabilityRecord = {
   id: string;
   connector_id: string;
@@ -67,6 +86,11 @@ export type CapabilityRecord = {
   invocation_type: string | null;
   invocation_config: JsonObject;
   policy_config: JsonObject;
+  execution_type: ExecutionType;
+  approval_policy: ApprovalPolicy;
+  owner_user_id: string | null;
+  provider: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 };

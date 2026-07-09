@@ -6,7 +6,27 @@
 
 它解决的是一个非常具体的问题：AI 代理需要参与工具选择、流程决策和请求转发，但实际使用到的 secrets 又必须留在可信后端边界内。CNothing 提供了一种协议化方式，让 AI 能参与工作流，而私钥和解密后的秘密值始终不进入模型上下文。
 
-## v2.5：Universal OAuth Broker + Capability Gateway（最新）
+## v3 Capability Gateway：Secretless Capability Execution Gateway（推荐）
+
+定位：**The execution trust layer between AI agents and the real world.**
+
+- Agent 只调用 Capability Handle（如 `github.create_repo`），**永不接触** token / cookie / password / API key
+- 新增契约：`POST /api/v3/capabilities/:id/invoke` → `pending_approval` | `completed` | `failed`
+- Approval Engine、Secret Vault、OAuthApiWorker、Policy、Audit 全链路托管
+- Console：`/dashboard/capabilities|providers|connections|approvals|audit|policies`
+- 详细说明：[docs/v3-capability-gateway.md](./docs/v3-capability-gateway.md)
+
+```bash
+# 无密钥调用示例
+curl -X POST "$BASE/api/v3/capabilities/github.get_user/invoke" \
+  -H "Authorization: Bearer $AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"USER","input":{}}'
+```
+
+旧 `/v2` / `/v3` API 保持兼容。
+
+## v2.5：Universal OAuth Broker + Capability Gateway
 
 CNothing v2.5 不再需要为每个第三方网站手写专用 Connector：
 

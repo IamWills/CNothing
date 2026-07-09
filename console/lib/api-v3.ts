@@ -425,4 +425,124 @@ export async function rejectV3PendingConfirmation(
   });
 }
 
+export type GatewayApproval = {
+  approval_id: string;
+  status: string;
+  capability_id: string;
+  agent_id?: string;
+  safe_summary: string;
+  risk_level: string;
+  scopes?: string[];
+  resource_key?: string | null;
+  expires_at: string;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  created_at?: string;
+};
+
+export type GatewayCapability = {
+  id: string;
+  name: string;
+  display_name: string | null;
+  description: string;
+  provider: string | null;
+  required_scopes: string[];
+  execution_type: string;
+  risk_level: string;
+  approval_policy: string;
+  status: string;
+};
+
+export type GatewayPolicyBundle = {
+  ok: true;
+  policies: Array<{
+    id: string;
+    capability_pattern: string | null;
+    action: string;
+    priority: number;
+    enabled: boolean;
+    metadata: Record<string, unknown>;
+  }>;
+  capability_permissions: Array<{
+    id: string;
+    agent_id: string | null;
+    capability_pattern: string | null;
+    effect: string;
+    require_approval: boolean | null;
+    rate_limit_per_minute: number | null;
+    priority: number;
+    enabled: boolean;
+    metadata: Record<string, unknown>;
+  }>;
+};
+
+export type GatewayAuditEvent = {
+  id: string;
+  event_type: string;
+  agent_id: string | null;
+  user_id: string | null;
+  capability_id: string | null;
+  execution_id: string | null;
+  approval_id: string | null;
+  input_summary: string | null;
+  risk_level: string | null;
+  result: string | null;
+  created_at: string;
+};
+
+export async function fetchGatewayCapabilities(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: GatewayCapability[] }>(
+    connection,
+    "/api/v3/capabilities",
+  );
+}
+
+export async function fetchGatewayApprovals(
+  connection: ConsoleConnection,
+  status?: string,
+) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return requestJson<{ ok: true; items: GatewayApproval[] }>(
+    connection,
+    `/api/v3/approvals${query}`,
+  );
+}
+
+export async function fetchGatewayApproval(
+  connection: ConsoleConnection,
+  approvalId: string,
+) {
+  return requestJson<{ ok: true } & GatewayApproval>(
+    connection,
+    `/api/v3/approvals/${encodeURIComponent(approvalId)}`,
+  );
+}
+
+export async function decideGatewayApproval(
+  connection: ConsoleConnection,
+  approvalId: string,
+  decision: "approved" | "rejected",
+  token?: string,
+) {
+  return requestJson<{ ok: true; approval_id: string; status: string; execution?: unknown }>(
+    connection,
+    `/api/v3/approvals/${encodeURIComponent(approvalId)}/decide`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision, token }),
+    },
+  );
+}
+
+export async function fetchGatewayPolicies(connection: ConsoleConnection) {
+  return requestJson<GatewayPolicyBundle>(connection, "/api/v3/policies");
+}
+
+export async function fetchGatewayAudit(connection: ConsoleConnection, limit = 50) {
+  return requestJson<{ ok: true; items: GatewayAuditEvent[] }>(
+    connection,
+    `/api/v3/audit?limit=${limit}`,
+  );
+}
+
 export type { V25ImportCandidate, V25ImportJob, V25OAuthConnection, V25OAuthProvider, V2AuthProvider, V2AuthorizationRequest, V2PendingConfirmation };

@@ -22,6 +22,7 @@ import {
   handleV26PlatformRequest,
 } from "./api/v2.6.api";
 import { handleV3Request } from "./api/v3.api";
+import { handleApiV3Request } from "./api/api-v3.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb } from "./db";
@@ -91,6 +92,8 @@ function renderHomePage(baseUrl: string): string {
     ["/openapi-v2.5.json", "OpenAPI document (v2.5 OAuth broker + capability gateway)"],
     ["/openapi-v2.6.json", "OpenAPI document (v2.6 universal OAuth + zero-code import)"],
     ["/openapi-v3.json", "OpenAPI document (v3.0 Universal Trust Broker for AI Agents)"],
+    ["/api/v3/openapi.json", "OpenAPI document (v3 Capability Execution Gateway)"],
+    ["/api/v3/capabilities/{id}/invoke", "Secretless capability invoke (pending_approval|completed|failed)"],
     ["/v3/agent/invoke", "Invoke a capability (v3 Trust Broker — no secrets returned)"],
     ["/v3/providers/proposals", "Agent submits provider proposal (public metadata only)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
@@ -260,6 +263,13 @@ async function router(request: Request): Promise<Response> {
 
   if (pathname === "/openapi-v3.json" && isOpenApiDocumentRequest(request)) {
     return serveOpenApiDocument(request, "openapi-v3.json");
+  }
+
+  if (pathname.startsWith("/api/v3")) {
+    const apiV3Response = await handleApiV3Request(request);
+    if (apiV3Response) {
+      return withCors(apiV3Response, request);
+    }
   }
 
   if (pathname.startsWith("/v3/")) {

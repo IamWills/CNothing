@@ -163,7 +163,7 @@ async function main() {
   assert(authView.status === 200, authView.text);
   assert(authView.data.authorization_request.id === authorizationId, "expected authorization id");
 
-  console.log("v3 E2E: pending confirmations via /v3/confirmations/pending");
+  console.log("v3 E2E: policy denies github.delete_repo via /api/v3");
   await request("/v3/grants", {
     method: "POST",
     body: JSON.stringify({
@@ -172,29 +172,85 @@ async function main() {
       capability: "github.delete_repo",
     }),
   });
-  const highRisk = await request<{
-    pending?: boolean;
-    confirmation_id?: string;
-  }>("/v3/agent/invoke", {
+  const denied = await request<{
+    status?: string;
+    error?: { code?: string; message?: string };
+  }>("/api/v3/capabilities/github.delete_repo/invoke", {
     method: "POST",
     agentToken,
     admin: false,
     body: JSON.stringify({
-      capability: "github.delete_repo",
+      agent_id: agentRegister.data.agent.id,
+      user_id: testUserId,
       input: { owner: "e2e-test", repo: "e2e-test" },
     }),
   });
-  assert(highRisk.status === 202, highRisk.text);
-  assert(highRisk.data.pending === true, "expected pending invoke");
-  const pending = await request<{ ok: true; items: Array<{ id: string }> }>(
-    "/v3/confirmations/pending",
-    { admin: false, userSessionToken },
-  );
-  assert(pending.status === 200, pending.text);
+  assert(denied.status === 400 || denied.data.status === "failed", denied.text);
   assert(
-    pending.data.items.some((item) => item.id === highRisk.data.confirmation_id),
-    "expected pending confirmation for user",
+    denied.data.error?.code === "policy_denied" || denied.data.status === "failed",
+    `expected policy_denied, got ${denied.text}`,
   );
+  assertNoSecrets(denied.text);
+
+  console.log("v3 E2E: create_repo returns pending_approval via /api/v3");
+  await request("/v3/grants", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: testUserId,
+      agent_id: agentRegister.data.agent.id,
+      capability: "github.create_repo",
+    }),
+  });
+  const createRepo = await request<{
+    status?: string;
+    approval_id?: string;
+    approval_url?: string;
+    safe_summary?: string;
+  }>("/api/v3/capabilities/github.create_repo/invoke", {
+    method: "POST",
+    agentToken,
+    admin: false,
+    body: JSON.stringify({
+      agent_id: agentRegister.data.agent.id,
+      user_id: testUserId,
+      input: { name: `e2e-repo-${Date.now()}`, private: true },
+      idempotency_key: `e2e-create-repo-${Date.now()}`,
+    }),
+  });
+  assert(
+    createRepo.status === 202 || createRepo.data.status === "pending_approval",
+    createRepo.text,
+  );
+  assert(typeof createRepo.data.approval_id === "string", "expected approval_id");
+  assert(typeof createRepo.data.approval_url === "string", "expected approval_url");
+  assertNoSecrets(createRepo.text);
+
+  console.log("v3 E2E: approval status poll (agent-safe)");
+  const approvalStatus = await request<{
+    ok: true;
+    status: string;
+    safe_summary: string;
+  }>(`/api/v3/approvals/${encodeURIComponent(createRepo.data.approval_id!)}`, {
+    agentToken,
+    admin: false,
+  });
+  assert(approvalStatus.status === 200, approvalStatus.text);
+  assert(approvalStatus.data.status === "pending", approvalStatus.text);
+  assertNoSecrets(approvalStatus.text);
+
+  console.log("v3 E2E: secrets API forbids value reads");
+  const secretForbidden = await request<{ error?: { code?: string } }>(
+    "/api/v3/secrets/nonexistent?include_value=1",
+  );
+  assert(secretForbidden.status === 403, secretForbidden.text);
+  assert(secretForbidden.data.error?.code === "secret_value_forbidden", secretForbidden.text);
+
+  console.log("v3 E2E: openapi gateway doc");
+  const openapi = await request<Record<string, unknown>>("/api/v3/openapi.json", {
+    admin: false,
+  });
+  assert(openapi.status === 200, openapi.text);
+  assert(openapi.data.openapi === "3.0.3", "expected openapi 3.0.3");
 
   console.log("v3 E2E: OAuth device flow");
   const mockPort = Number(process.env.CNOTHING_E2E_MOCK_DEVICE_PORT ?? "3198");

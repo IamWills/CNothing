@@ -455,6 +455,10 @@ export type GatewayCapability = {
 
 export type GatewayPolicyBundle = {
   ok: true;
+  trust_policy_engine?: {
+    ready: boolean;
+    count: number;
+  };
   trust_policies?: Array<{
     id: string;
     name: string;

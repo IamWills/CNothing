@@ -169,7 +169,56 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (pathname === "/health") {
-    return withCors(Response.json({ status: "ok", service: config.serviceName }), request);
+    try {
+      const { checkTrustLayerReadiness } = await import("./v3/trust-layer-readiness");
+      const readiness = await checkTrustLayerReadiness();
+      if (!readiness.ready) {
+        return withCors(
+          Response.json(
+            {
+              status: "degraded",
+              service: config.serviceName,
+              ready: false,
+              error: {
+                code: "schema_not_ready",
+                message: "Execution Trust Layer schema is incomplete",
+                missing_relations: readiness.missing_relations,
+              },
+            },
+            { status: 503 },
+          ),
+          request,
+        );
+      }
+      return withCors(
+        Response.json({
+          status: "ok",
+          service: config.serviceName,
+          ready: true,
+          trust_layer: {
+            ready: true,
+            trust_policy_count: readiness.trust_policy_count,
+          },
+        }),
+        request,
+      );
+    } catch (error) {
+      return withCors(
+        Response.json(
+          {
+            status: "error",
+            service: config.serviceName,
+            ready: false,
+            error: {
+              code: "health_check_failed",
+              message: error instanceof Error ? error.message : String(error),
+            },
+          },
+          { status: 503 },
+        ),
+        request,
+      );
+    }
   }
 
   if (pathname === "/skill.md" && request.method === "GET") {

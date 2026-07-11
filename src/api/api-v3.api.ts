@@ -439,6 +439,22 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
   if (request.method === "GET" && path === "/api/v3/policies") {
     await requireUserSession(request).catch(() => requireAdminAccess(request));
     const { listAllTrustPolicies } = await import("../v3/policy-engine/policy.repository");
+    const { checkTrustLayerReadiness } = await import("../v3/trust-layer-readiness");
+    const readiness = await checkTrustLayerReadiness();
+    if (!readiness.ready) {
+      return Response.json(
+        {
+          ok: false,
+          error: {
+            code: "schema_not_ready",
+            message: "Policy engine is unavailable. Contact the operator.",
+            recoverable: false,
+          },
+        },
+        { status: 503 },
+      );
+    }
+
     const [legacy, permissions, trustPolicies] = await Promise.all([
       listPolicies(),
       listAllCapabilityPermissions(200),
@@ -447,6 +463,10 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
     return Response.json(
       sanitizeAgentResponse({
         ok: true,
+        trust_policy_engine: {
+          ready: true,
+          count: trustPolicies.length,
+        },
         trust_policies: trustPolicies.map((p) => ({
           id: p.id,
           name: p.name,

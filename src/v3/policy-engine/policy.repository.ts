@@ -92,44 +92,27 @@ function mapRow(row: Record<string, unknown>): TrustPolicyRecord {
 }
 
 export async function listTrustPolicies(): Promise<TrustPolicyRecord[]> {
-  try {
-    const result = await pool.query(
-      `
-        SELECT * FROM cap_trust_policies
-        WHERE enabled = TRUE AND deleted_at IS NULL AND status = 'active'
-        ORDER BY priority ASC, created_at ASC
-      `,
-    );
-    return result.rows.map(mapRow);
-  } catch (error) {
-    // Migration not applied yet — degrade gracefully
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("cap_trust_policies") || message.includes("does not exist")) {
-      return [];
-    }
-    throw error;
-  }
+  const result = await pool.query(
+    `
+      SELECT * FROM cap_trust_policies
+      WHERE enabled = TRUE AND deleted_at IS NULL AND status = 'active'
+      ORDER BY priority ASC, created_at ASC
+    `,
+  );
+  return result.rows.map(mapRow);
 }
 
 export async function listAllTrustPolicies(limit = 200): Promise<TrustPolicyRecord[]> {
-  try {
-    const result = await pool.query(
-      `
-        SELECT * FROM cap_trust_policies
-        WHERE deleted_at IS NULL
-        ORDER BY priority ASC, created_at DESC
-        LIMIT $1
-      `,
-      [limit],
-    );
-    return result.rows.map(mapRow);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("cap_trust_policies") || message.includes("does not exist")) {
-      return [];
-    }
-    throw error;
-  }
+  const result = await pool.query(
+    `
+      SELECT * FROM cap_trust_policies
+      WHERE deleted_at IS NULL
+      ORDER BY priority ASC, created_at DESC
+      LIMIT $1
+    `,
+    [limit],
+  );
+  return result.rows.map(mapRow);
 }
 
 export async function createTrustPolicy(input: {

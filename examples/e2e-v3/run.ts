@@ -252,12 +252,41 @@ async function main() {
   assert(secretForbidden.data.error?.code === "secret_value_forbidden", secretForbidden.text);
 
   console.log("v3 E2E: openapi gateway doc");
-  const openapi = await request<Record<string, unknown>>("/api/v3/openapi.json", {
+  const openapi = await request<{
+    openapi?: string;
+    paths?: Record<string, unknown>;
+  }>("/api/v3/openapi.json", {
     admin: false,
   });
   assert(openapi.status === 200, openapi.text);
   assert(openapi.data.openapi === "3.0.3", "expected openapi 3.0.3");
+  assert(
+    Boolean(openapi.data.paths?.["/api/v3/capabilities/{capabilityId}/invoke"]),
+    "gateway openapi must document canonical invoke",
+  );
 
+  console.log("v3 E2E: public openapi-v3.json documents canonical invoke");
+  const publicOpenapi = await request<{
+    info?: { title?: string };
+    paths?: Record<string, { post?: { deprecated?: boolean } }>;
+  }>("/openapi-v3.json", { admin: false });
+  assert(publicOpenapi.status === 200, publicOpenapi.text);
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/capabilities/{capabilityId}/invoke"]),
+    "openapi-v3.json must document POST /api/v3/capabilities/{capabilityId}/invoke",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/v3/capabilities/{capabilityId}/invoke"]),
+    "openapi-v3.json must document /v3/capabilities/{capabilityId}/invoke alias",
+  );
+  assert(
+    publicOpenapi.data.paths?.["/v3/agent/invoke"]?.post?.deprecated === true,
+    "legacy /v3/agent/invoke must be marked deprecated",
+  );
+  assert(
+    String(publicOpenapi.data.info?.title ?? "").includes("Execution Trust Layer"),
+    "openapi-v3 title should reflect Execution Trust Layer",
+  );
   console.log("v3 E2E: OAuth device flow");
   const mockPort = Number(process.env.CNOTHING_E2E_MOCK_DEVICE_PORT ?? "3198");
   const approvedDeviceCodes = new Set<string>();

@@ -683,15 +683,10 @@ async function serveApiV3OpenApi(_request: Request): Promise<Response> {
       "/api/v3/oauth/connect": {
         post: { summary: "Start OAuth connect for current user session" },
       },
-      "/api/v3/capabilities": {
-        get: { summary: "List capabilities with risk_level, execution_type, approval_policy" },
-      },
-      "/api/v3/capabilities/{id}": {
-        get: { summary: "Capability detail" },
-      },
-      "/api/v3/capabilities/{id}/invoke": {
+      "/api/v3/capabilities/{capabilityId}/invoke": {
         post: {
-          summary: "Invoke capability (secretless Execution Trust Layer)",
+          summary: "Canonical secretless capability invoke (Execution Trust Layer)",
+          operationId: "invokeCapability",
           requestBody: {
             content: {
               "application/json": {
@@ -718,6 +713,24 @@ async function serveApiV3OpenApi(_request: Request): Promise<Response> {
             "400": { description: "failed / timeout" },
           },
         },
+      },
+      "/v3/capabilities/{capabilityId}/invoke": {
+        post: {
+          summary: "Alias of canonical capability invoke",
+          description: "Rewrites to POST /api/v3/capabilities/{capabilityId}/invoke",
+        },
+      },
+      "/v3/agent/invoke": {
+        post: {
+          summary: "Compatibility alias — prefer /api/v3/capabilities/{capabilityId}/invoke",
+          deprecated: true,
+        },
+      },
+      "/api/v3/capabilities": {
+        get: { summary: "List capabilities with risk_level, execution_type, approval_policy" },
+      },
+      "/api/v3/capabilities/{capabilityId}": {
+        get: { summary: "Capability detail" },
       },
       "/api/v3/approvals": {
         get: { summary: "List approvals (safe summary only)" },

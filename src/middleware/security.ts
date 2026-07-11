@@ -13,7 +13,19 @@ const replayCache = new Map<string, number>();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = Number(process.env.KEYSERVICE_RATE_LIMIT_PER_MINUTE ?? "120");
 const REPLAY_TTL_MS = Number(process.env.KEYSERVICE_REPLAY_TTL_SECONDS ?? "300") * 1000;
-const REPLAY_PATHS = ["/v2/agent/invoke", "/v2/capabilities/invoke"];
+const REPLAY_PATH_EXACT = new Set([
+  "/v2/agent/invoke",
+  "/v2/capabilities/invoke",
+  "/v3/agent/invoke",
+]);
+
+function isReplayProtectedPath(pathname: string): boolean {
+  if (REPLAY_PATH_EXACT.has(pathname)) return true;
+  return (
+    /^\/api\/v3\/capabilities\/[^/]+\/invoke$/.test(pathname) ||
+    /^\/v3\/capabilities\/[^/]+\/invoke$/.test(pathname)
+  );
+}
 
 function clientKey(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -76,7 +88,7 @@ function checkRateLimit(request: Request, pathname: string): Response | null {
 }
 
 async function checkReplayProtection(request: Request, pathname: string): Promise<Response | null> {
-  if (request.method !== "POST" || !REPLAY_PATHS.includes(pathname)) {
+  if (request.method !== "POST" || !isReplayProtectedPath(pathname)) {
     return null;
   }
 

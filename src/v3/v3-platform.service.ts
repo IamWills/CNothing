@@ -79,6 +79,15 @@ export async function getV3PlatformStatus() {
       "AI Agent",
     ],
     recommended_api_prefix: "/api/v3",
+    canonical_invoke: "POST /api/v3/capabilities/{capabilityId}/invoke",
+    invoke_aliases: [
+      "POST /v3/capabilities/{capabilityId}/invoke",
+      "POST /v3/agent/invoke",
+    ],
+    openapi: {
+      public: "/openapi-v3.json",
+      gateway: "/api/v3/openapi.json",
+    },
     predecessor_versions: ["v2.5", "v2.6", "v3"],
   };
 }

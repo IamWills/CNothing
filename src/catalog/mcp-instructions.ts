@@ -38,6 +38,10 @@ Full workflow: MCP resource **${MCP_V2_AUTH_WORKFLOW_URI}**
 
 REST: \`POST /v2/agent/invoke\` with header \`Authorization: Bearer agent_...\`.
 
+**v3 Execution Trust Layer (recommended for new agents):**
+\`POST /api/v3/capabilities/{capabilityId}/invoke\` (canonical; documented in \`/openapi-v3.json\` and \`/api/v3/openapi.json\`).
+Aliases: \`POST /v3/capabilities/{capabilityId}/invoke\`, legacy \`POST /v3/agent/invoke\`.
+
 SDK default: \`apiVersion: "v2.5"\` on \`CNothingAgentClient\`.
 
 ### Example: request authorization

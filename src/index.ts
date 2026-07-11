@@ -91,10 +91,11 @@ function renderHomePage(baseUrl: string): string {
     ["/openapi-v2.json", "OpenAPI document (v2 capability platform)"],
     ["/openapi-v2.5.json", "OpenAPI document (v2.5 OAuth broker + capability gateway)"],
     ["/openapi-v2.6.json", "OpenAPI document (v2.6 universal OAuth + zero-code import)"],
-    ["/openapi-v3.json", "OpenAPI document (v3.0 Universal Trust Broker for AI Agents)"],
+    ["/openapi-v3.json", "OpenAPI document (v3 Execution Trust Layer — canonical invoke documented)"],
     ["/api/v3/openapi.json", "OpenAPI document (v3 Capability Execution Gateway)"],
-    ["/api/v3/capabilities/{id}/invoke", "Secretless capability invoke (pending_approval|completed|failed)"],
-    ["/v3/agent/invoke", "Invoke a capability (v3 Trust Broker — no secrets returned)"],
+    ["/api/v3/capabilities/{capabilityId}/invoke", "Canonical secretless capability invoke"],
+    ["/v3/capabilities/{capabilityId}/invoke", "Alias of canonical capability invoke"],
+    ["/v3/agent/invoke", "Compatibility invoke (body.capability) — prefer capability-scoped path"],
     ["/v3/providers/proposals", "Agent submits provider proposal (public metadata only)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
     ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
@@ -318,6 +319,22 @@ async function router(request: Request): Promise<Response> {
     const apiV3Response = await handleApiV3Request(request);
     if (apiV3Response) {
       return withCors(apiV3Response, request);
+    }
+  }
+
+  // Alias: POST /v3/capabilities/{id}/invoke → canonical /api/v3/capabilities/{id}/invoke
+  {
+    const aliasMatch = pathname.match(/^\/v3\/capabilities\/([^/]+)\/invoke$/);
+    if (request.method === "POST" && aliasMatch) {
+      const capabilityId = aliasMatch[1]!;
+      const rewritten = new Request(
+        new URL(`/api/v3/capabilities/${capabilityId}/invoke${url.search}`, request.url),
+        request,
+      );
+      const apiV3Response = await handleApiV3Request(rewritten);
+      if (apiV3Response) {
+        return withCors(apiV3Response, request);
+      }
     }
   }
 

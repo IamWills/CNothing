@@ -1,14 +1,15 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "CNothing v3.0 API",
-    "version": "3.0.0",
-    "description": "Universal Trust Broker for AI Agents. Agent-facing endpoints never return OAuth tokens, refresh tokens, client secrets, API keys, cookies, or passwords. Secrets stay in CNothing; capabilities belong to Agent."
+    "title": "CNothing Execution Trust Layer API (v3)",
+    "version": "3.2.0",
+    "description": "Execution Trust Layer for AI Agents. Canonical secretless invoke: POST /api/v3/capabilities/{capabilityId}/invoke. Alias: POST /v3/capabilities/{capabilityId}/invoke. Compatibility: POST /v3/agent/invoke (body.capability). Agent-facing endpoints never return OAuth tokens, refresh tokens, client secrets, API keys, cookies, or passwords. Secrets stay in cnothing."
   },
   "servers": [{ "url": "https://cnothing.com" }],
   "tags": [
+    { "name": "Execution", "description": "Canonical Capability Invocation Gateway (/api/v3)" },
     { "name": "Platform", "description": "Trust Broker platform status" },
-    { "name": "Agent", "description": "Agent-facing Trust Broker API (no secrets returned)" },
+    { "name": "Agent", "description": "Agent-facing Trust Broker API (compatibility + grants)" },
     { "name": "Providers", "description": "Universal Provider Registry" },
     { "name": "OAuth", "description": "OAuth/OIDC Broker for user connections" },
     { "name": "Import", "description": "OpenAPI / MCP capability import" },
@@ -87,16 +88,137 @@
       "InvokeRequest": {
         "type": "object",
         "required": ["capability"],
+        "deprecated": true,
+        "description": "Legacy body for POST /v3/agent/invoke. Prefer POST /api/v3/capabilities/{capabilityId}/invoke.",
         "properties": {
           "capability": { "type": "string" },
           "input": { "type": "object" },
           "confirmation_id": { "type": "string" },
-          "reason": { "type": "string" }
+          "reason": { "type": "string" },
+          "user_id": { "type": "string" },
+          "idempotency_key": { "type": "string" },
+          "dry_run": { "type": "boolean" }
+        }
+      },
+      "CapabilityInvokeRequest": {
+        "type": "object",
+        "description": "Body for canonical capability invoke. capabilityId is in the URL path — never send secrets.",
+        "properties": {
+          "agent_id": { "type": "string", "description": "Optional; must match authenticated agent if present" },
+          "user_id": { "type": "string" },
+          "input": { "type": "object" },
+          "idempotency_key": { "type": "string" },
+          "dry_run": { "type": "boolean", "default": false },
+          "approval_id": { "type": "string", "description": "Resume after human approval" },
+          "timeout_ms": { "type": "integer", "maximum": 300000 }
+        }
+      },
+      "CapabilityInvokeResponse": {
+        "type": "object",
+        "description": "Sanitized invoke result. status is completed | pending_approval | denied | reconnect_required | failed. Never includes secrets.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["completed", "pending_approval", "denied", "reconnect_required", "failed"]
+          },
+          "execution_id": { "type": "string" },
+          "audit_chain_id": { "type": "string" },
+          "result": { "type": "object", "description": "Present when status=completed (sanitized)" },
+          "approval_id": { "type": "string" },
+          "approval_url": { "type": "string", "format": "uri" },
+          "safe_summary": { "type": "string" },
+          "connection_url": { "type": "string", "format": "uri" },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "recoverable": { "type": "boolean" }
+            }
+          }
         }
       }
     }
   },
   "paths": {
+    "/api/v3/capabilities/{capabilityId}/invoke": {
+      "post": {
+        "tags": ["Execution"],
+        "operationId": "invokeCapability",
+        "summary": "Canonical secretless capability invoke (Execution Trust Layer)",
+        "description": "Preferred invoke endpoint. URL identifies the capability for rate limiting, SDK generation, gateway policy, and audit tracing. Agent never receives secrets.",
+        "security": [{ "AgentBearer": [] }],
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Capability id or name (e.g. github.create_repo)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CapabilityInvokeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "completed (sanitized result) or dry_run",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CapabilityInvokeResponse" }
+              }
+            }
+          },
+          "202": { "description": "pending_approval" },
+          "400": { "description": "failed / timeout" },
+          "403": { "description": "denied by policy (status=denied)" },
+          "409": { "description": "reconnect_required" }
+        }
+      }
+    },
+    "/v3/capabilities/{capabilityId}/invoke": {
+      "post": {
+        "tags": ["Execution"],
+        "operationId": "invokeCapabilityV3Alias",
+        "summary": "Alias of canonical capability invoke",
+        "description": "Compatibility alias that rewrites to POST /api/v3/capabilities/{capabilityId}/invoke.",
+        "security": [{ "AgentBearer": [] }],
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CapabilityInvokeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "completed (sanitized result)" },
+          "202": { "description": "pending_approval" },
+          "403": { "description": "denied" },
+          "409": { "description": "reconnect_required" }
+        }
+      }
+    },
+    "/api/v3/openapi.json": {
+      "get": {
+        "tags": ["Execution"],
+        "summary": "Execution Trust Layer OpenAPI (gateway surface)",
+        "responses": { "200": { "description": "OpenAPI document for /api/v3/*" } }
+      }
+    },
     "/v3/platform/status": {
       "get": {
         "tags": ["Platform"],
@@ -165,7 +287,10 @@
     "/v3/agent/invoke": {
       "post": {
         "tags": ["Agent"],
-        "summary": "Invoke a capability through the Trust Broker",
+        "deprecated": true,
+        "operationId": "invokeCapabilityLegacyAgent",
+        "summary": "Compatibility alias — prefer POST /api/v3/capabilities/{capabilityId}/invoke",
+        "description": "Legacy Trust Broker invoke. Pass capability in the request body. New agents and SDKs should use the canonical capability-scoped path.",
         "security": [{ "AgentBearer": [] }],
         "requestBody": {
           "required": true,
@@ -177,8 +302,8 @@
         },
         "responses": {
           "200": { "description": "Business result only — no secrets" },
-          "202": { "description": "Pending user confirmation" },
-          "403": { "description": "Authorization required" }
+          "202": { "description": "Pending user confirmation / approval" },
+          "403": { "description": "Authorization required or policy denied" }
         }
       }
     },

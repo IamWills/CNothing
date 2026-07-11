@@ -328,6 +328,8 @@ export function handleMcpInfo(baseUrl: string) {
       manifest: `${baseUrl}/mcp/manifest`,
       v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
       openapi_v3: `${baseUrl}/openapi-v3.json`,
+      openapi_api_v3: `${baseUrl}/api/v3/openapi.json`,
+      canonical_invoke: `${baseUrl}/api/v3/capabilities/{capabilityId}/invoke`,
       openapi_v26: `${baseUrl}/openapi-v2.6.json`,
       openapi_v25: `${baseUrl}/openapi-v2.5.json`,
       openapi_v2: `${baseUrl}/openapi-v2.json`,

@@ -86,7 +86,11 @@ async function main() {
   );
   assert(status.status === 200, `platform status failed: ${status.text}`);
   assert(status.data.version === "3.0.0", "expected version 3.0.0");
-  assert(status.data.product?.includes("Trust Broker"), "expected Trust Broker product name");
+  assert(
+    status.data.product?.includes("Execution Trust Layer") ||
+      status.data.product?.includes("Trust Broker"),
+    "expected Execution Trust Layer product name",
+  );
   console.log("  version:", status.data.version);
 
   console.log("v3 E2E: user session (login-tokens + login + me)");
@@ -185,9 +189,11 @@ async function main() {
       input: { owner: "e2e-test", repo: "e2e-test" },
     }),
   });
-  assert(denied.status === 400 || denied.data.status === "failed", denied.text);
+  assert(denied.status === 403 || denied.status === 400 || denied.data.status === "failed" || denied.data.status === "denied", denied.text);
   assert(
-    denied.data.error?.code === "policy_denied" || denied.data.status === "failed",
+    denied.data.error?.code === "policy_denied" ||
+      denied.data.status === "failed" ||
+      denied.data.status === "denied",
     `expected policy_denied, got ${denied.text}`,
   );
   assertNoSecrets(denied.text);

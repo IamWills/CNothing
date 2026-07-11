@@ -29,8 +29,13 @@ function mapApprovalRow(row: Record<string, unknown>): ApprovalRecord {
     user_id: String(row.user_id),
     agent_id: String(row.agent_id),
     capability_id: String(row.capability_id),
+    execution_id: row.execution_id ? String(row.execution_id) : null,
+    policy_id: row.policy_id ? String(row.policy_id) : null,
     requested_action: String(row.requested_action ?? ""),
     input_summary: String(row.input_summary ?? ""),
+    safe_input_summary: row.safe_input_summary
+      ? String(row.safe_input_summary)
+      : String(row.input_summary ?? ""),
     input_hash: row.input_hash ? String(row.input_hash) : null,
     risk_level: String(row.risk_level ?? "MEDIUM"),
     scopes: asStringArray(row.scopes),
@@ -39,6 +44,7 @@ function mapApprovalRow(row: Record<string, unknown>): ApprovalRecord {
     status: String(row.status) as ApprovalStatus,
     approved_at: row.approved_at ? asIso(row.approved_at) : null,
     rejected_at: row.rejected_at ? asIso(row.rejected_at) : null,
+    cancelled_at: row.cancelled_at ? asIso(row.cancelled_at) : null,
     decided_by: row.decided_by ? String(row.decided_by) : null,
     approval_token_hash: row.approval_token_hash ? String(row.approval_token_hash) : null,
     tenant_id: String(row.tenant_id ?? "default"),
@@ -54,6 +60,8 @@ function mapExecutionRow(row: Record<string, unknown>): ExecutionRecord {
     agent_id: String(row.agent_id),
     user_id: row.user_id ? String(row.user_id) : null,
     capability_id: String(row.capability_id),
+    provider_id: row.provider_id ? String(row.provider_id) : null,
+    connection_id: row.connection_id ? String(row.connection_id) : null,
     approval_id: row.approval_id ? String(row.approval_id) : null,
     idempotency_key: row.idempotency_key ? String(row.idempotency_key) : null,
     status: String(row.status) as ExecutionStatus,
@@ -63,9 +71,19 @@ function mapExecutionRow(row: Record<string, unknown>): ExecutionRecord {
     error_message: row.error_message ? String(row.error_message) : null,
     dry_run: Boolean(row.dry_run),
     result_payload: row.result_payload ? normalizeMetadata(row.result_payload) : null,
+    policy_decision: row.policy_decision ? normalizeMetadata(row.policy_decision) : null,
+    worker_type: row.worker_type ? String(row.worker_type) : null,
+    safe_input: row.safe_input ? normalizeMetadata(row.safe_input) : null,
+    sanitized_output: row.sanitized_output ? normalizeMetadata(row.sanitized_output) : null,
+    audit_chain_id: row.audit_chain_id ? String(row.audit_chain_id) : null,
     tenant_id: String(row.tenant_id ?? "default"),
     started_at: asIso(row.started_at),
     finished_at: row.finished_at ? asIso(row.finished_at) : null,
+    completed_at: row.completed_at
+      ? asIso(row.completed_at)
+      : row.finished_at
+        ? asIso(row.finished_at)
+        : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
@@ -125,36 +143,62 @@ export async function createApproval(input: {
   tenant_id?: string;
   metadata?: JsonObject;
   approval_token?: string;
+  execution_id?: string | null;
+  policy_id?: string | null;
 }): Promise<{ approval: ApprovalRecord; approval_token: string }> {
   const id = randomUUID();
   const token = input.approval_token ?? generateApprovalToken();
   const tokenHash = hashApprovalToken(token);
 
-  await pool.query(
-    `
-      INSERT INTO cap_approvals (
-        id, user_id, agent_id, capability_id, requested_action, input_summary,
-        input_hash, risk_level, scopes, resource_key, expires_at, status,
-        approval_token_hash, tenant_id, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb)
-    `,
-    [
-      id,
-      input.user_id,
-      input.agent_id,
-      input.capability_id,
-      input.requested_action,
-      input.input_summary,
-      input.input_hash ?? null,
-      input.risk_level,
-      JSON.stringify(input.scopes ?? []),
-      input.resource_key ?? null,
-      input.expires_at,
-      tokenHash,
-      input.tenant_id ?? "default",
-      JSON.stringify(input.metadata ?? {}),
-    ],
-  );
+  const values = [
+    id,
+    input.user_id,
+    input.agent_id,
+    input.capability_id,
+    input.requested_action,
+    input.input_summary,
+    input.input_hash ?? null,
+    input.risk_level,
+    JSON.stringify(input.scopes ?? []),
+    input.resource_key ?? null,
+    input.expires_at,
+    tokenHash,
+    input.tenant_id ?? "default",
+    JSON.stringify({
+      ...(input.metadata ?? {}),
+      execution_id: input.execution_id ?? null,
+      policy_id: input.policy_id ?? null,
+    }),
+    input.execution_id ?? null,
+    input.policy_id ?? null,
+    input.input_summary,
+  ];
+
+  try {
+    await pool.query(
+      `
+        INSERT INTO cap_approvals (
+          id, user_id, agent_id, capability_id, requested_action, input_summary,
+          input_hash, risk_level, scopes, resource_key, expires_at, status,
+          approval_token_hash, tenant_id, metadata, execution_id, policy_id,
+          safe_input_summary
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb,$15,$16,$17)
+      `,
+      values,
+    );
+  } catch {
+    // Pre-018 schema fallback
+    await pool.query(
+      `
+        INSERT INTO cap_approvals (
+          id, user_id, agent_id, capability_id, requested_action, input_summary,
+          input_hash, risk_level, scopes, resource_key, expires_at, status,
+          approval_token_hash, tenant_id, metadata
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb)
+      `,
+      values.slice(0, 14),
+    );
+  }
 
   const approval = await findApprovalById(id);
   if (!approval) {
@@ -278,6 +322,19 @@ export async function decideApproval(input: {
   return findApprovalById(input.id);
 }
 
+/** Mark an approved approval as consumed after successful resume execution. */
+export async function consumeApproval(id: string): Promise<ApprovalRecord | null> {
+  await pool.query(
+    `
+      UPDATE cap_approvals
+      SET status = 'consumed', updated_at = NOW()
+      WHERE id = $1 AND status = 'approved'
+    `,
+    [id],
+  );
+  return findApprovalById(id);
+}
+
 export async function expireStaleApprovals(): Promise<number> {
   const result = await pool.query(
     `
@@ -300,29 +357,75 @@ export async function createExecution(input: {
   dry_run?: boolean;
   tenant_id?: string;
   metadata?: JsonObject;
+  audit_chain_id?: string | null;
+  provider_id?: string | null;
+  connection_id?: string | null;
+  safe_input?: JsonObject | null;
+  policy_decision?: JsonObject | null;
+  worker_type?: string | null;
 }): Promise<ExecutionRecord> {
   const id = randomUUID();
-  await pool.query(
-    `
-      INSERT INTO cap_executions (
-        id, agent_id, user_id, capability_id, approval_id, idempotency_key,
-        status, input_hash, dry_run, tenant_id, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
-    `,
-    [
-      id,
-      input.agent_id,
-      input.user_id ?? null,
-      input.capability_id,
-      input.approval_id ?? null,
-      input.idempotency_key ?? null,
-      input.status ?? "pending",
-      input.input_hash ?? null,
-      input.dry_run ?? false,
-      input.tenant_id ?? "default",
-      JSON.stringify(input.metadata ?? {}),
-    ],
-  );
+  const status = input.status ?? "created";
+  const meta = {
+    ...(input.metadata ?? {}),
+    audit_chain_id: input.audit_chain_id ?? null,
+  };
+  try {
+    await pool.query(
+      `
+        INSERT INTO cap_executions (
+          id, agent_id, user_id, capability_id, approval_id, idempotency_key,
+          status, input_hash, dry_run, tenant_id, metadata,
+          audit_chain_id, provider_id, connection_id, safe_input, policy_decision, worker_type
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15::jsonb,$16::jsonb,$17)
+      `,
+      [
+        id,
+        input.agent_id,
+        input.user_id ?? null,
+        input.capability_id,
+        input.approval_id ?? null,
+        input.idempotency_key ?? null,
+        status,
+        input.input_hash ?? null,
+        input.dry_run ?? false,
+        input.tenant_id ?? "default",
+        JSON.stringify(meta),
+        input.audit_chain_id ?? null,
+        input.provider_id ?? null,
+        input.connection_id ?? null,
+        input.safe_input ? JSON.stringify(input.safe_input) : null,
+        input.policy_decision ? JSON.stringify(input.policy_decision) : null,
+        input.worker_type ?? null,
+      ],
+    );
+  } catch {
+    // Pre-018 / status-check fallback: map created -> pending
+    const legacyStatus = status === "created" ? "pending" : status;
+    await pool.query(
+      `
+        INSERT INTO cap_executions (
+          id, agent_id, user_id, capability_id, approval_id, idempotency_key,
+          status, input_hash, dry_run, tenant_id, metadata
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+      `,
+      [
+        id,
+        input.agent_id,
+        input.user_id ?? null,
+        input.capability_id,
+        input.approval_id ?? null,
+        input.idempotency_key ?? null,
+        legacyStatus === "denied" || legacyStatus === "reconnect_required" || legacyStatus === "policy_checking"
+          ? "pending"
+          : legacyStatus,
+        input.input_hash ?? null,
+        input.dry_run ?? false,
+        input.tenant_id ?? "default",
+        JSON.stringify(meta),
+      ],
+    );
+  }
   const execution = await findExecutionById(id);
   if (!execution) {
     throw new Error("Failed to create execution");
@@ -362,7 +465,16 @@ export async function updateExecution(
     error_message: string | null;
     result_payload: JsonObject | null;
     finished_at: string | null;
+    completed_at: string | null;
     metadata: JsonObject;
+    policy_decision: JsonObject | null;
+    worker_type: string | null;
+    safe_input: JsonObject | null;
+    sanitized_output: JsonObject | null;
+    audit_chain_id: string | null;
+    provider_id: string | null;
+    connection_id: string | null;
+    user_id: string | null;
   }>,
 ): Promise<ExecutionRecord | null> {
   const fields: string[] = ["updated_at = NOW()"];
@@ -397,14 +509,167 @@ export async function updateExecution(
     fields.push(`finished_at = $${i++}`);
     values.push(patch.finished_at);
   }
+  if (patch.completed_at !== undefined) {
+    fields.push(`completed_at = $${i++}`);
+    values.push(patch.completed_at);
+  }
   if (patch.metadata !== undefined) {
     fields.push(`metadata = $${i++}::jsonb`);
     values.push(JSON.stringify(patch.metadata));
   }
+  if (patch.policy_decision !== undefined) {
+    fields.push(`policy_decision = $${i++}::jsonb`);
+    values.push(patch.policy_decision ? JSON.stringify(patch.policy_decision) : null);
+  }
+  if (patch.worker_type !== undefined) {
+    fields.push(`worker_type = $${i++}`);
+    values.push(patch.worker_type);
+  }
+  if (patch.safe_input !== undefined) {
+    fields.push(`safe_input = $${i++}::jsonb`);
+    values.push(patch.safe_input ? JSON.stringify(patch.safe_input) : null);
+  }
+  if (patch.sanitized_output !== undefined) {
+    fields.push(`sanitized_output = $${i++}::jsonb`);
+    values.push(patch.sanitized_output ? JSON.stringify(patch.sanitized_output) : null);
+  }
+  if (patch.audit_chain_id !== undefined) {
+    fields.push(`audit_chain_id = $${i++}`);
+    values.push(patch.audit_chain_id);
+  }
+  if (patch.provider_id !== undefined) {
+    fields.push(`provider_id = $${i++}`);
+    values.push(patch.provider_id);
+  }
+  if (patch.connection_id !== undefined) {
+    fields.push(`connection_id = $${i++}`);
+    values.push(patch.connection_id);
+  }
+  if (patch.user_id !== undefined) {
+    fields.push(`user_id = $${i++}`);
+    values.push(patch.user_id);
+  }
 
   values.push(id);
-  await pool.query(`UPDATE cap_executions SET ${fields.join(", ")} WHERE id = $${i}`, values);
+  try {
+    await pool.query(`UPDATE cap_executions SET ${fields.join(", ")} WHERE id = $${i}`, values);
+  } catch (error) {
+    const needsLegacyStatus =
+      patch.status === "denied" ||
+      patch.status === "reconnect_required" ||
+      patch.status === "created" ||
+      patch.status === "policy_checking" ||
+      patch.status === "approved";
+    if (!needsLegacyStatus) throw error;
+
+    const legacy =
+      patch.status === "denied" || patch.status === "reconnect_required"
+        ? "failed"
+        : patch.status === "created" || patch.status === "policy_checking"
+          ? "pending"
+          : "running";
+
+    await pool.query(
+      `
+        UPDATE cap_executions
+        SET status = $1,
+            updated_at = NOW(),
+            error_code = COALESCE($2, error_code),
+            error_message = COALESCE($3, error_message),
+            finished_at = COALESCE($4, finished_at)
+        WHERE id = $5
+      `,
+      [
+        legacy,
+        patch.error_code ?? null,
+        patch.error_message ?? null,
+        patch.finished_at ?? null,
+        id,
+      ],
+    );
+  }
   return findExecutionById(id);
+}
+
+export async function createWorkerRun(input: {
+  execution_id: string;
+  worker_type: string;
+  status?: string;
+  metadata?: JsonObject;
+}): Promise<string> {
+  const id = randomUUID();
+  try {
+    await pool.query(
+      `
+        INSERT INTO cap_worker_runs (id, execution_id, worker_type, status, metadata)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
+      `,
+      [
+        id,
+        input.execution_id,
+        input.worker_type,
+        input.status ?? "started",
+        JSON.stringify(input.metadata ?? {}),
+      ],
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("cap_worker_runs") && !message.includes("does not exist")) {
+      throw error;
+    }
+  }
+  return id;
+}
+
+export async function finishWorkerRun(input: {
+  id: string;
+  status: "completed" | "failed" | "timeout" | "cancelled";
+  error_code?: string | null;
+  error_message?: string | null;
+}): Promise<void> {
+  try {
+    await pool.query(
+      `
+        UPDATE cap_worker_runs
+        SET status = $2, finished_at = NOW(), updated_at = NOW(),
+            error_code = $3, error_message = $4
+        WHERE id = $1
+      `,
+      [input.id, input.status, input.error_code ?? null, input.error_message ?? null],
+    );
+  } catch {
+    // table may not exist pre-migration
+  }
+}
+
+export async function listExecutions(input: {
+  user_id?: string;
+  agent_id?: string;
+  status?: ExecutionStatus;
+  limit?: number;
+}): Promise<ExecutionRecord[]> {
+  const clauses: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (input.user_id) {
+    clauses.push(`user_id = $${i++}`);
+    values.push(input.user_id);
+  }
+  if (input.agent_id) {
+    clauses.push(`agent_id = $${i++}`);
+    values.push(input.agent_id);
+  }
+  if (input.status) {
+    clauses.push(`status = $${i++}`);
+    values.push(input.status);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  values.push(Math.min(input.limit ?? 50, 200));
+  const result = await pool.query(
+    `SELECT * FROM cap_executions ${where} ORDER BY created_at DESC LIMIT $${i}`,
+    values,
+  );
+  return result.rows.map(mapExecutionRow);
 }
 
 export async function listCapabilityPermissions(): Promise<CapabilityPermissionRecord[]> {

@@ -10,11 +10,29 @@ import {
 } from "../../v2/http-invocation.executor";
 import { executeMcpCapability } from "../../v2/mcp-invocation.executor";
 import { findConnectorById } from "../../v2/v2.repository";
+import {
+  findOAuthConnectionById,
+  getConnectionAccessToken,
+  touchOAuthConnection,
+} from "../../v2/oauth.repository";
+import { oauthConnectionService } from "../../v2/oauth-connection.service";
+import { resolveGitHubAccessToken } from "../../v2/github-credential.service";
+import { ForbiddenError } from "../../utils/errors";
+import { normalizeTenantId } from "../tenant-context.service";
+import { appendAuditChainEvent } from "../audit/audit-chain";
 import type { CapabilityRecord } from "../../v2/v2.entity";
-import type { ExecutionWorker, WorkerExecuteInput, WorkerExecuteResult } from "./types";
+import type { ExecutionWorker, ExecutionContext, ExecutionResult } from "./types";
+import { sanitizeWorkerResult } from "../sanitizer/sanitizer";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * OAuthApiWorker — full production implementation.
+ *
+ * Security boundary: OAuth / API tokens are decrypted ONLY inside this worker.
+ * Gateway passes secret_refs / connection_id; never plaintext tokens.
+ * Results are always sanitized before leaving the worker.
+ */
 export class OAuthApiWorker implements ExecutionWorker {
   readonly name = "OAuthApiWorker";
   readonly executionTypes = ["oauth_api", "hybrid"] as const;
@@ -28,51 +46,135 @@ export class OAuthApiWorker implements ExecutionWorker {
     return DEFAULT_TIMEOUT_MS;
   }
 
-  async execute(input: WorkerExecuteInput): Promise<WorkerExecuteResult> {
-    if (input.dry_run) {
+  /**
+   * Resolve access token inside the worker boundary.
+   * Writes secret_accessed audit when audit_chain_id is present.
+   */
+  private async resolveAccessToken(context: ExecutionContext): Promise<string | null> {
+    // Deprecated plaintext path (should be null from gateway)
+    if (context.access_token) {
+      return context.access_token;
+    }
+
+    if (context.connection_id) {
+      let connection = await findOAuthConnectionById(context.connection_id);
+      if (!connection || connection.status === "revoked") {
+        throw new ForbiddenError("OAuth connection unavailable", {
+          error_code: "reconnect_required",
+        });
+      }
+      if (connection.status === "reconnect_required") {
+        throw new ForbiddenError("OAuth connection requires reconnection", {
+          error_code: "reconnect_required",
+        });
+      }
+
+      if (
+        connection.expires_at &&
+        new Date(connection.expires_at).getTime() < Date.now() + 60_000
+      ) {
+        await oauthConnectionService.refreshConnectionTokens(connection.id);
+        connection = await findOAuthConnectionById(connection.id);
+        if (!connection || connection.status === "reconnect_required") {
+          throw new ForbiddenError("OAuth connection requires reconnection", {
+            error_code: "reconnect_required",
+          });
+        }
+      }
+
+      await touchOAuthConnection(connection.id);
+      const token = await getConnectionAccessToken(connection);
+
+      if (context.audit_chain_id) {
+        await appendAuditChainEvent({
+          audit_chain_id: context.audit_chain_id,
+          event_type: "secret_accessed",
+          execution_id: context.execution_id,
+          agent_id: context.agent.id,
+          user_id: context.user_id,
+          capability_id: context.capability.id,
+          result: "worker_only",
+          metadata: {
+            secret_refs: context.secret_refs,
+            note: "Token decrypted inside OAuthApiWorker; never returned to agent",
+          },
+        });
+      }
+
+      return token;
+    }
+
+    // Legacy GitHub credential path (pre-OAuth-connection)
+    if (context.capability.name.startsWith("github.")) {
+      const token = await resolveGitHubAccessToken(context.user_id);
+      if (token && context.audit_chain_id) {
+        await appendAuditChainEvent({
+          audit_chain_id: context.audit_chain_id,
+          event_type: "secret_accessed",
+          execution_id: context.execution_id,
+          agent_id: context.agent.id,
+          user_id: context.user_id,
+          capability_id: context.capability.id,
+          result: "worker_only",
+          metadata: {
+            secret_refs: context.secret_refs,
+            source: "legacy_github_credential",
+          },
+        });
+      }
+      return token;
+    }
+
+    return null;
+  }
+
+  async execute(context: ExecutionContext): Promise<ExecutionResult> {
+    if (context.dry_run) {
       return {
         result: {
           dry_run: true,
-          capability: input.capability.name,
+          capability: context.capability.name,
           would_execute: true,
         },
       };
     }
 
-    const connector = await findConnectorById(input.capability.connector_id);
+    const connector = await findConnectorById(context.capability.connector_id);
     if (!connector) {
-      throw new Error(`Connector not found for capability ${input.capability.name}`);
+      throw new Error(`Connector not found for capability ${context.capability.name}`);
     }
 
-    const invocationType = readCapabilityInvocationType(input.capability);
+    const accessToken = await this.resolveAccessToken(context);
+
+    const invocationType = readCapabilityInvocationType(context.capability);
     let result: unknown;
 
     if (invocationType === "http") {
       result = await executeHttpCapability({
-        capability: input.capability,
-        payload: input.input,
-        accessToken: input.access_token ?? undefined,
+        capability: context.capability,
+        payload: context.input,
+        accessToken: accessToken ?? undefined,
       });
     } else if (invocationType === "mcp") {
       result = await executeMcpCapability({
-        capability: input.capability,
-        payload: input.input,
-        accessToken: input.access_token ?? undefined,
+        capability: context.capability,
+        payload: context.input,
+        accessToken: accessToken ?? undefined,
       });
     } else if (connector.provider === PLATFORM_CONNECTOR_PROVIDER) {
       result = await executePlatformCapability({
-        capability: input.capability.name,
-        user_id: input.user_id,
-        agent_id: input.agent.id,
-        input: input.input,
-        access_token: input.access_token ?? undefined,
+        capability: context.capability.name,
+        user_id: context.user_id,
+        agent_id: context.agent.id,
+        input: context.input,
+        access_token: accessToken ?? undefined,
       });
     } else if (connector.provider === SEARCH_CONNECTOR_PROVIDER) {
       result = await executeSearchCapability({
-        capability: input.capability.name,
-        user_id: input.user_id,
-        agent_id: input.agent.id,
-        input: input.input,
+        capability: context.capability.name,
+        user_id: context.user_id,
+        agent_id: context.agent.id,
+        input: context.input,
       });
     } else {
       throw new Error(
@@ -80,7 +182,14 @@ export class OAuthApiWorker implements ExecutionWorker {
       );
     }
 
-    return { result };
+    return {
+      result: sanitizeWorkerResult(result),
+      metadata: {
+        worker: this.name,
+        secret_refs_used: context.secret_refs.length,
+        tenant: normalizeTenantId(context.agent.tenant_id),
+      },
+    };
   }
 }
 

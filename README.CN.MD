@@ -6,15 +6,19 @@
 
 它解决的是一个非常具体的问题：AI 代理需要参与工具选择、流程决策和请求转发，但实际使用到的 secrets 又必须留在可信后端边界内。CNothing 提供了一种协议化方式，让 AI 能参与工作流，而私钥和解密后的秘密值始终不进入模型上下文。
 
-## v3 Capability Gateway：Secretless Capability Execution Gateway（推荐）
+## v3 Execution Trust Layer（推荐）
 
 定位：**The execution trust layer between AI agents and the real world.**
 
+产品定位：Capability Authorization Platform → **Execution Trust Layer for AI Agents**
+
+核心原则：Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited.
+
 - Agent 只调用 Capability Handle（如 `github.create_repo`），**永不接触** token / cookie / password / API key
-- 新增契约：`POST /api/v3/capabilities/:id/invoke` → `pending_approval` | `completed` | `failed`
-- Approval Engine、Secret Vault、OAuthApiWorker、Policy、Audit 全链路托管
-- Console：`/dashboard/capabilities|providers|connections|approvals|audit|policies`
-- 详细说明：[docs/v3-capability-gateway.md](./docs/v3-capability-gateway.md)
+- 调用链：Policy Engine → Approval Engine → Secret Vault → Execution Worker → Sanitizer → Audit Chain
+- 契约：`POST /api/v3/capabilities/:id/invoke` → `completed` | `pending_approval` | `denied` | `reconnect_required`
+- Console：`/dashboard/capabilities|providers|connections|approvals|executions|policies|secrets|audit`
+- 详细说明：[docs/execution-trust-layer.md](./docs/execution-trust-layer.md)
 
 ```bash
 # 无密钥调用示例
@@ -24,7 +28,7 @@ curl -X POST "$BASE/api/v3/capabilities/github.get_user/invoke" \
   -d '{"user_id":"USER","input":{}}'
 ```
 
-旧 `/v2` / `/v3` API 保持兼容。
+旧 `/v2` / `/v3` API 保持兼容；`/v2/agent/invoke` 内部转发新 Execution Lifecycle。
 
 ## v2.5：Universal OAuth Broker + Capability Gateway
 

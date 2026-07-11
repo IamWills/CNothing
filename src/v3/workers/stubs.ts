@@ -1,7 +1,11 @@
 import type { CapabilityRecord } from "../../v2/v2.entity";
-import type { ExecutionWorker, WorkerExecuteInput, WorkerExecuteResult } from "./types";
+import type { ExecutionWorker, ExecutionContext, ExecutionResult } from "./types";
 import { WorkerNotImplementedError } from "./types";
 
+/**
+ * ApiKeyWorker — production interface.
+ * Decrypts api_key secret_ref inside worker only; never returns key to agent.
+ */
 export class ApiKeyWorker implements ExecutionWorker {
   readonly name = "ApiKeyWorker";
   readonly executionTypes = ["api_key_api"] as const;
@@ -14,11 +18,15 @@ export class ApiKeyWorker implements ExecutionWorker {
     return 30_000;
   }
 
-  async execute(_input: WorkerExecuteInput): Promise<WorkerExecuteResult> {
+  async execute(_context: ExecutionContext): Promise<ExecutionResult> {
     throw new WorkerNotImplementedError(this.name);
   }
 }
 
+/**
+ * SshWorker — production interface.
+ * Private keys stay in Secret Vault; agent only sees sanitized command output.
+ */
 export class SshWorker implements ExecutionWorker {
   readonly name = "SshWorker";
   readonly executionTypes = ["ssh"] as const;
@@ -31,11 +39,14 @@ export class SshWorker implements ExecutionWorker {
     return 60_000;
   }
 
-  async execute(_input: WorkerExecuteInput): Promise<WorkerExecuteResult> {
+  async execute(_context: ExecutionContext): Promise<ExecutionResult> {
     throw new WorkerNotImplementedError(this.name);
   }
 }
 
+/**
+ * WebhookWorker — production interface for outbound signed webhooks.
+ */
 export class WebhookWorker implements ExecutionWorker {
   readonly name = "WebhookWorker";
   readonly executionTypes = ["webhook"] as const;
@@ -48,11 +59,14 @@ export class WebhookWorker implements ExecutionWorker {
     return 15_000;
   }
 
-  async execute(_input: WorkerExecuteInput): Promise<WorkerExecuteResult> {
+  async execute(_context: ExecutionContext): Promise<ExecutionResult> {
     throw new WorkerNotImplementedError(this.name);
   }
 }
 
+/**
+ * ManualWorker — human-in-the-loop execution (operator completes action offline).
+ */
 export class ManualWorker implements ExecutionWorker {
   readonly name = "ManualWorker";
   readonly executionTypes = ["manual"] as const;
@@ -65,7 +79,7 @@ export class ManualWorker implements ExecutionWorker {
     return 5_000;
   }
 
-  async execute(_input: WorkerExecuteInput): Promise<WorkerExecuteResult> {
+  async execute(_context: ExecutionContext): Promise<ExecutionResult> {
     throw new WorkerNotImplementedError(this.name);
   }
 }

@@ -149,8 +149,8 @@ export function HomePage() {
 
   return (
     <PageFrame
-      title="Home"
-      description={`${brand.name} keeps the useful surface visible and the secrets behind it. Move between the overview and the repository guide from this channel.`}
+      title={brand.tagline}
+      description={brand.description}
       actions={
         <>
           <ReloadIconButton onReload={() => void refreshOverview()} disabled={loading} />
@@ -168,11 +168,48 @@ export function HomePage() {
       />
 
       <section className="grid gap-4 lg:grid-cols-4">
-        <MetricCard icon={Bot} label="Platform" value={platformVersion || "v2"} helper="Capability authorization platform" />
-        <MetricCard icon={Bot} label="Agents (v2)" value={String(agentCount)} helper="Registered AI agents" />
-        <MetricCard icon={Sparkles} label="Capabilities" value={String(capabilityCount)} helper="Business capabilities in registry" />
+        <MetricCard icon={Bot} label="Platform" value={platformVersion || "v3"} helper="Execution Trust Layer" />
+        <MetricCard icon={Bot} label="Agents" value={String(agentCount)} helper="Registered AI agents" />
+        <MetricCard icon={Sparkles} label="Capabilities" value={String(capabilityCount)} helper="Executable capabilities" />
         <MetricCard icon={Shield} label="Active grants" value={String(grantCount)} helper="User → agent authorizations" />
       </section>
+
+      <Card className="space-y-4 border-[color:var(--brand)]/20 bg-[color:var(--surface-muted)]/40">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-[color:var(--brand)]" />
+          <h2 className="text-lg font-semibold">Execution Trust Layer</h2>
+        </div>
+        <p className="max-w-3xl text-sm text-slate-600">
+          Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited.
+        </p>
+        <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm text-slate-700">
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
+            <strong>1. Connect</strong>
+            <p className="mt-2 text-slate-600">
+              <a href="/connect" className="underline">Connect</a> GitHub — tokens go to Secret Vault.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
+            <strong>2. Grant</strong>
+            <p className="mt-2 text-slate-600">
+              Authorize agent for <code className="text-xs">github.*</code> capabilities.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
+            <strong>3. Invoke</strong>
+            <p className="mt-2 text-slate-600">
+              <code className="text-xs">POST /api/v3/capabilities/:id/invoke</code> — Policy → Approval → Worker.
+            </p>
+          </li>
+          <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
+            <strong>4. Audit</strong>
+            <p className="mt-2 text-slate-600">
+              Review chain at <a href="/dashboard/audit" className="underline">Audit</a> ·{" "}
+              <a href="/dashboard/executions" className="underline">Executions</a>.
+            </p>
+          </li>
+        </ol>
+      </Card>
 
       {v1SunsetAt ? (
         <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -255,12 +292,10 @@ export function HomePage() {
               <div className="space-y-2">
                 <Badge className="border-transparent bg-[color:var(--brand)] text-white">{brand.tagline}</Badge>
                 <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                  A calmer front door for CNothing
+                  {brand.tagline}
                 </h2>
                 <p className="max-w-2xl text-sm text-slate-600">
-                  The console now separates discovery, registration, and KV review into their own pages.
-                  Each page stays focused on a single workflow while still sharing the same backend APIs and
-                  connection settings.
+                  {brand.description} Policy Engine, Approval Engine, Secret Vault, and Execution Workers keep tokens inside cnothing.
                 </p>
               </div>
             </div>

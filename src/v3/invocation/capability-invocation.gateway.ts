@@ -14,26 +14,34 @@ import {
 } from "../../v2/v2.repository";
 import {
   findOAuthConnectionById,
-  getConnectionAccessToken,
   hashPayload,
   touchOAuthConnection,
 } from "../../v2/oauth.repository";
 import { oauthConnectionService } from "../../v2/oauth-connection.service";
 import { applyOutputPolicy, evaluatePolicyV25, scopesSatisfied } from "../../v2/policy-engine-v25";
-import { sanitizeAgentResponse } from "../../v2/secret-redaction";
 import { normalizeTenantId } from "../tenant-context.service";
-import { writeTrustAudit } from "../v3.repository";
 import type { InvokeGatewayResponse } from "../v3.entity";
 import {
   createExecution,
+  createWorkerRun,
   findExecutionById,
   findExecutionByIdempotency,
+  finishWorkerRun,
   updateExecution,
 } from "../gateway.repository";
 import { approvalEngine } from "../approval-engine/approval-engine";
-import { evaluateCapabilityPolicy, summarizeInputForApproval } from "../policy-engine/policy-engine-v3";
+import {
+  evaluateCapabilityPolicy,
+  publicPolicyDecision,
+  summarizeInputForApproval,
+} from "../policy-engine/policy-engine-v3";
 import { resolveWorker } from "../workers";
 import { WorkerNotImplementedError } from "../workers/types";
+import {
+  appendAuditChainEvent,
+  createAuditChainId,
+} from "../audit/audit-chain";
+import { sanitizeAgentFacing, sanitizeWorkerResult } from "../sanitizer/sanitizer";
 
 function hashValue(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex");
@@ -46,6 +54,13 @@ function clientMeta(request?: Request): { ip: string | null; user_agent: string 
     ip: forwarded || null,
     user_agent: request.headers.get("user-agent"),
   };
+}
+
+function connectUrlForProvider(provider = "github", agentId?: string): string {
+  const base = config.consoleUrl?.replace(/\/+$/, "") ?? config.publicBaseUrl;
+  const qs = new URLSearchParams({ provider });
+  if (agentId) qs.set("agent_id", agentId);
+  return `${base}/connect?${qs.toString()}`;
 }
 
 async function resolveUserId(input: {
@@ -75,24 +90,24 @@ async function resolveUserId(input: {
   });
 }
 
-async function resolveAccessToken(input: {
+async function ensureConnectionReady(input: {
   userId: string;
   connectionId: string | null;
   capabilityName: string;
   agentTenantId?: string;
-}): Promise<string | null> {
+}): Promise<void> {
   if (!input.connectionId) {
+    // Legacy github credential path is resolved inside OAuthApiWorker
     if (input.capabilityName.startsWith("github.")) {
-      const { resolveGitHubAccessToken } = await import("../../v2/github-credential.service");
-      return resolveGitHubAccessToken(input.userId);
+      return;
     }
-    return null;
+    return;
   }
 
   let connection = await findOAuthConnectionById(input.connectionId);
   if (!connection || connection.status === "revoked") {
     throw new ForbiddenError("OAuth connection unavailable", {
-      error_code: "connection_unavailable",
+      error_code: "reconnect_required",
     });
   }
 
@@ -110,6 +125,7 @@ async function resolveAccessToken(input: {
     }
   }
 
+  // Server-side refresh only — plaintext never returned to gateway
   if (
     connection.expires_at &&
     new Date(connection.expires_at).getTime() < Date.now() + 60_000
@@ -124,14 +140,37 @@ async function resolveAccessToken(input: {
   }
 
   await touchOAuthConnection(connection.id);
-  return getConnectionAccessToken(connection);
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(`Worker timed out after ${ms}ms`);
+      (err as Error & { details?: { error_code: string } }).details = {
+        error_code: "timeout",
+      };
+      reject(err);
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function resolveCapability(idOrName: string): Promise<CapabilityRecord> {
   const byId = await findCapabilityById(idOrName);
   if (byId && !byId.deleted_at) return byId;
 
-  // Alias: github.list_repos -> github.list_repositories
   const aliases: Record<string, string> = {
     "github.list_repos": "github.list_repositories",
     "github.list_repositories": "github.list_repositories",
@@ -152,6 +191,7 @@ export class CapabilityInvocationGateway {
     idempotency_key?: string;
     dry_run?: boolean;
     approval_id?: string;
+    timeout_ms?: number;
     request?: Request;
   }): Promise<InvokeGatewayResponse> {
     const { ip, user_agent } = clientMeta(input.request);
@@ -160,8 +200,9 @@ export class CapabilityInvocationGateway {
     const inputHash = hashPayload(payload);
     const dryRun = Boolean(input.dry_run);
     const inputSummary = summarizeInputForApproval(payload);
+    const auditChainId = createAuditChainId();
+    const safeInput = sanitizeAgentFacing(payload) as JsonObject;
 
-    // Special-case: github.oauth.connect returns connect URL without secrets
     if (capability.name === "github.oauth.connect") {
       return this.handleOAuthConnect({
         agent: input.agent,
@@ -171,6 +212,7 @@ export class CapabilityInvocationGateway {
         ip,
         user_agent,
         inputSummary,
+        auditChainId,
       });
     }
 
@@ -190,11 +232,28 @@ export class CapabilityInvocationGateway {
       user_id: input.user_id ?? null,
       capability_id: capability.id,
       idempotency_key: input.idempotency_key ?? null,
-      status: "pending",
+      status: "created",
       input_hash: inputHash,
       dry_run: dryRun,
       tenant_id: normalizeTenantId(input.agent.tenant_id),
+      audit_chain_id: auditChainId,
+      safe_input: safeInput,
       metadata: { capability_name: capability.name },
+    });
+
+    await appendAuditChainEvent({
+      audit_chain_id: auditChainId,
+      event_type: "capability_invoked",
+      execution_id: execution.id,
+      agent_id: input.agent.id,
+      user_id: input.user_id ?? null,
+      capability_id: capability.id,
+      input_summary: inputSummary,
+      risk_level: capability.risk_level,
+      ip,
+      user_agent,
+      result: "created",
+      metadata: { dry_run: dryRun, capability_name: capability.name },
     });
 
     try {
@@ -211,7 +270,8 @@ export class CapabilityInvocationGateway {
 
       execution =
         (await updateExecution(execution.id, {
-          status: "running",
+          status: "policy_checking",
+          user_id: userId,
           metadata: { ...execution.metadata, user_id: userId },
         })) ?? execution;
 
@@ -222,8 +282,9 @@ export class CapabilityInvocationGateway {
       });
 
       if (!grant) {
-        const failed = await this.failExecution({
+        return this.failExecution({
           executionId: execution.id,
+          auditChainId,
           code: "authorization_required",
           message: "Authorization required for this capability",
           recoverable: true,
@@ -234,12 +295,12 @@ export class CapabilityInvocationGateway {
           user_agent,
           inputSummary,
         });
-        return failed;
       }
 
       if (!scopesSatisfied(grant.scopes, capability.scopes)) {
         return this.failExecution({
           executionId: execution.id,
+          auditChainId,
           code: "insufficient_scope",
           message: "Grant scopes insufficient for capability",
           recoverable: true,
@@ -252,42 +313,83 @@ export class CapabilityInvocationGateway {
         });
       }
 
-      // Legacy v2.5 policy engine (deny / confirmation)
+      // Legacy v2.5 policy (deny still applies)
       const legacyPolicies = await listPolicies();
       const legacyDecision = evaluatePolicyV25(capability, legacyPolicies);
       if (legacyDecision.action === "deny") {
-        return this.failExecution({
+        return this.denyExecution({
           executionId: execution.id,
-          code: "policy_denied",
+          auditChainId,
           message: legacyDecision.reason ?? "Policy denied this capability invocation",
-          recoverable: false,
           agent: input.agent,
           capability,
           userId,
           ip,
           user_agent,
           inputSummary,
+          policyDecision: {
+            decision: "deny",
+            reason: legacyDecision.reason ?? "legacy deny",
+            matched_policy_id: null,
+            risk_level: "critical",
+          },
         });
       }
 
-      // v3 capability permissions
+      // Independent Policy Engine (deny beats grant allow)
       const policyDecision = await evaluateCapabilityPolicy({
         agent: input.agent,
         capability,
+        payload,
       });
 
-      if (policyDecision.action === "deny") {
-        return this.failExecution({
+      await updateExecution(execution.id, {
+        policy_decision: publicPolicyDecision(policyDecision) as unknown as JsonObject,
+      });
+
+      await appendAuditChainEvent({
+        audit_chain_id: auditChainId,
+        event_type: "policy_evaluated",
+        execution_id: execution.id,
+        agent_id: input.agent.id,
+        user_id: userId,
+        capability_id: capability.id,
+        policy_id: policyDecision.matched_policy_id,
+        input_summary: inputSummary,
+        risk_level: policyDecision.risk_level,
+        ip,
+        user_agent,
+        result: policyDecision.decision,
+        metadata: publicPolicyDecision(policyDecision) as unknown as JsonObject,
+      });
+
+      if (policyDecision.decision === "deny") {
+        return this.denyExecution({
           executionId: execution.id,
-          code: policyDecision.rate_limited ? "rate_limited" : "policy_denied",
+          auditChainId,
           message: policyDecision.reason,
-          recoverable: Boolean(policyDecision.rate_limited),
           agent: input.agent,
           capability,
           userId,
           ip,
           user_agent,
           inputSummary,
+          policyDecision: publicPolicyDecision(policyDecision),
+          rateLimited: policyDecision.rate_limited,
+        });
+      }
+
+      if (policyDecision.decision === "require_reauth") {
+        return this.reconnectResponse({
+          executionId: execution.id,
+          auditChainId,
+          agent: input.agent,
+          capability,
+          userId,
+          ip,
+          user_agent,
+          inputSummary,
+          message: policyDecision.reason,
         });
       }
 
@@ -298,6 +400,7 @@ export class CapabilityInvocationGateway {
         if (!status || status.status !== "approved") {
           return this.failExecution({
             executionId: execution.id,
+            auditChainId,
             code: "approval_not_approved",
             message: `Approval status is ${status?.status ?? "missing"}`,
             recoverable: true,
@@ -310,7 +413,20 @@ export class CapabilityInvocationGateway {
             approvalId,
           });
         }
-      } else if (policyDecision.action === "require_approval") {
+        await updateExecution(execution.id, { status: "approved", approval_id: approvalId });
+        await appendAuditChainEvent({
+          audit_chain_id: auditChainId,
+          event_type: "approval_approved",
+          execution_id: execution.id,
+          agent_id: input.agent.id,
+          user_id: userId,
+          capability_id: capability.id,
+          approval_id: approvalId,
+          result: "approved",
+          input_summary: inputSummary,
+          risk_level: capability.risk_level,
+        });
+      } else if (policyDecision.decision === "require_approval") {
         const requirement = await approvalEngine.evaluateRequirement({
           user_id: userId,
           agent: input.agent,
@@ -327,6 +443,8 @@ export class CapabilityInvocationGateway {
             payload,
             input_hash: inputHash,
             policy: requirement.policy,
+            execution_id: execution.id,
+            policy_id: policyDecision.matched_policy_id,
           });
 
           await updateExecution(execution.id, {
@@ -334,17 +452,19 @@ export class CapabilityInvocationGateway {
             approval_id: requested.approval.id,
           });
 
-          await writeTrustAudit({
-            event_type: "invocation",
+          await appendAuditChainEvent({
+            audit_chain_id: auditChainId,
+            event_type: "approval_requested",
+            execution_id: execution.id,
             agent_id: input.agent.id,
             user_id: userId,
             capability_id: capability.id,
-            execution_id: execution.id,
             approval_id: requested.approval.id,
+            policy_id: policyDecision.matched_policy_id,
+            input_summary: inputSummary,
+            risk_level: policyDecision.risk_level,
             ip,
             user_agent,
-            input_summary: inputSummary,
-            risk_level: capability.risk_level,
             result: "pending_approval",
           });
 
@@ -364,16 +484,18 @@ export class CapabilityInvocationGateway {
             metadata: {
               approval_id: requested.approval.id,
               execution_id: execution.id,
+              audit_chain_id: auditChainId,
               input_summary: inputSummary,
             },
           });
 
-          return sanitizeAgentResponse({
+          return sanitizeAgentFacing({
             status: "pending_approval",
             approval_id: requested.approval.id,
             approval_url: requested.approval_url,
             safe_summary: requested.safe_summary,
             execution_id: execution.id,
+            audit_chain_id: auditChainId,
           });
         }
 
@@ -384,22 +506,37 @@ export class CapabilityInvocationGateway {
         const result = {
           dry_run: true,
           capability: capability.name,
-          policy: policyDecision.action,
+          policy: policyDecision.decision,
           would_execute: true,
         };
         const auditId = randomUUID();
+        const now = new Date().toISOString();
         await updateExecution(execution.id, {
           status: "completed",
           approval_id: approvalId,
           result_hash: hashValue(result),
           result_payload: result as JsonObject,
-          finished_at: new Date().toISOString(),
+          sanitized_output: result as JsonObject,
+          finished_at: now,
+          completed_at: now,
         });
-        return sanitizeAgentResponse({
+        await appendAuditChainEvent({
+          audit_chain_id: auditChainId,
+          event_type: "execution_completed",
+          execution_id: execution.id,
+          agent_id: input.agent.id,
+          user_id: userId,
+          capability_id: capability.id,
+          result: "dry_run",
+          input_summary: inputSummary,
+          risk_level: capability.risk_level,
+        });
+        return sanitizeAgentFacing({
           status: "completed",
           result,
           execution_id: execution.id,
           audit_id: auditId,
+          audit_chain_id: auditChainId,
         });
       }
 
@@ -409,33 +546,129 @@ export class CapabilityInvocationGateway {
           ? grant.metadata.connection_id
           : null);
 
-      const accessToken = await resolveAccessToken({
-        userId,
-        connectionId,
-        capabilityName: capability.name,
-        agentTenantId: input.agent.tenant_id,
-      });
+      try {
+        await ensureConnectionReady({
+          userId,
+          connectionId,
+          capabilityName: capability.name,
+          agentTenantId: input.agent.tenant_id,
+        });
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "details" in error
+            ? String(
+                (error as { details?: { error_code?: string } }).details?.error_code ?? "",
+              )
+            : "";
+        if (code === "reconnect_required") {
+          return this.reconnectResponse({
+            executionId: execution.id,
+            auditChainId,
+            agent: input.agent,
+            capability,
+            userId,
+            ip,
+            user_agent,
+            inputSummary,
+            message:
+              error instanceof Error
+                ? error.message
+                : "OAuth connection requires reconnection",
+          });
+        }
+        throw error;
+      }
+
+      const secretRefs = connectionId
+        ? [`connection:${connectionId}:oauth_access_token`]
+        : capability.name.startsWith("github.")
+          ? [`user:${userId}:github_oauth`]
+          : [];
 
       const worker = resolveWorker(capability);
-      const workerResult = await worker.execute({
-        capability,
-        agent: input.agent,
-        user_id: userId,
-        input: payload,
-        access_token: accessToken,
+      const timeoutMs =
+        typeof input.timeout_ms === "number" && input.timeout_ms > 0
+          ? Math.min(input.timeout_ms, 300_000)
+          : worker.timeoutMs();
+
+      await updateExecution(execution.id, {
+        status: "running",
+        approval_id: approvalId,
         connection_id: connectionId,
-        dry_run: false,
-        timeout_ms: worker.timeoutMs(),
+        worker_type: worker.name,
+        provider_id: capability.provider_id,
+      });
+
+      const workerRunId = await createWorkerRun({
+        execution_id: execution.id,
+        worker_type: worker.name,
+        status: "running",
+      });
+
+      await appendAuditChainEvent({
+        audit_chain_id: auditChainId,
+        event_type: "worker_started",
+        execution_id: execution.id,
+        agent_id: input.agent.id,
+        user_id: userId,
+        capability_id: capability.id,
+        result: worker.name,
+        metadata: { worker_type: worker.name, timeout_ms: timeoutMs },
+      });
+
+      const workerResult = await withTimeout(
+        worker.execute({
+          execution_id: execution.id,
+          capability,
+          agent: input.agent,
+          user_id: userId,
+          input: payload,
+          safe_input: safeInput,
+          // Plaintext never crosses gateway → worker boundary
+          access_token: null,
+          secret_refs: secretRefs,
+          connection_id: connectionId,
+          policy_decision: publicPolicyDecision(policyDecision),
+          approval_id: approvalId,
+          dry_run: false,
+          timeout_ms: timeoutMs,
+          audit_chain_id: auditChainId,
+        }),
+        timeoutMs,
+      );
+
+      await appendAuditChainEvent({
+        audit_chain_id: auditChainId,
+        event_type: "third_party_called",
+        execution_id: execution.id,
+        agent_id: input.agent.id,
+        user_id: userId,
+        capability_id: capability.id,
+        result: "ok",
+        metadata: { worker_type: worker.name },
       });
 
       const filtered = applyOutputPolicy({
         result: workerResult.result,
         decision: legacyDecision,
       });
-      const sanitized = sanitizeAgentResponse(filtered);
-      const auditId = randomUUID();
+      const sanitized = sanitizeWorkerResult(filtered);
 
+      await appendAuditChainEvent({
+        audit_chain_id: auditChainId,
+        event_type: "result_sanitized",
+        execution_id: execution.id,
+        agent_id: input.agent.id,
+        user_id: userId,
+        capability_id: capability.id,
+        result: "ok",
+        result_hash: hashValue(sanitized),
+      });
+
+      const auditId = randomUUID();
+      const now = new Date().toISOString();
       await touchGrantLastUsed(grant.id);
+      await finishWorkerRun({ id: workerRunId, status: "completed" });
       await updateExecution(execution.id, {
         status: "completed",
         approval_id: approvalId,
@@ -443,8 +676,16 @@ export class CapabilityInvocationGateway {
         result_payload: (sanitized && typeof sanitized === "object"
           ? (sanitized as JsonObject)
           : { value: sanitized }) as JsonObject,
-        finished_at: new Date().toISOString(),
+        sanitized_output: (sanitized && typeof sanitized === "object"
+          ? (sanitized as JsonObject)
+          : { value: sanitized }) as JsonObject,
+        finished_at: now,
+        completed_at: now,
       });
+
+      if (approvalId) {
+        await approvalEngine.markConsumed(approvalId);
+      }
 
       await writeInvokeAudit({
         user_id: userId,
@@ -452,7 +693,7 @@ export class CapabilityInvocationGateway {
         capability_id: capability.id,
         capability_name: capability.name,
         connector_id: connector.id,
-        policy_decision: policyDecision.action,
+        policy_decision: policyDecision.decision,
         status: "completed",
         request_id: execution.id,
         input_hash: inputHash,
@@ -463,37 +704,41 @@ export class CapabilityInvocationGateway {
           execution_id: execution.id,
           approval_id: approvalId,
           audit_id: auditId,
+          audit_chain_id: auditChainId,
           input_summary: inputSummary,
           ip,
           user_agent,
         },
       });
 
-      await writeTrustAudit({
-        event_type: "execution",
+      await appendAuditChainEvent({
+        audit_chain_id: auditChainId,
+        event_type: "execution_completed",
+        execution_id: execution.id,
         agent_id: input.agent.id,
         user_id: userId,
         capability_id: capability.id,
-        execution_id: execution.id,
         approval_id: approvalId,
+        result: "success",
         result_hash: hashValue(sanitized),
-        ip,
-        user_agent,
         input_summary: inputSummary,
         risk_level: capability.risk_level,
-        result: "success",
+        ip,
+        user_agent,
       });
 
-      return sanitizeAgentResponse({
+      return sanitizeAgentFacing({
         status: "completed",
         result: sanitized,
         execution_id: execution.id,
         audit_id: auditId,
+        audit_chain_id: auditChainId,
       });
     } catch (error) {
       if (error instanceof WorkerNotImplementedError) {
         return this.failExecution({
           executionId: execution.id,
+          auditChainId,
           code: "not_implemented",
           message: error.message,
           recoverable: false,
@@ -513,10 +758,55 @@ export class CapabilityInvocationGateway {
             )
           : "execution_failed";
       const message = error instanceof Error ? error.message : String(error);
-      const recoverable = code === "reconnect_required" || code === "authorization_required";
 
+      if (code === "timeout") {
+        const now = new Date().toISOString();
+        await updateExecution(execution.id, {
+          status: "timeout",
+          error_code: "timeout",
+          error_message: message,
+          finished_at: now,
+          completed_at: now,
+        });
+        await appendAuditChainEvent({
+          audit_chain_id: auditChainId,
+          event_type: "execution_failed",
+          execution_id: execution.id,
+          agent_id: input.agent.id,
+          capability_id: capability.id,
+          result: "timeout",
+          metadata: { error_code: "timeout" },
+        });
+        return sanitizeAgentFacing({
+          status: "failed",
+          execution_id: execution.id,
+          audit_chain_id: auditChainId,
+          error: {
+            code: "timeout",
+            message,
+            recoverable: true,
+          },
+        });
+      }
+
+      if (code === "reconnect_required") {
+        return this.reconnectResponse({
+          executionId: execution.id,
+          auditChainId,
+          agent: input.agent,
+          capability,
+          userId: input.user_id,
+          ip,
+          user_agent,
+          inputSummary,
+          message,
+        });
+      }
+
+      const recoverable = code === "authorization_required";
       return this.failExecution({
         executionId: execution.id,
+        auditChainId,
         code,
         message,
         recoverable,
@@ -532,17 +822,25 @@ export class CapabilityInvocationGateway {
   async getExecution(executionId: string) {
     const execution = await findExecutionById(executionId);
     if (!execution) return null;
-    return sanitizeAgentResponse({
+    return sanitizeAgentFacing({
       execution_id: execution.id,
       status: execution.status,
+      agent_id: execution.agent_id,
+      user_id: execution.user_id,
       capability_id: execution.capability_id,
+      provider_id: execution.provider_id,
+      connection_id: execution.connection_id,
       approval_id: execution.approval_id,
+      policy_decision: execution.policy_decision,
+      worker_type: execution.worker_type,
+      idempotency_key: execution.idempotency_key,
       error_code: execution.error_code,
       error_message: execution.error_message,
       dry_run: execution.dry_run,
       started_at: execution.started_at,
-      finished_at: execution.finished_at,
-      result: execution.status === "completed" ? execution.result_payload : undefined,
+      completed_at: execution.completed_at ?? execution.finished_at,
+      audit_chain_id: execution.audit_chain_id,
+      result: execution.status === "completed" ? execution.sanitized_output ?? execution.result_payload : undefined,
     });
   }
 
@@ -554,30 +852,35 @@ export class CapabilityInvocationGateway {
     ip: string | null;
     user_agent: string | null;
     inputSummary: string;
+    auditChainId: string;
   }): Promise<InvokeGatewayResponse> {
-    const base = config.consoleUrl?.replace(/\/+$/, "") ?? config.publicBaseUrl;
-    const connectUrl = `${base}/connect?provider=github&agent_id=${encodeURIComponent(input.agent.id)}`;
+    const connectUrl = connectUrlForProvider("github", input.agent.id);
     const execution = await createExecution({
       agent_id: input.agent.id,
       user_id: input.user_id ?? null,
       capability_id: input.capability.id,
       status: "completed",
       dry_run: input.dryRun,
+      audit_chain_id: input.auditChainId,
       metadata: { capability_name: input.capability.name },
     });
+    const now = new Date().toISOString();
     await updateExecution(execution.id, {
       status: "completed",
       result_payload: { connect_url: connectUrl, provider: "github" },
+      sanitized_output: { connect_url: connectUrl, provider: "github" },
       result_hash: hashValue({ connect_url: connectUrl }),
-      finished_at: new Date().toISOString(),
+      finished_at: now,
+      completed_at: now,
     });
 
-    await writeTrustAudit({
-      event_type: "invocation",
+    await appendAuditChainEvent({
+      audit_chain_id: input.auditChainId,
+      event_type: "capability_invoked",
+      execution_id: execution.id,
       agent_id: input.agent.id,
       user_id: input.user_id ?? null,
       capability_id: input.capability.id,
-      execution_id: execution.id,
       ip: input.ip,
       user_agent: input.user_agent,
       input_summary: input.inputSummary,
@@ -585,7 +888,7 @@ export class CapabilityInvocationGateway {
       result: "success",
     });
 
-    return sanitizeAgentResponse({
+    return sanitizeAgentFacing({
       status: "completed",
       result: {
         connect_url: connectUrl,
@@ -594,11 +897,138 @@ export class CapabilityInvocationGateway {
       },
       execution_id: execution.id,
       audit_id: randomUUID(),
+      audit_chain_id: input.auditChainId,
+    });
+  }
+
+  private async denyExecution(input: {
+    executionId: string;
+    auditChainId: string;
+    message: string;
+    agent: AgentRecord;
+    capability: CapabilityRecord;
+    userId?: string;
+    ip: string | null;
+    user_agent: string | null;
+    inputSummary: string;
+    policyDecision: {
+      decision: string;
+      reason: string;
+      matched_policy_id: string | null;
+      risk_level: string;
+    };
+    rateLimited?: boolean;
+  }): Promise<InvokeGatewayResponse> {
+    const now = new Date().toISOString();
+    await updateExecution(input.executionId, {
+      status: "denied",
+      error_code: input.rateLimited ? "rate_limited" : "policy_denied",
+      error_message: input.message,
+      policy_decision: input.policyDecision as unknown as JsonObject,
+      finished_at: now,
+      completed_at: now,
+    });
+
+    await appendAuditChainEvent({
+      audit_chain_id: input.auditChainId,
+      event_type: "execution_denied",
+      execution_id: input.executionId,
+      agent_id: input.agent.id,
+      user_id: input.userId ?? null,
+      capability_id: input.capability.id,
+      policy_id: input.policyDecision.matched_policy_id,
+      ip: input.ip,
+      user_agent: input.user_agent,
+      input_summary: input.inputSummary,
+      risk_level: input.policyDecision.risk_level,
+      result: "denied",
+      metadata: input.policyDecision as unknown as JsonObject,
+    });
+
+    await writeInvokeAudit({
+      user_id: input.userId ?? null,
+      agent_id: input.agent.id,
+      capability_id: input.capability.id,
+      capability_name: input.capability.name,
+      policy_decision: "deny",
+      status: "denied",
+      request_id: input.executionId,
+      error_code: "policy_denied",
+      success: false,
+      risk_level: input.capability.risk_level,
+      metadata: {
+        execution_id: input.executionId,
+        audit_chain_id: input.auditChainId,
+        input_summary: input.inputSummary,
+      },
+    });
+
+    return sanitizeAgentFacing({
+      status: "denied",
+      execution_id: input.executionId,
+      audit_chain_id: input.auditChainId,
+      error: {
+        code: input.rateLimited ? "rate_limited" : "policy_denied",
+        message: input.message,
+        recoverable: false,
+      },
+    });
+  }
+
+  private async reconnectResponse(input: {
+    executionId: string;
+    auditChainId: string;
+    agent: AgentRecord;
+    capability: CapabilityRecord;
+    userId?: string;
+    ip: string | null;
+    user_agent: string | null;
+    inputSummary: string;
+    message: string;
+  }): Promise<InvokeGatewayResponse> {
+    const connectionUrl = connectUrlForProvider(
+      input.capability.provider ?? "github",
+      input.agent.id,
+    );
+    const now = new Date().toISOString();
+    await updateExecution(input.executionId, {
+      status: "reconnect_required",
+      error_code: "reconnect_required",
+      error_message: input.message,
+      finished_at: now,
+      completed_at: now,
+    });
+
+    await appendAuditChainEvent({
+      audit_chain_id: input.auditChainId,
+      event_type: "reconnect_required",
+      execution_id: input.executionId,
+      agent_id: input.agent.id,
+      user_id: input.userId ?? null,
+      capability_id: input.capability.id,
+      ip: input.ip,
+      user_agent: input.user_agent,
+      input_summary: input.inputSummary,
+      risk_level: input.capability.risk_level,
+      result: "reconnect_required",
+    });
+
+    return sanitizeAgentFacing({
+      status: "reconnect_required",
+      execution_id: input.executionId,
+      connection_url: connectionUrl,
+      audit_chain_id: input.auditChainId,
+      error: {
+        code: "reconnect_required",
+        message: input.message,
+        recoverable: true,
+      },
     });
   }
 
   private async failExecution(input: {
     executionId: string;
+    auditChainId: string;
     code: string;
     message: string;
     recoverable: boolean;
@@ -610,11 +1040,13 @@ export class CapabilityInvocationGateway {
     inputSummary: string;
     approvalId?: string | null;
   }): Promise<InvokeGatewayResponse> {
+    const now = new Date().toISOString();
     await updateExecution(input.executionId, {
       status: "failed",
       error_code: input.code,
       error_message: input.message,
-      finished_at: new Date().toISOString(),
+      finished_at: now,
+      completed_at: now,
       approval_id: input.approvalId ?? null,
     });
 
@@ -631,18 +1063,20 @@ export class CapabilityInvocationGateway {
       risk_level: input.capability.risk_level,
       metadata: {
         execution_id: input.executionId,
+        audit_chain_id: input.auditChainId,
         input_summary: input.inputSummary,
         ip: input.ip,
         user_agent: input.user_agent,
       },
     });
 
-    await writeTrustAudit({
-      event_type: "execution",
+    await appendAuditChainEvent({
+      audit_chain_id: input.auditChainId,
+      event_type: "execution_failed",
+      execution_id: input.executionId,
       agent_id: input.agent.id,
       user_id: input.userId ?? null,
       capability_id: input.capability.id,
-      execution_id: input.executionId,
       approval_id: input.approvalId ?? null,
       ip: input.ip,
       user_agent: input.user_agent,
@@ -652,7 +1086,7 @@ export class CapabilityInvocationGateway {
       metadata: { error_code: input.code },
     });
 
-    return sanitizeAgentResponse({
+    return sanitizeAgentFacing({
       status: "failed",
       error: {
         code: input.code,
@@ -661,6 +1095,7 @@ export class CapabilityInvocationGateway {
       },
       execution_id: input.executionId,
       audit_id: randomUUID(),
+      audit_chain_id: input.auditChainId,
     });
   }
 
@@ -671,28 +1106,59 @@ export class CapabilityInvocationGateway {
     error_code: string | null;
     error_message: string | null;
     result_payload: JsonObject | null;
+    sanitized_output?: JsonObject | null;
+    audit_chain_id?: string | null;
   }): InvokeGatewayResponse {
     if (execution.status === "pending_approval" && execution.approval_id) {
       const base = config.consoleUrl?.replace(/\/+$/, "") ?? config.publicBaseUrl;
-      return sanitizeAgentResponse({
+      return sanitizeAgentFacing({
         status: "pending_approval",
         approval_id: execution.approval_id,
         approval_url: `${base}/dashboard/approvals/${execution.approval_id}`,
         safe_summary: "Previously requested approval (idempotent replay)",
         execution_id: execution.id,
+        audit_chain_id: execution.audit_chain_id ?? undefined,
       });
     }
 
     if (execution.status === "completed") {
-      return sanitizeAgentResponse({
+      return sanitizeAgentFacing({
         status: "completed",
-        result: execution.result_payload ?? {},
+        result: execution.sanitized_output ?? execution.result_payload ?? {},
         execution_id: execution.id,
         audit_id: randomUUID(),
+        audit_chain_id: execution.audit_chain_id ?? undefined,
       });
     }
 
-    return sanitizeAgentResponse({
+    if (execution.status === "denied") {
+      return sanitizeAgentFacing({
+        status: "denied",
+        execution_id: execution.id,
+        audit_chain_id: execution.audit_chain_id ?? undefined,
+        error: {
+          code: execution.error_code ?? "policy_denied",
+          message: execution.error_message ?? "Denied by policy",
+          recoverable: false,
+        },
+      });
+    }
+
+    if (execution.status === "reconnect_required") {
+      return sanitizeAgentFacing({
+        status: "reconnect_required",
+        execution_id: execution.id,
+        connection_url: connectUrlForProvider("github"),
+        audit_chain_id: execution.audit_chain_id ?? undefined,
+        error: {
+          code: "reconnect_required",
+          message: execution.error_message ?? "Reconnection required",
+          recoverable: true,
+        },
+      });
+    }
+
+    return sanitizeAgentFacing({
       status: "failed",
       error: {
         code: execution.error_code ?? "execution_failed",
@@ -701,6 +1167,7 @@ export class CapabilityInvocationGateway {
       },
       execution_id: execution.id,
       audit_id: randomUUID(),
+      audit_chain_id: execution.audit_chain_id ?? undefined,
     });
   }
 }
@@ -731,7 +1198,19 @@ export async function invokeViaLegacyAgentApi(input: {
       approval_url: response.approval_url,
       safe_summary: response.safe_summary,
       execution_id: response.execution_id,
+      audit_chain_id: response.audit_chain_id,
     };
+  }
+
+  if (response.status === "denied") {
+    throw new ForbiddenError(response.error.message, { error_code: "policy_denied" });
+  }
+
+  if (response.status === "reconnect_required") {
+    throw new ForbiddenError(response.error?.message ?? "reconnect required", {
+      error_code: "reconnect_required",
+      connection_url: response.connection_url,
+    });
   }
 
   if (response.status === "failed") {
@@ -754,5 +1233,6 @@ export async function invokeViaLegacyAgentApi(input: {
     result: response.result,
     execution_id: response.execution_id,
     audit_id: response.audit_id,
+    audit_chain_id: response.audit_chain_id,
   };
 }

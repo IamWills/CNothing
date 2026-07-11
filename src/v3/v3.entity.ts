@@ -2,7 +2,16 @@ import type { JsonObject } from "../v2/v2.entity";
 
 export const V3_VERSION = "3.0.0";
 
+export const V3_PRODUCT = "Execution Trust Layer for AI Agents";
+
+export const V3_TAGLINE =
+  "Secure execution of real-world capabilities without exposing secrets to AI agents.";
+
 export const V3_PRINCIPLES = [
+  "Agent thinks.",
+  "cnothing executes.",
+  "Secrets never leave cnothing.",
+  "Every risky action is approved, executed, and audited.",
   "Agent Never Owns Secrets.",
   "Public Metadata May Flow Through Agent.",
   "Secrets Never Flow Through Agent.",
@@ -67,15 +76,24 @@ export type SecretVaultRecord = {
   revoked_at: string | null;
 };
 
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "consumed";
+export type ApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "cancelled"
+  | "consumed";
 
 export type ApprovalRecord = {
   id: string;
   user_id: string;
   agent_id: string;
   capability_id: string;
+  execution_id: string | null;
+  policy_id: string | null;
   requested_action: string;
   input_summary: string;
+  safe_input_summary: string | null;
   input_hash: string | null;
   risk_level: string;
   scopes: string[];
@@ -84,6 +102,7 @@ export type ApprovalRecord = {
   status: ApprovalStatus;
   approved_at: string | null;
   rejected_at: string | null;
+  cancelled_at: string | null;
   decided_by: string | null;
   approval_token_hash: string | null;
   tenant_id: string;
@@ -93,18 +112,26 @@ export type ApprovalRecord = {
 };
 
 export type ExecutionStatus =
-  | "pending"
+  | "created"
+  | "policy_checking"
   | "pending_approval"
+  | "approved"
   | "running"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "denied"
+  | "cancelled"
+  | "timeout"
+  | "reconnect_required"
+  | "pending"; // legacy alias
 
 export type ExecutionRecord = {
   id: string;
   agent_id: string;
   user_id: string | null;
   capability_id: string;
+  provider_id: string | null;
+  connection_id: string | null;
   approval_id: string | null;
   idempotency_key: string | null;
   status: ExecutionStatus;
@@ -114,15 +141,25 @@ export type ExecutionRecord = {
   error_message: string | null;
   dry_run: boolean;
   result_payload: JsonObject | null;
+  policy_decision: JsonObject | null;
+  worker_type: string | null;
+  safe_input: JsonObject | null;
+  sanitized_output: JsonObject | null;
+  audit_chain_id: string | null;
   tenant_id: string;
   started_at: string;
   finished_at: string | null;
+  completed_at: string | null;
   metadata: JsonObject;
   created_at: string;
   updated_at: string;
 };
 
-export type CapabilityPermissionEffect = "allow" | "deny" | "require_approval";
+export type CapabilityPermissionEffect =
+  | "allow"
+  | "deny"
+  | "require_approval"
+  | "require_reauth";
 
 export type CapabilityPermissionRecord = {
   id: string;
@@ -144,7 +181,12 @@ export type CapabilityPermissionRecord = {
   deleted_at: string | null;
 };
 
-export type InvokeGatewayStatus = "pending_approval" | "completed" | "failed";
+export type InvokeGatewayStatus =
+  | "pending_approval"
+  | "completed"
+  | "failed"
+  | "denied"
+  | "reconnect_required";
 
 export type InvokeGatewayResponse =
   | {
@@ -152,13 +194,36 @@ export type InvokeGatewayResponse =
       approval_id: string;
       approval_url: string;
       safe_summary: string;
-      execution_id?: string;
+      execution_id: string;
+      audit_chain_id?: string;
     }
   | {
       status: "completed";
       result: unknown;
       execution_id: string;
       audit_id: string;
+      audit_chain_id?: string;
+    }
+  | {
+      status: "denied";
+      execution_id: string;
+      audit_chain_id?: string;
+      error: {
+        code: "policy_denied" | string;
+        message: string;
+        recoverable: false;
+      };
+    }
+  | {
+      status: "reconnect_required";
+      execution_id: string;
+      connection_url: string;
+      audit_chain_id?: string;
+      error?: {
+        code: "reconnect_required";
+        message: string;
+        recoverable: true;
+      };
     }
   | {
       status: "failed";
@@ -169,6 +234,7 @@ export type InvokeGatewayResponse =
       };
       execution_id?: string;
       audit_id?: string;
+      audit_chain_id?: string;
     };
 
 export type ProviderProposalStatus = "pending" | "validated" | "created" | "rejected" | "failed";
@@ -244,4 +310,16 @@ export type TrustAuditEventType =
   | "approval_requested"
   | "approval_decided"
   | "execution"
-  | "import";
+  | "import"
+  | "capability_invoked"
+  | "policy_evaluated"
+  | "approval_approved"
+  | "approval_rejected"
+  | "secret_accessed"
+  | "worker_started"
+  | "third_party_called"
+  | "result_sanitized"
+  | "execution_completed"
+  | "execution_failed"
+  | "execution_denied"
+  | "reconnect_required";

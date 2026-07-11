@@ -34,6 +34,7 @@ export const v2ChannelTabs: ChannelTab[] = [
 ];
 
 export const dashboardTabs: ChannelTab[] = [
+  { href: "/agents", label: "Agents", activePrefixes: ["/agents"] },
   {
     href: "/dashboard/capabilities",
     label: "Capabilities",
@@ -46,6 +47,16 @@ export const dashboardTabs: ChannelTab[] = [
     activePrefixes: ["/dashboard/connections"],
   },
   { href: "/dashboard/approvals", label: "Approvals", activePrefixes: ["/dashboard/approvals"] },
-  { href: "/dashboard/audit", label: "Audit", activePrefixes: ["/dashboard/audit"] },
+  {
+    href: "/dashboard/executions",
+    label: "Executions",
+    activePrefixes: ["/dashboard/executions"],
+  },
   { href: "/dashboard/policies", label: "Policies", activePrefixes: ["/dashboard/policies"] },
+  {
+    href: "/dashboard/secrets",
+    label: "Secret Vault",
+    activePrefixes: ["/dashboard/secrets"],
+  },
+  { href: "/dashboard/audit", label: "Audit", activePrefixes: ["/dashboard/audit"] },
 ];

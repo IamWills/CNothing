@@ -1,7 +1,7 @@
 export const brand = {
   name: "CNothing",
-  tagline: "see nothing",
+  tagline: "Execution Trust Layer for AI Agents",
   logoPath: "/cnothing4.0.png",
   description:
-    "A quiet control surface for browsing MCP capabilities, registering trusted clients, and inspecting encrypted KV data through AI-accessible backend APIs.",
+    "Secure execution of real-world capabilities without exposing secrets to AI agents.",
 };

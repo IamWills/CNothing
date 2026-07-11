@@ -455,6 +455,21 @@ export type GatewayCapability = {
 
 export type GatewayPolicyBundle = {
   ok: true;
+  trust_policies?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    capability_pattern: string | null;
+    effect: string;
+    risk_level: string;
+    priority: number;
+    enabled: boolean;
+    status: string;
+    destructive_action_block: boolean;
+    require_reauth: boolean;
+    rate_limit_per_minute: number | null;
+    metadata: Record<string, unknown>;
+  }>;
   policies: Array<{
     id: string;
     capability_pattern: string | null;
@@ -484,9 +499,42 @@ export type GatewayAuditEvent = {
   capability_id: string | null;
   execution_id: string | null;
   approval_id: string | null;
+  audit_chain_id?: string | null;
+  sequence_no?: number | null;
+  prev_hash?: string | null;
+  chain_hash?: string | null;
   input_summary: string | null;
   risk_level: string | null;
   result: string | null;
+  created_at: string;
+};
+
+export type GatewayExecution = {
+  execution_id: string;
+  status: string;
+  capability_id: string;
+  agent_id: string;
+  approval_id: string | null;
+  policy_decision: Record<string, unknown> | null;
+  worker_type: string | null;
+  audit_chain_id: string | null;
+  error_code: string | null;
+  dry_run: boolean;
+  started_at: string;
+  completed_at: string | null;
+};
+
+export type GatewaySecretMeta = {
+  secret_ref: string;
+  secret_type: string;
+  owner_type: string;
+  owner_id: string;
+  status: string;
+  fingerprint: string;
+  provider_id: string | null;
+  user_id: string | null;
+  expires_at: string | null;
+  rotated_at: string | null;
   created_at: string;
 };
 
@@ -542,6 +590,29 @@ export async function fetchGatewayAudit(connection: ConsoleConnection, limit = 5
   return requestJson<{ ok: true; items: GatewayAuditEvent[] }>(
     connection,
     `/api/v3/audit?limit=${limit}`,
+  );
+}
+
+export async function fetchGatewayAuditChain(connection: ConsoleConnection, chainId: string) {
+  return requestJson<{
+    ok: true;
+    audit_chain_id: string;
+    integrity: { valid: boolean; broken_at: number | null };
+    events: GatewayAuditEvent[];
+  }>(connection, `/api/v3/audit/chains/${encodeURIComponent(chainId)}`);
+}
+
+export async function fetchGatewayExecutions(connection: ConsoleConnection, limit = 50) {
+  return requestJson<{ ok: true; items: GatewayExecution[] }>(
+    connection,
+    `/api/v3/executions?limit=${limit}`,
+  );
+}
+
+export async function fetchGatewaySecrets(connection: ConsoleConnection, limit = 50) {
+  return requestJson<{ ok: true; items: GatewaySecretMeta[] }>(
+    connection,
+    `/api/v3/secrets?limit=${limit}`,
   );
 }
 

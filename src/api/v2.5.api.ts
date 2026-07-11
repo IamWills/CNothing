@@ -68,21 +68,44 @@ export async function handleV25AgentRequest(request: Request): Promise<Response>
     const agent = await requireAgentFromRequest(request);
     const body = await parseJsonBody(request);
     try {
-      const result = await invocationGatewayService.invoke({
+      // Legacy confirmation_id path stays on v2.5 gateway.
+      // Otherwise forward into Execution Trust Layer lifecycle (compatible response).
+      if (typeof body.confirmation_id === "string" && body.confirmation_id.trim()) {
+        const result = await invocationGatewayService.invoke({
+          agent,
+          body: {
+            capability: readRequiredString(body, "capability"),
+            input: readOptionalObject(body, "input"),
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+            confirmation_id: body.confirmation_id,
+            request_id: typeof body.request_id === "string" ? body.request_id : undefined,
+          },
+        });
+        if ("pending" in result && result.pending) {
+          return Response.json(sanitizeAgentResponse(result), { status: 202 });
+        }
+        return Response.json(result);
+      }
+
+      const { invokeViaLegacyAgentApi } = await import(
+        "../v3/invocation/capability-invocation.gateway"
+      );
+      const result = await invokeViaLegacyAgentApi({
         agent,
-        body: {
-          capability: readRequiredString(body, "capability"),
-          input: readOptionalObject(body, "input"),
-          reason: typeof body.reason === "string" ? body.reason : undefined,
-          confirmation_id:
-            typeof body.confirmation_id === "string" ? body.confirmation_id : undefined,
-          request_id: typeof body.request_id === "string" ? body.request_id : undefined,
-        },
+        capability: readRequiredString(body, "capability"),
+        user_id: typeof body.user_id === "string" ? body.user_id : undefined,
+        payload: readOptionalObject(body, "input"),
+        request,
       });
-      if ("pending" in result && result.pending) {
+      if (
+        result &&
+        typeof result === "object" &&
+        "pending_approval" in result &&
+        (result as { pending_approval?: boolean }).pending_approval
+      ) {
         return Response.json(sanitizeAgentResponse(result), { status: 202 });
       }
-      return Response.json(result);
+      return Response.json(sanitizeAgentResponse(result));
     } catch (error) {
       if (
         error instanceof Error &&

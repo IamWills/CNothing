@@ -107,7 +107,7 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
       apiBaseUrl: inferBaseUrl(request),
       scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : undefined,
     });
-    return Response.json(sanitizeAgentResponse({ ok: true, ...result }));
+    return Response.json(sanitizeAgentResponse({ ...result, ok: true }));
   }
 
   // Capabilities list
@@ -144,15 +144,23 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
           typeof body.idempotency_key === "string" ? body.idempotency_key : undefined,
         dry_run: Boolean(body.dry_run),
         approval_id: typeof body.approval_id === "string" ? body.approval_id : undefined,
+        timeout_ms:
+          typeof body.timeout_ms === "number" && body.timeout_ms > 0
+            ? body.timeout_ms
+            : undefined,
         request,
       });
 
       const status =
         response.status === "pending_approval"
           ? 202
-          : response.status === "failed"
-            ? 400
-            : 200;
+          : response.status === "denied"
+            ? 403
+            : response.status === "reconnect_required"
+              ? 409
+              : response.status === "failed"
+                ? 400
+                : 200;
 
       return Response.json(sanitizeAgentResponse(response), { status });
     }
@@ -180,13 +188,16 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
           status: a.status,
           capability_id: a.capability_id,
           agent_id: a.agent_id,
-          safe_summary: a.input_summary,
+          execution_id: a.execution_id,
+          policy_id: a.policy_id,
+          safe_summary: a.safe_input_summary ?? a.input_summary,
           risk_level: a.risk_level,
           scopes: a.scopes,
           resource_key: a.resource_key,
           expires_at: a.expires_at,
           approved_at: a.approved_at,
           rejected_at: a.rejected_at,
+          cancelled_at: a.cancelled_at,
           created_at: a.created_at,
         })),
       }),
@@ -289,6 +300,42 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
     }
   }
 
+  // Executions list
+  if (request.method === "GET" && path === "/api/v3/executions") {
+    let userId: string | undefined;
+    try {
+      const session = await requireUserSession(request);
+      userId = session.user_id;
+    } catch {
+      await requireAdminAccess(request);
+    }
+    const { listExecutions } = await import("../v3/gateway.repository");
+    const items = await listExecutions({
+      user_id: userId,
+      status: (url.searchParams.get("status") as never) || undefined,
+      limit: Math.min(Number(url.searchParams.get("limit") ?? "50"), 200),
+    });
+    return Response.json(
+      sanitizeAgentResponse({
+        ok: true,
+        items: items.map((e) => ({
+          execution_id: e.id,
+          status: e.status,
+          capability_id: e.capability_id,
+          agent_id: e.agent_id,
+          approval_id: e.approval_id,
+          policy_decision: e.policy_decision,
+          worker_type: e.worker_type,
+          audit_chain_id: e.audit_chain_id,
+          error_code: e.error_code,
+          dry_run: e.dry_run,
+          started_at: e.started_at,
+          completed_at: e.completed_at ?? e.finished_at,
+        })),
+      }),
+    );
+  }
+
   // Executions
   {
     const execMatch = path.match(/^\/api\/v3\/executions\/([^/]+)$/);
@@ -302,20 +349,65 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
     }
   }
 
+  // Audit chain view
+  {
+    const chainMatch = path.match(/^\/api\/v3\/audit\/chains\/([^/]+)$/);
+    if (request.method === "GET" && chainMatch) {
+      await requireUserSession(request).catch(() => requireAdminAccess(request));
+      const { getAuditChain, verifyAuditChain } = await import("../v3/audit/audit-chain");
+      const chainId = decodeURIComponent(chainMatch[1]!);
+      const events = await getAuditChain(chainId);
+      const integrity = verifyAuditChain(events);
+      return Response.json(
+        sanitizeAgentResponse({
+          ok: true,
+          audit_chain_id: chainId,
+          integrity,
+          events: events.map((e) => ({
+            id: e.id,
+            sequence_no: e.sequence_no,
+            event_type: e.event_type,
+            prev_hash: e.prev_hash,
+            chain_hash: e.chain_hash,
+            execution_id: e.execution_id,
+            approval_id: e.approval_id,
+            result: e.result,
+            input_summary: e.input_summary,
+            risk_level: e.risk_level,
+            created_at: e.created_at,
+          })),
+        }),
+      );
+    }
+  }
+
   // Audit
   if (request.method === "GET" && path === "/api/v3/audit") {
     await requireUserSession(request).catch(() => requireAdminAccess(request));
     const limit = Math.min(Number(url.searchParams.get("limit") ?? "50"), 200);
+    const chainId = url.searchParams.get("audit_chain_id");
     const result = await pool.query(
-      `
-        SELECT id, event_type, agent_id, user_id, capability_id, execution_id,
-               approval_id, ip, user_agent, input_summary, risk_level, result,
-               result_hash, metadata, created_at
-        FROM cap_trust_audit
-        ORDER BY created_at DESC
-        LIMIT $1
-      `,
-      [limit],
+      chainId
+        ? `
+          SELECT id, event_type, agent_id, user_id, capability_id, execution_id,
+                 approval_id, ip, user_agent, input_summary, risk_level, result,
+                 result_hash, metadata, created_at, audit_chain_id, sequence_no,
+                 prev_hash, chain_hash
+          FROM cap_trust_audit
+          WHERE audit_chain_id = $1
+          ORDER BY sequence_no ASC NULLS LAST, created_at ASC
+          LIMIT $2
+        `
+        : `
+          SELECT id, event_type, agent_id, user_id, capability_id, execution_id,
+                 approval_id, ip, user_agent, input_summary, risk_level, result,
+                 result_hash, metadata, created_at, audit_chain_id, sequence_no,
+                 prev_hash, chain_hash
+          FROM cap_trust_audit
+          ORDER BY created_at DESC
+          LIMIT $1
+        `,
+      chainId ? [chainId, limit] : [limit],
     );
     return Response.json(
       sanitizeAgentResponse({
@@ -328,6 +420,10 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
           capability_id: row.capability_id ? String(row.capability_id) : null,
           execution_id: row.execution_id ? String(row.execution_id) : null,
           approval_id: row.approval_id ? String(row.approval_id) : null,
+          audit_chain_id: row.audit_chain_id ? String(row.audit_chain_id) : null,
+          sequence_no: row.sequence_no != null ? Number(row.sequence_no) : null,
+          prev_hash: row.prev_hash ? String(row.prev_hash) : null,
+          chain_hash: row.chain_hash ? String(row.chain_hash) : null,
           ip: row.ip ? String(row.ip) : null,
           user_agent: row.user_agent ? String(row.user_agent) : null,
           input_summary: row.input_summary ? String(row.input_summary) : null,
@@ -342,13 +438,31 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
   // Policies
   if (request.method === "GET" && path === "/api/v3/policies") {
     await requireUserSession(request).catch(() => requireAdminAccess(request));
-    const [legacy, permissions] = await Promise.all([
+    const { listAllTrustPolicies } = await import("../v3/policy-engine/policy.repository");
+    const [legacy, permissions, trustPolicies] = await Promise.all([
       listPolicies(),
       listAllCapabilityPermissions(200),
+      listAllTrustPolicies(200),
     ]);
     return Response.json(
       sanitizeAgentResponse({
         ok: true,
+        trust_policies: trustPolicies.map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          capability_pattern: p.capability_pattern,
+          provider_pattern: p.provider_pattern,
+          effect: p.effect,
+          risk_level: p.risk_level,
+          priority: p.priority,
+          enabled: p.enabled,
+          status: p.status,
+          destructive_action_block: p.destructive_action_block,
+          require_reauth: p.require_reauth,
+          rate_limit_per_minute: p.rate_limit_per_minute,
+          metadata: p.metadata,
+        })),
         policies: legacy.map((p) => ({
           id: p.id,
           capability_id: p.capability_id,
@@ -380,6 +494,45 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
   if (request.method === "POST" && path === "/api/v3/policies") {
     await requireAdminAccess(request);
     const body = await parseJsonBody(request);
+
+    if (body.kind === "trust_policy" || body.name) {
+      const { createTrustPolicy } = await import("../v3/policy-engine/policy.repository");
+      const effect = String(body.effect ?? body.action ?? "allow") as
+        | "allow"
+        | "deny"
+        | "require_approval"
+        | "require_reauth"
+        | "scope_limit"
+        | "rate_limit"
+        | "destructive_action_block"
+        | "time_window"
+        | "resource_constraint"
+        | "agent_allowlist"
+        | "provider_allowlist";
+      const policy = await createTrustPolicy({
+        name: String(body.name ?? `policy-${Date.now()}`),
+        description: typeof body.description === "string" ? body.description : "",
+        capability_pattern:
+          typeof body.capability_pattern === "string" ? body.capability_pattern : null,
+        provider_pattern:
+          typeof body.provider_pattern === "string" ? body.provider_pattern : null,
+        effect,
+        risk_level:
+          body.risk_level === "low" ||
+          body.risk_level === "high" ||
+          body.risk_level === "critical"
+            ? body.risk_level
+            : "medium",
+        priority: typeof body.priority === "number" ? body.priority : 100,
+        destructive_action_block: Boolean(body.destructive_action_block),
+        require_reauth: Boolean(body.require_reauth),
+        rate_limit_per_minute:
+          typeof body.rate_limit_per_minute === "number" ? body.rate_limit_per_minute : null,
+        metadata: (body.metadata as JsonObject) ?? {},
+      });
+      return Response.json(sanitizeAgentResponse({ ok: true, policy }), { status: 201 });
+    }
+
     if (body.kind === "capability_permission" || body.effect) {
       const perm = await createCapabilityPermission({
         agent_id: typeof body.agent_id === "string" ? body.agent_id : null,
@@ -389,7 +542,9 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
         provider_pattern:
           typeof body.provider_pattern === "string" ? body.provider_pattern : null,
         effect:
-          body.effect === "deny" || body.effect === "require_approval" ? body.effect : "allow",
+          body.effect === "deny" || body.effect === "require_approval" || body.effect === "require_reauth"
+            ? body.effect
+            : "allow",
         max_risk_level: typeof body.max_risk_level === "string" ? body.max_risk_level : null,
         require_approval:
           typeof body.require_approval === "boolean" ? body.require_approval : null,
@@ -410,6 +565,40 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
       metadata: (body.metadata as JsonObject) ?? {},
     });
     return Response.json(sanitizeAgentResponse({ ok: true, policy }), { status: 201 });
+  }
+
+  // Secrets — metadata list (no values)
+  if (request.method === "GET" && path === "/api/v3/secrets") {
+    await requireAdminAccess(request);
+    const result = await pool.query(
+      `
+        SELECT id, secret_ref, secret_type, owner_type, owner_id, status, fingerprint,
+               provider_id, user_id, expires_at, rotated_at, created_at, updated_at, metadata
+        FROM cap_secret_vault
+        ORDER BY created_at DESC
+        LIMIT $1
+      `,
+      [Math.min(Number(url.searchParams.get("limit") ?? "50"), 200)],
+    );
+    return Response.json(
+      sanitizeAgentResponse({
+        ok: true,
+        items: result.rows.map((row) => ({
+          secret_ref: String(row.secret_ref ?? row.id),
+          secret_type: String(row.secret_type),
+          owner_type: String(row.owner_type),
+          owner_id: String(row.owner_id),
+          status: String(row.status ?? "active"),
+          fingerprint: String(row.fingerprint ?? ""),
+          provider_id: row.provider_id ? String(row.provider_id) : null,
+          user_id: row.user_id ? String(row.user_id) : null,
+          expires_at: row.expires_at ? new Date(String(row.expires_at)).toISOString() : null,
+          rotated_at: row.rotated_at ? new Date(String(row.rotated_at)).toISOString() : null,
+          created_at: new Date(String(row.created_at)).toISOString(),
+          // Never include encrypted_payload or plaintext
+        })),
+      }),
+    );
   }
 
   // Secrets — metadata only
@@ -461,10 +650,10 @@ async function serveApiV3OpenApi(_request: Request): Promise<Response> {
   const doc = {
     openapi: "3.0.3",
     info: {
-      title: "CNothing Secretless Capability Execution Gateway",
-      version: "3.1.0",
+      title: "CNothing Execution Trust Layer API",
+      version: "3.2.0",
       description:
-        "Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited.",
+        "Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited. No endpoint returns secret values.",
     },
     paths: {
       "/api/v3/providers": {
@@ -475,11 +664,14 @@ async function serveApiV3OpenApi(_request: Request): Promise<Response> {
         post: { summary: "Start OAuth connect for current user session" },
       },
       "/api/v3/capabilities": {
-        get: { summary: "List capabilities with execution_type and approval_policy" },
+        get: { summary: "List capabilities with risk_level, execution_type, approval_policy" },
+      },
+      "/api/v3/capabilities/{id}": {
+        get: { summary: "Capability detail" },
       },
       "/api/v3/capabilities/{id}/invoke": {
         post: {
-          summary: "Invoke capability (secretless)",
+          summary: "Invoke capability (secretless Execution Trust Layer)",
           requestBody: {
             content: {
               "application/json": {
@@ -492,33 +684,48 @@ async function serveApiV3OpenApi(_request: Request): Promise<Response> {
                     idempotency_key: { type: "string" },
                     dry_run: { type: "boolean" },
                     approval_id: { type: "string" },
+                    timeout_ms: { type: "integer", description: "Worker timeout (max 300000)" },
                   },
                 },
               },
             },
           },
           responses: {
-            "200": { description: "completed" },
+            "200": { description: "completed (sanitized result) or dry_run" },
             "202": { description: "pending_approval" },
-            "400": { description: "failed" },
+            "403": { description: "denied by policy (status=denied)" },
+            "409": { description: "reconnect_required" },
+            "400": { description: "failed / timeout" },
           },
         },
       },
+      "/api/v3/approvals": {
+        get: { summary: "List approvals (safe summary only)" },
+      },
       "/api/v3/approvals/{id}": {
-        get: { summary: "Approval status (pending|approved|rejected|expired)" },
+        get: { summary: "Approval status (pending|approved|rejected|expired|cancelled)" },
       },
       "/api/v3/approvals/{id}/decide": {
-        post: { summary: "User approve/reject (session or short-lived token)" },
+        post: { summary: "User approve/reject (session or short-lived token); may resume execution" },
+      },
+      "/api/v3/executions": {
+        get: { summary: "List executions (lifecycle status)" },
       },
       "/api/v3/executions/{id}": {
-        get: { summary: "Execution status" },
+        get: { summary: "Execution status + policy_decision + audit_chain_id" },
       },
       "/api/v3/audit": {
-        get: { summary: "Trust audit query (no secrets)" },
+        get: { summary: "Trust audit query (no secrets); filter by audit_chain_id" },
+      },
+      "/api/v3/audit/chains/{id}": {
+        get: { summary: "Audit chain view with hash integrity" },
       },
       "/api/v3/policies": {
-        get: { summary: "List policies and capability permissions" },
-        post: { summary: "Create policy or capability permission (admin)" },
+        get: { summary: "List trust policies, legacy policies, capability permissions" },
+        post: { summary: "Create trust policy or capability permission (admin)" },
+      },
+      "/api/v3/secrets": {
+        get: { summary: "Secret Vault metadata list (never values)" },
       },
       "/api/v3/secrets/{ref}": {
         get: { summary: "Secret metadata only (403 if include_value requested)" },

@@ -4,6 +4,7 @@ import type { ApprovalPolicy } from "../../v2/v2.entity";
 import type { ApprovalRecord } from "../v3.entity";
 import { writeTrustAudit } from "../v3.repository";
 import {
+  consumeApproval,
   createApproval,
   decideApproval,
   expireStaleApprovals,
@@ -15,6 +16,7 @@ import {
   deriveResourceKey,
   summarizeInputForApproval,
 } from "../policy-engine/approval-helpers";
+import { sanitizeDeep } from "../sanitizer/sanitizer";
 
 function approvalTtlSeconds(): number {
   const raw = Number(process.env.KEYSERVICE_APPROVAL_URL_TTL_SECONDS ?? "900");
@@ -81,6 +83,8 @@ export class ApprovalEngine {
     input_hash?: string | null;
     policy: ApprovalPolicy;
     tenant_id?: string;
+    execution_id?: string | null;
+    policy_id?: string | null;
   }): Promise<{
     approval: ApprovalRecord;
     approval_url: string;
@@ -102,12 +106,16 @@ export class ApprovalEngine {
       resource_key: resourceKey,
       expires_at: expiresAt,
       tenant_id: input.tenant_id,
+      execution_id: input.execution_id,
+      policy_id: input.policy_id,
       metadata: {
         approval_policy: input.policy,
         scopes_key: [...input.capability.scopes].sort().join(","),
         capability_name: input.capability.name,
-        // Store sanitized input snapshot for resume after approval (no secrets expected)
-        input_snapshot: input.payload,
+        // Never persist raw secrets in approval metadata
+        input_snapshot: sanitizeDeep(input.payload) as JsonObject,
+        execution_id: input.execution_id ?? null,
+        policy_id: input.policy_id ?? null,
       },
     });
 
@@ -117,6 +125,8 @@ export class ApprovalEngine {
       user_id: input.user_id,
       capability_id: input.capability.id,
       approval_id: approval.id,
+      execution_id: input.execution_id ?? null,
+      policy_id: input.policy_id ?? null,
       input_summary: safeSummary,
       risk_level: input.capability.risk_level,
       result: "pending",
@@ -137,11 +147,15 @@ export class ApprovalEngine {
     approval_id: string;
     status: string;
     capability_id: string;
+    agent_id: string;
+    execution_id: string | null;
+    policy_id: string | null;
     safe_summary: string;
     risk_level: string;
     expires_at: string;
     approved_at: string | null;
     rejected_at: string | null;
+    cancelled_at: string | null;
   } | null> {
     await expireStaleApprovals();
     const approval = await findApprovalById(approvalId);
@@ -156,12 +170,20 @@ export class ApprovalEngine {
       approval_id: approval.id,
       status,
       capability_id: approval.capability_id,
-      safe_summary: approval.input_summary,
+      agent_id: approval.agent_id,
+      execution_id: approval.execution_id,
+      policy_id: approval.policy_id,
+      safe_summary: approval.safe_input_summary ?? approval.input_summary,
       risk_level: approval.risk_level,
       expires_at: approval.expires_at,
       approved_at: approval.approved_at,
       rejected_at: approval.rejected_at,
+      cancelled_at: approval.cancelled_at,
     };
+  }
+
+  async markConsumed(approvalId: string): Promise<ApprovalRecord | null> {
+    return consumeApproval(approvalId);
   }
 
   async decide(input: {

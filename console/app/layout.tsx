@@ -8,17 +8,18 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://cnothing.com"),
-  title: "CNothing",
-  description: "CNothing console for browsing MCP capabilities, client registrations, and KV data.",
+  title: "CNothing — Execution Trust Layer for AI Agents",
+  description:
+    "Secure execution of real-world capabilities without exposing secrets to AI agents.",
   applicationName: "CNothing",
   keywords: [
     "CNothing",
-    "MCP",
+    "Execution Trust Layer",
     "AI agent",
-    "skills",
-    "encrypted KV",
-    "AuthAI",
-    "AI-safe registration",
+    "capability authorization",
+    "secret vault",
+    "MCP",
+    "OAuth broker",
     "AI-safe secrets",
   ],
   category: "developer tools",
@@ -34,19 +35,21 @@ export const metadata: Metadata = {
     shortcut: ["/cnothing4.0.png"],
   },
   openGraph: {
-    title: "CNothing",
-    description: "CNothing console for browsing MCP capabilities, client registrations, and KV data.",
+    title: "CNothing — Execution Trust Layer for AI Agents",
+    description:
+      "Secure execution of real-world capabilities without exposing secrets to AI agents.",
     images: [{ url: brand.logoPath, alt: "CNothing logo" }],
   },
   twitter: {
     card: "summary",
-    title: "CNothing",
-    description: "CNothing console for browsing MCP capabilities, client registrations, and KV data.",
+    title: "CNothing — Execution Trust Layer for AI Agents",
+    description:
+      "Secure execution of real-world capabilities without exposing secrets to AI agents.",
     images: [brand.logoPath],
   },
   other: {
     "ai:product": "CNothing",
-    "ai:capabilities": "mcp,skills,authai,encrypted-kv,registration-hub",
+    "ai:capabilities": "execution-trust-layer,mcp,skills,oauth-broker,secret-vault,approvals",
     "ai:skills-index": "https://cnothing.com/skills/index.json",
     "ai:getting-started": "https://cnothing.com/getting-started.md",
     "ai:mcp-discovery": "https://cnothing.com/.well-known/mcp",

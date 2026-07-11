@@ -113,6 +113,7 @@ describe("execution workers", () => {
     expect(worker.name).toBe("BrowserWorker");
     await expect(
       worker.execute({
+        execution_id: "e1",
         capability: fakeCapability({ execution_type: "browser" }),
         agent: {
           id: "a1",
@@ -127,6 +128,8 @@ describe("execution workers", () => {
         },
         user_id: "u1",
         input: {},
+        safe_input: {},
+        secret_refs: [],
         access_token: null,
         connection_id: null,
         dry_run: false,
@@ -141,6 +144,7 @@ describe("execution workers", () => {
     expect(ssh.canHandle(fakeCapability({ execution_type: "ssh" }))).toBe(true);
     await expect(
       ssh.execute({
+        execution_id: "e1",
         capability: fakeCapability({ execution_type: "ssh" }),
         agent: {
           id: "a1",
@@ -155,6 +159,8 @@ describe("execution workers", () => {
         },
         user_id: "u1",
         input: {},
+        safe_input: {},
+        secret_refs: [],
         access_token: null,
         connection_id: null,
         dry_run: false,
@@ -178,26 +184,28 @@ describe("gateway response contract", () => {
 
   test("failed policy_denied shape", () => {
     const response = sanitizeAgentResponse({
-      status: "failed",
+      status: "denied",
       error: {
         code: "policy_denied",
         message: "Destructive actions are denied by default",
         recoverable: false,
       },
     });
-    expect(response.status).toBe("failed");
+    expect(response.status).toBe("denied");
     expect(response.error.code).toBe("policy_denied");
   });
 
   test("failed reconnect_required shape", () => {
     const response = sanitizeAgentResponse({
-      status: "failed",
+      status: "reconnect_required",
+      connection_url: "https://cnothing.com/connect?provider=github",
       error: {
         code: "reconnect_required",
         message: "OAuth connection requires reconnection",
         recoverable: true,
       },
     });
+    expect(response.status).toBe("reconnect_required");
     expect(response.error.code).toBe("reconnect_required");
     expect(response.error.recoverable).toBe(true);
   });

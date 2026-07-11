@@ -1,4 +1,4 @@
-import type { SecretType } from "../v3.entity";
+import type { SecretType } from "./v3.entity";
 
 /** Normalize legacy aliases to canonical secret types. */
 export function normalizeSecretType(type: SecretType | string): SecretType {

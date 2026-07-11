@@ -58,6 +58,31 @@ export function DashboardPoliciesPage() {
         <div className="border-b px-6 py-4">
           <div className="flex items-center gap-2">
             <Scale className="h-5 w-5 text-[color:var(--brand)]" />
+            <h2 className="text-lg font-semibold">Trust Policy Engine</h2>
+          </div>
+        </div>
+        <div className="divide-y">
+          {(bundle?.trust_policies ?? []).length === 0 ? (
+            <p className="p-6 text-sm text-slate-500">No trust policies yet (run migration 018).</p>
+          ) : (
+            (bundle?.trust_policies ?? []).map((policy) => (
+              <div key={policy.id} className="flex flex-wrap items-center gap-2 px-6 py-4">
+                <p className="font-medium">{policy.name}</p>
+                <Badge>{policy.effect}</Badge>
+                <Badge>{policy.risk_level}</Badge>
+                {policy.capability_pattern ? <Badge>{policy.capability_pattern}</Badge> : null}
+                {policy.destructive_action_block ? <Badge>destructive_block</Badge> : null}
+                <Badge>priority {policy.priority}</Badge>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="border-b px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Scale className="h-5 w-5 text-[color:var(--brand)]" />
             <h2 className="text-lg font-semibold">Capability permissions</h2>
           </div>
         </div>

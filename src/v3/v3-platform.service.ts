@@ -1,7 +1,7 @@
 import { listOAuthProviders } from "../v2/oauth.repository";
 import { getV25PlatformStatus } from "../v2/v2.5-bootstrap.service";
 import { pool } from "../db";
-import { V3_MODULES, V3_PRINCIPLES, V3_VERSION } from "./v3.entity";
+import { V3_MODULES, V3_PRINCIPLES, V3_PRODUCT, V3_TAGLINE, V3_VERSION } from "./v3.entity";
 import { countProviderProposals, countVaultSecrets } from "./v3.repository";
 
 export async function getV3PlatformStatus() {
@@ -18,8 +18,12 @@ export async function getV3PlatformStatus() {
   return {
     ...base,
     version: V3_VERSION,
-    product: "CNothing Universal Trust Broker for AI Agents",
-    tagline: "Secret stays in CNothing. Capability belongs to Agent.",
+    product: V3_PRODUCT,
+    tagline: V3_TAGLINE,
+    positioning: {
+      from: "Capability Authorization Platform",
+      to: "Execution Trust Layer for AI Agents",
+    },
     principles: V3_MODULES.reduce(
       (acc, module) => {
         acc[module] = { status: "active" };
@@ -56,9 +60,25 @@ export async function getV3PlatformStatus() {
         "read_password",
         "read_private_key",
         "read_api_key",
+        "read_refresh_token",
+        "read_mfa_secret",
+        "read_recovery_code",
+        "read_authorization_header",
       ],
     },
-    recommended_api_prefix: "/v3",
-    predecessor_versions: ["v2.5", "v2.6"],
+    call_chain: [
+      "AI Agent",
+      "Capability Invocation Gateway",
+      "Policy Engine",
+      "Approval Engine",
+      "Secret Vault",
+      "Execution Worker",
+      "Third-party Service",
+      "Sanitized Result",
+      "Audit Log",
+      "AI Agent",
+    ],
+    recommended_api_prefix: "/api/v3",
+    predecessor_versions: ["v2.5", "v2.6", "v3"],
   };
 }

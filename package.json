@@ -1,7 +1,7 @@
 {
   "name": "cnothing",
   "version": "0.2.0",
-  "description": "CNothing Universal Trust Broker for AI Agents — AuthAI, OAuth Broker, Capability Gateway, and Secret Vault",
+  "description": "CNothing Execution Trust Layer for AI Agents — Policy, Approval, Secret Vault, and Secretless Capability Execution",
   "type": "module",
   "main": "./dist/library.js",
   "types": "./dist/library.d.ts",

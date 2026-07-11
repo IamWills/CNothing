@@ -37,10 +37,12 @@ describe("v3 URL safety", () => {
 
 describe("v3 platform constants", () => {
   test("defines trust broker modules including gateway extensions", async () => {
-    const { V3_MODULES, V3_PRINCIPLES, V3_VERSION } = await import("../v3.entity");
+    const { V3_MODULES, V3_PRINCIPLES, V3_VERSION, V3_PRODUCT } = await import("../v3.entity");
     expect(V3_VERSION).toBe("3.0.0");
+    expect(V3_PRODUCT).toBe("Execution Trust Layer for AI Agents");
     expect(V3_MODULES.length).toBeGreaterThanOrEqual(8);
     expect(V3_PRINCIPLES).toContain("Agent Never Owns Secrets.");
+    expect(V3_PRINCIPLES).toContain("Agent thinks.");
     expect(V3_MODULES).toContain("secret_vault");
     expect(V3_MODULES).toContain("approval_engine");
     expect(V3_MODULES).toContain("execution_workers");

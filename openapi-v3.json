@@ -3,11 +3,12 @@
   "info": {
     "title": "CNothing Execution Trust Layer API (v3)",
     "version": "3.2.0",
-    "description": "Execution Trust Layer for AI Agents. Canonical secretless invoke: POST /api/v3/capabilities/{capabilityId}/invoke. Alias: POST /v3/capabilities/{capabilityId}/invoke. Compatibility: POST /v3/agent/invoke (body.capability). Agent-facing endpoints never return OAuth tokens, refresh tokens, client secrets, API keys, cookies, or passwords. Secrets stay in cnothing."
+    "description": "Execution Trust Layer for AI Agents. Canonical invoke: POST /api/v3/capabilities/{capabilityId}/invoke. Poll executions via GET /api/v3/executions. Unified Approvals via GET /api/v3/approvals (types: capability_grant | execution_confirmation | reauthentication). Aliases under /v3/*. Agent-facing endpoints never return secrets."
   },
   "servers": [{ "url": "https://cnothing.com" }],
   "tags": [
-    { "name": "Execution", "description": "Canonical Capability Invocation Gateway (/api/v3)" },
+    { "name": "Execution", "description": "Capability invoke + execution lifecycle poll (/api/v3)" },
+    { "name": "Approval", "description": "Unified Approvals: capability_grant | execution_confirmation | reauthentication" },
     { "name": "Platform", "description": "Trust Broker platform status" },
     { "name": "Agent", "description": "Agent-facing Trust Broker API (compatibility + grants)" },
     { "name": "Providers", "description": "Universal Provider Registry" },
@@ -89,53 +90,565 @@
         "type": "object",
         "required": ["capability"],
         "deprecated": true,
-        "description": "Legacy body for POST /v3/agent/invoke. Prefer POST /api/v3/capabilities/{capabilityId}/invoke.",
+        "description": "Legacy body for POST /v3/agent/invoke. Prefer POST /api/v3/capabilities/{capabilityId}/invoke with CapabilityInvokeRequest. Production fields (idempotency_key, dry_run, timeout_ms) are supported on both paths.",
         "properties": {
-          "capability": { "type": "string" },
-          "input": { "type": "object" },
-          "confirmation_id": { "type": "string" },
-          "reason": { "type": "string" },
+          "capability": {
+            "type": "string",
+            "description": "Capability id or name (e.g. github.create_repo)",
+            "example": "github.create_repo"
+          },
+          "input": {
+            "type": "object",
+            "description": "Capability input — never include secrets",
+            "additionalProperties": true,
+            "default": {}
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Client-generated key to prevent duplicate side effects on retries (create repo, send email, payment, etc.)",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false,
+            "description": "If true, evaluate policy/approval requirements and return a safe execution plan without side effects or creating approvals"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300000,
+            "default": 30000,
+            "description": "Worker timeout in milliseconds (capped at 300000)",
+            "example": 30000
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable reason for audit / approval context",
+            "example": "Create repository for project Alpha"
+          },
+          "trace_id": {
+            "type": "string",
+            "description": "Optional client/agent correlation id for distributed tracing (stored in audit metadata)"
+          },
           "user_id": { "type": "string" },
-          "idempotency_key": { "type": "string" },
-          "dry_run": { "type": "boolean" }
+          "confirmation_id": {
+            "type": "string",
+            "deprecated": true,
+            "description": "Legacy v2 confirmation resume — prefer approval_id on canonical invoke"
+          },
+          "approval_id": {
+            "type": "string",
+            "description": "Resume after human approval"
+          }
         }
       },
       "CapabilityInvokeRequest": {
         "type": "object",
-        "description": "Body for canonical capability invoke. capabilityId is in the URL path — never send secrets.",
+        "description": "Body for canonical capability invoke (capabilityId in URL). Supports production-safe retries and dry-run preview. Never send secrets.",
         "properties": {
-          "agent_id": { "type": "string", "description": "Optional; must match authenticated agent if present" },
+          "input": {
+            "type": "object",
+            "description": "Capability input — never include secrets",
+            "additionalProperties": true,
+            "default": {}
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Client-generated key to prevent duplicate side effects on retries",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false,
+            "description": "Preview policy decision, approval requirement, and safe execution plan without side effects"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300000,
+            "default": 30000,
+            "description": "Worker timeout in milliseconds (capped at 300000)",
+            "example": 30000
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable reason for audit / approval context",
+            "example": "Create repository for project Alpha"
+          },
+          "trace_id": {
+            "type": "string",
+            "description": "Optional client/agent correlation id for distributed tracing"
+          },
+          "agent_id": {
+            "type": "string",
+            "description": "Optional; must match authenticated agent if present"
+          },
           "user_id": { "type": "string" },
-          "input": { "type": "object" },
-          "idempotency_key": { "type": "string" },
-          "dry_run": { "type": "boolean", "default": false },
-          "approval_id": { "type": "string", "description": "Resume after human approval" },
-          "timeout_ms": { "type": "integer", "maximum": 300000 }
+          "approval_id": {
+            "type": "string",
+            "description": "Resume after human approval"
+          }
+        },
+        "example": {
+          "input": { "name": "alpha", "private": true },
+          "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+          "dry_run": false,
+          "timeout_ms": 30000,
+          "reason": "Create repository for project Alpha"
+        }
+      },
+      "DryRunPreview": {
+        "type": "object",
+        "description": "Returned in result when dry_run=true and status=completed. No side effects performed.",
+        "properties": {
+          "dry_run": { "type": "boolean", "const": true },
+          "capability": { "type": "string" },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "decision": { "type": "string" },
+              "reason": { "type": "string" },
+              "matched_policy_id": { "type": "string", "nullable": true },
+              "risk_level": { "type": "string" }
+            }
+          },
+          "approval_required": { "type": "boolean" },
+          "would_execute": { "type": "boolean" },
+          "safe_summary": { "type": "string" },
+          "execution_plan": {
+            "type": "object",
+            "properties": {
+              "worker_type": { "type": "string", "nullable": true },
+              "execution_type": { "type": "string", "nullable": true },
+              "risk_level": { "type": "string" },
+              "timeout_ms": { "type": "integer", "nullable": true }
+            }
+          },
+          "estimated_impact": {
+            "type": "object",
+            "properties": {
+              "side_effects": { "type": "boolean" },
+              "requires_human_approval": { "type": "boolean" },
+              "requires_oauth": { "type": "boolean" },
+              "scopes": { "type": "array", "items": { "type": "string" } }
+            }
+          }
         }
       },
       "CapabilityInvokeResponse": {
+        "description": "Canonical invoke response discriminated by status. Never includes secrets. Prefer switching on status.",
+        "oneOf": [
+          { "$ref": "#/components/schemas/InvokeCompletedResponse" },
+          { "$ref": "#/components/schemas/InvokePendingApprovalResponse" },
+          { "$ref": "#/components/schemas/InvokeDeniedResponse" },
+          { "$ref": "#/components/schemas/InvokeReconnectRequiredResponse" },
+          { "$ref": "#/components/schemas/InvokeFailedResponse" }
+        ],
+        "discriminator": {
+          "propertyName": "status",
+          "mapping": {
+            "completed": "#/components/schemas/InvokeCompletedResponse",
+            "pending_approval": "#/components/schemas/InvokePendingApprovalResponse",
+            "denied": "#/components/schemas/InvokeDeniedResponse",
+            "reconnect_required": "#/components/schemas/InvokeReconnectRequiredResponse",
+            "failed": "#/components/schemas/InvokeFailedResponse"
+          }
+        }
+      },
+      "StructuredError": {
         "type": "object",
-        "description": "Sanitized invoke result. status is completed | pending_approval | denied | reconnect_required | failed. Never includes secrets.",
+        "description": "Structured error carried on invoke / HTTP error bodies (no secrets)",
+        "required": ["code", "message", "recoverable"],
         "properties": {
-          "status": {
+          "code": {
             "type": "string",
-            "enum": ["completed", "pending_approval", "denied", "reconnect_required", "failed"]
+            "description": "Machine-readable error code",
+            "examples": [
+              "policy_denied",
+              "reconnect_required",
+              "authorization_required",
+              "approval_not_approved",
+              "timeout",
+              "worker_failed",
+              "execution_failed"
+            ]
           },
-          "execution_id": { "type": "string" },
-          "audit_chain_id": { "type": "string" },
-          "result": { "type": "object", "description": "Present when status=completed (sanitized)" },
-          "approval_id": { "type": "string" },
-          "approval_url": { "type": "string", "format": "uri" },
-          "safe_summary": { "type": "string" },
-          "connection_url": { "type": "string", "format": "uri" },
+          "message": { "type": "string" },
+          "recoverable": {
+            "type": "boolean",
+            "description": "If true, client may retry after user action (reconnect, approve, authorize)"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "HTTP error envelope used by gateway when throwing AppError",
+        "required": ["error"],
+        "properties": {
           "error": {
             "type": "object",
+            "required": ["message"],
             "properties": {
-              "code": { "type": "string" },
               "message": { "type": "string" },
-              "recoverable": { "type": "boolean" }
+              "code": { "type": "string" },
+              "error_code": { "type": "string" },
+              "details": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Optional structured details (e.g. connection_url)"
+              }
+            }
+          },
+          "connection_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Present when reconnect_required"
+          }
+        }
+      },
+      "PolicyDecisionView": {
+        "type": "object",
+        "description": "Public policy decision attached to executions / dry-run",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": ["allow", "deny", "require_approval", "require_reauth"]
+          },
+          "reason": { "type": "string" },
+          "matched_policy_id": { "type": "string", "nullable": true },
+          "risk_level": { "type": "string" }
+        }
+      },
+      "InvokeCompletedResponse": {
+        "type": "object",
+        "description": "HTTP 200 — capability completed (or dry_run preview). result is sanitized.",
+        "required": ["status", "execution_id", "result", "audit_id"],
+        "properties": {
+          "status": { "type": "string", "const": "completed" },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "audit_id": { "type": "string" },
+          "audit_chain_id": { "type": "string" },
+          "result": {
+            "description": "Sanitized business result, or DryRunPreview when dry_run=true",
+            "oneOf": [
+              { "$ref": "#/components/schemas/DryRunPreview" },
+              { "type": "object", "additionalProperties": true }
+            ]
+          }
+        },
+        "example": {
+          "status": "completed",
+          "execution_id": "11111111-1111-1111-1111-111111111111",
+          "audit_id": "aud_abc",
+          "audit_chain_id": "ach_abc",
+          "result": { "id": 42, "full_name": "org/alpha" }
+        }
+      },
+      "InvokePendingApprovalResponse": {
+        "type": "object",
+        "description": "HTTP 202 — human approval required before execution. Poll GET /api/v3/approvals/{approval_id} or GET /api/v3/executions/{execution_id}.",
+        "required": [
+          "status",
+          "approval_id",
+          "approval_url",
+          "safe_summary",
+          "execution_id"
+        ],
+        "properties": {
+          "status": { "type": "string", "const": "pending_approval" },
+          "approval_id": { "type": "string", "format": "uuid" },
+          "approval_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "User-facing approval URL (may include short-lived token)"
+          },
+          "safe_summary": {
+            "type": "string",
+            "description": "Human-readable sanitized summary of the requested action"
+          },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "audit_chain_id": { "type": "string" }
+        },
+        "example": {
+          "status": "pending_approval",
+          "approval_id": "22222222-2222-2222-2222-222222222222",
+          "approval_url": "https://cnothing.com/dashboard/approvals/22222222-2222-2222-2222-222222222222?token=appr_xxx",
+          "safe_summary": "name=alpha, private=true",
+          "execution_id": "11111111-1111-1111-1111-111111111111",
+          "audit_chain_id": "ach_abc"
+        }
+      },
+      "InvokeDeniedResponse": {
+        "type": "object",
+        "description": "HTTP 403 — policy denied. Not recoverable without policy change.",
+        "required": ["status", "execution_id", "error"],
+        "properties": {
+          "status": { "type": "string", "const": "denied" },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "audit_chain_id": { "type": "string" },
+          "error": { "$ref": "#/components/schemas/StructuredError" }
+        },
+        "example": {
+          "status": "denied",
+          "execution_id": "11111111-1111-1111-1111-111111111111",
+          "error": {
+            "code": "policy_denied",
+            "message": "Destructive actions denied by default",
+            "recoverable": false
+          }
+        }
+      },
+      "InvokeReconnectRequiredResponse": {
+        "type": "object",
+        "description": "HTTP 409 — OAuth reconnect required before execution can continue.",
+        "required": ["status", "execution_id", "connection_url"],
+        "properties": {
+          "status": { "type": "string", "const": "reconnect_required" },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "connection_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Send user here to reconnect OAuth"
+          },
+          "audit_chain_id": { "type": "string" },
+          "error": { "$ref": "#/components/schemas/StructuredError" }
+        },
+        "example": {
+          "status": "reconnect_required",
+          "execution_id": "11111111-1111-1111-1111-111111111111",
+          "connection_url": "https://cnothing.com/connect?provider=github",
+          "error": {
+            "code": "reconnect_required",
+            "message": "GitHub connection expired",
+            "recoverable": true
+          }
+        }
+      },
+      "InvokeFailedResponse": {
+        "type": "object",
+        "description": "HTTP 400 — execution failed or timed out (structured error).",
+        "required": ["status", "error"],
+        "properties": {
+          "status": { "type": "string", "const": "failed" },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "audit_id": { "type": "string" },
+          "audit_chain_id": { "type": "string" },
+          "error": { "$ref": "#/components/schemas/StructuredError" }
+        },
+        "example": {
+          "status": "failed",
+          "execution_id": "11111111-1111-1111-1111-111111111111",
+          "error": {
+            "code": "timeout",
+            "message": "Worker exceeded timeout_ms",
+            "recoverable": true
+          }
+        }
+      },
+      "LegacyAgentInvokeCompletedResponse": {
+        "type": "object",
+        "description": "Legacy POST /v3/agent/invoke success wrapper (HTTP 200)",
+        "required": ["ok", "result", "execution_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "result": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/DryRunPreview" },
+              { "type": "object", "additionalProperties": true }
+            ]
+          },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "audit_id": { "type": "string" },
+          "audit_chain_id": { "type": "string" }
+        }
+      },
+      "LegacyAgentInvokePendingApprovalResponse": {
+        "type": "object",
+        "description": "Legacy POST /v3/agent/invoke pending approval wrapper (HTTP 202)",
+        "required": [
+          "ok",
+          "pending_approval",
+          "approval_id",
+          "approval_url",
+          "safe_summary",
+          "execution_id"
+        ],
+        "properties": {
+          "ok": { "type": "boolean", "const": false },
+          "pending_approval": { "type": "boolean", "const": true },
+          "approval_id": { "type": "string", "format": "uuid" },
+          "approval_url": { "type": "string", "format": "uri" },
+          "safe_summary": { "type": "string" },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "audit_chain_id": { "type": "string" }
+        }
+      },
+      "ExecutionObject": {
+        "type": "object",
+        "description": "First-class Execution object returned by GET /api/v3/executions/{id} (and list items as subset). Never includes secrets.",
+        "required": ["execution_id", "status", "capability_id", "agent_id"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "execution_id": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/components/schemas/ExecutionStatus" },
+          "capability_id": { "type": "string" },
+          "agent_id": { "type": "string" },
+          "user_id": { "type": "string", "nullable": true },
+          "provider_id": { "type": "string", "nullable": true },
+          "connection_id": { "type": "string", "nullable": true },
+          "approval_id": { "type": "string", "nullable": true },
+          "policy_decision": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PolicyDecisionView" },
+              { "type": "null" }
+            ]
+          },
+          "worker_type": { "type": "string", "nullable": true },
+          "idempotency_key": { "type": "string", "nullable": true },
+          "error_code": { "type": "string", "nullable": true },
+          "error_message": { "type": "string", "nullable": true },
+          "dry_run": { "type": "boolean" },
+          "started_at": { "type": "string", "format": "date-time", "nullable": true },
+          "completed_at": { "type": "string", "format": "date-time", "nullable": true },
+          "audit_chain_id": { "type": "string", "nullable": true },
+          "result": {
+            "description": "Present only when status=completed (sanitized)",
+            "oneOf": [
+              { "$ref": "#/components/schemas/DryRunPreview" },
+              { "type": "object", "additionalProperties": true },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "ExecutionListResponse": {
+        "type": "object",
+        "required": ["ok", "items"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionSummary" }
+          }
+        }
+      },
+      "ApprovalListResponse": {
+        "type": "object",
+        "required": ["ok", "items"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Approval" }
+          }
+        }
+      },
+      "ApprovalDecisionResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Approval" },
+          {
+            "type": "object",
+            "properties": {
+              "ok": { "type": "boolean", "const": true },
+              "execution": {
+                "description": "Present when approving execution_confirmation — may be CapabilityInvokeResponse",
+                "oneOf": [
+                  { "$ref": "#/components/schemas/CapabilityInvokeResponse" },
+                  { "type": "object", "additionalProperties": true },
+                  { "type": "null" }
+                ]
+              },
+              "grants": {
+                "type": "array",
+                "description": "Present when approving capability_grant",
+                "items": { "type": "object", "additionalProperties": true }
+              }
             }
           }
+        ]
+      },
+      "ExecutionStatus": {
+        "type": "string",
+        "description": "Execution lifecycle status for async / long-task polling",
+        "enum": [
+          "created",
+          "policy_checking",
+          "pending_approval",
+          "approved",
+          "running",
+          "completed",
+          "failed",
+          "denied",
+          "cancelled",
+          "timeout",
+          "reconnect_required",
+          "pending"
+        ]
+      },
+      "ExecutionSummary": {
+        "type": "object",
+        "description": "Safe execution list item — never includes secrets",
+        "required": ["execution_id", "status", "capability_id", "agent_id"],
+        "properties": {
+          "execution_id": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/components/schemas/ExecutionStatus" },
+          "capability_id": { "type": "string" },
+          "agent_id": { "type": "string" },
+          "approval_id": { "type": "string", "nullable": true },
+          "policy_decision": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PolicyDecisionView" },
+              { "type": "null" }
+            ]
+          },
+          "worker_type": { "type": "string", "nullable": true },
+          "audit_chain_id": { "type": "string", "nullable": true },
+          "error_code": { "type": "string", "nullable": true },
+          "dry_run": { "type": "boolean" },
+          "started_at": { "type": "string", "format": "date-time", "nullable": true },
+          "completed_at": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "ExecutionDetail": {
+        "description": "Alias of ExecutionObject for GET by id",
+        "allOf": [{ "$ref": "#/components/schemas/ExecutionObject" }]
+      },
+      "ApprovalType": {
+        "type": "string",
+        "description": "Unified Approval kind",
+        "enum": ["capability_grant", "execution_confirmation", "reauthentication"]
+      },
+      "Approval": {
+        "type": "object",
+        "description": "Unified first-class Approval — no secrets. Covers grant, high-risk invoke confirmation, and reconnect.",
+        "required": ["approval_id", "approval_type", "status"],
+        "properties": {
+          "approval_id": { "type": "string" },
+          "approval_type": { "$ref": "#/components/schemas/ApprovalType" },
+          "execution_id": { "type": "string", "nullable": true },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "approved", "rejected", "expired", "cancelled", "consumed"]
+          },
+          "risk_level": { "type": "string", "nullable": true },
+          "safe_summary": { "type": "string" },
+          "expires_at": { "type": "string", "format": "date-time", "nullable": true },
+          "capability_id": { "type": "string", "nullable": true },
+          "agent_id": { "type": "string" },
+          "user_id": { "type": "string", "nullable": true },
+          "policy_id": { "type": "string", "nullable": true },
+          "scopes": { "type": "array", "items": { "type": "string" } },
+          "resource_key": { "type": "string", "nullable": true },
+          "connection_url": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Present for reauthentication — user must reconnect OAuth"
+          },
+          "approved_at": { "type": "string", "format": "date-time", "nullable": true },
+          "rejected_at": { "type": "string", "format": "date-time", "nullable": true },
+          "cancelled_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true }
         }
       }
     }
@@ -167,17 +680,53 @@
         },
         "responses": {
           "200": {
-            "description": "completed (sanitized result) or dry_run",
+            "description": "status=completed — sanitized result or DryRunPreview",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CapabilityInvokeResponse" }
+                "schema": { "$ref": "#/components/schemas/InvokeCompletedResponse" }
               }
             }
           },
-          "202": { "description": "pending_approval" },
-          "400": { "description": "failed / timeout" },
-          "403": { "description": "denied by policy (status=denied)" },
-          "409": { "description": "reconnect_required" }
+          "202": {
+            "description": "status=pending_approval — wait for human approval",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokePendingApprovalResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "status=failed — structured error (timeout, worker failure, etc.)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeFailedResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "status=denied — policy denied",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeDeniedResponse" }
+              }
+            }
+          },
+          "409": {
+            "description": "status=reconnect_required — user must reconnect OAuth",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeReconnectRequiredResponse" }
+              }
+            }
+          },
+          "default": {
+            "description": "Unexpected error envelope",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
         }
       }
     },
@@ -186,7 +735,7 @@
         "tags": ["Execution"],
         "operationId": "invokeCapabilityV3Alias",
         "summary": "Alias of canonical capability invoke",
-        "description": "Compatibility alias that rewrites to POST /api/v3/capabilities/{capabilityId}/invoke.",
+        "description": "Compatibility alias that rewrites to POST /api/v3/capabilities/{capabilityId}/invoke. Same response schemas as canonical invoke.",
         "security": [{ "AgentBearer": [] }],
         "parameters": [
           {
@@ -205,10 +754,687 @@
           }
         },
         "responses": {
-          "200": { "description": "completed (sanitized result)" },
-          "202": { "description": "pending_approval" },
-          "403": { "description": "denied" },
-          "409": { "description": "reconnect_required" }
+          "200": {
+            "description": "status=completed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeCompletedResponse" }
+              }
+            }
+          },
+          "202": {
+            "description": "status=pending_approval",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokePendingApprovalResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "status=failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeFailedResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "status=denied",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeDeniedResponse" }
+              }
+            }
+          },
+          "409": {
+            "description": "status=reconnect_required",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeReconnectRequiredResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/executions": {
+      "get": {
+        "tags": ["Execution"],
+        "operationId": "listExecutions",
+        "summary": "List executions (lifecycle poll)",
+        "description": "Agent bearer lists own executions. User session lists own. Admin lists all. Use to poll async / long-running work.",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }, { "AdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "$ref": "#/components/schemas/ExecutionStatus" },
+            "description": "Filter by lifecycle status"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution list (no secrets)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionListResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/executions/{executionId}": {
+      "get": {
+        "tags": ["Execution"],
+        "operationId": "getExecution",
+        "summary": "Get execution by id",
+        "description": "Poll until terminal status: completed|failed|timeout|cancelled|denied|reconnect_required. Intermediate: pending_approval|approved|running|...",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }, { "AdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution object (sanitized; result only when completed)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionObject" }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to view this execution",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/executions/{executionId}/cancel": {
+      "post": {
+        "tags": ["Execution"],
+        "operationId": "cancelExecution",
+        "summary": "Cancel a non-terminal execution",
+        "description": "Cancels created|policy_checking|pending_approval|approved|running (and pending approval if any).",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled — returns ExecutionObject with status=cancelled",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionObject" }
+              }
+            }
+          },
+          "400": {
+            "description": "Not cancellable",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/executions/{executionId}/retry": {
+      "post": {
+        "tags": ["Execution"],
+        "operationId": "retryExecution",
+        "summary": "Retry a failed/timeout/cancelled/reconnect_required execution",
+        "description": "Re-invokes the capability with the stored safe_input. Returns a new CapabilityInvokeResponse (same status codes as invoke).",
+        "security": [{ "AgentBearer": [] }],
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New execution completed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeCompletedResponse" }
+              }
+            }
+          },
+          "202": {
+            "description": "New execution pending_approval",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokePendingApprovalResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Not retryable or new invoke failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/InvokeFailedResponse" },
+                    { "$ref": "#/components/schemas/ErrorResponse" }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden / denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/InvokeDeniedResponse" },
+                    { "$ref": "#/components/schemas/ErrorResponse" }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "409": {
+            "description": "reconnect_required",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeReconnectRequiredResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/executions": {
+      "get": {
+        "tags": ["Execution"],
+        "operationId": "listExecutionsV3Alias",
+        "summary": "Alias of GET /api/v3/executions",
+        "description": "Rewrites to GET /api/v3/executions",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }, { "AdminBearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Execution list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionListResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/executions/{executionId}": {
+      "get": {
+        "tags": ["Execution"],
+        "operationId": "getExecutionV3Alias",
+        "summary": "Alias of GET /api/v3/executions/{executionId}",
+        "description": "Rewrites to GET /api/v3/executions/{executionId}",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }, { "AdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionObject" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/executions/{executionId}/cancel": {
+      "post": {
+        "tags": ["Execution"],
+        "operationId": "cancelExecutionV3Alias",
+        "summary": "Alias of POST /api/v3/executions/{executionId}/cancel",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionObject" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/executions/{executionId}/retry": {
+      "post": {
+        "tags": ["Execution"],
+        "operationId": "retryExecutionV3Alias",
+        "summary": "Alias of POST /api/v3/executions/{executionId}/retry",
+        "security": [{ "AgentBearer": [] }],
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New execution completed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokeCompletedResponse" }
+              }
+            }
+          },
+          "202": {
+            "description": "pending_approval",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvokePendingApprovalResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/approvals": {
+      "get": {
+        "tags": ["Approval"],
+        "operationId": "listApprovals",
+        "summary": "List unified Approvals",
+        "description": "Canonical Approval list. Federates capability_grant (authorization requests), execution_confirmation (cap_approvals + legacy confirmations), and reauthentication (reconnect_required executions). Prefer this over /v3/authorize* and /v3/confirmations*.",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": { "$ref": "#/components/schemas/ApprovalType" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "approved", "rejected", "expired", "cancelled", "consumed"]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval list (no secrets)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalListResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/approvals/{id}": {
+      "get": {
+        "tags": ["Approval"],
+        "operationId": "getApproval",
+        "summary": "Get Approval by id",
+        "description": "Returns approval_id, approval_type, execution_id, status, risk_level, safe_summary, expires_at.",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval object",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Approval" },
+                    {
+                      "type": "object",
+                      "properties": { "ok": { "type": "boolean", "const": true } }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/approvals/{id}/approve": {
+      "post": {
+        "tags": ["Approval"],
+        "operationId": "approveApproval",
+        "summary": "Approve",
+        "description": "For execution_confirmation may auto-resume invoke. For capability_grant creates grants. For reauthentication returns error with connection_url (user must reconnect OAuth).",
+        "security": [{ "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": { "type": "string", "description": "Short-lived approval token (optional)" },
+                  "granted_capabilities": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "For capability_grant — subset of requested capabilities"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approved (may include execution or grants)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalDecisionResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid for this approval_type",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/approvals/{id}/reject": {
+      "post": {
+        "tags": ["Approval"],
+        "operationId": "rejectApproval",
+        "summary": "Reject",
+        "security": [{ "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalDecisionResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/approvals/{id}/decide": {
+      "post": {
+        "tags": ["Approval"],
+        "deprecated": true,
+        "operationId": "decideApproval",
+        "summary": "Decide approved|rejected (deprecated — prefer /approve or /reject)",
+        "security": [{ "UserSession": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Decided",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalDecisionResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/approvals": {
+      "get": {
+        "tags": ["Approval"],
+        "operationId": "listApprovalsV3Alias",
+        "summary": "Alias of GET /api/v3/approvals",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }],
+        "responses": {
+          "200": {
+            "description": "Approval list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalListResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/approvals/{id}": {
+      "get": {
+        "tags": ["Approval"],
+        "operationId": "getApprovalV3Alias",
+        "summary": "Alias of GET /api/v3/approvals/{id}",
+        "security": [{ "AgentBearer": [] }, { "UserSession": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Approval" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/approvals/{id}/approve": {
+      "post": {
+        "tags": ["Approval"],
+        "operationId": "approveApprovalV3Alias",
+        "summary": "Alias of POST /api/v3/approvals/{id}/approve",
+        "security": [{ "UserSession": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalDecisionResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/approvals/{id}/reject": {
+      "post": {
+        "tags": ["Approval"],
+        "operationId": "rejectApprovalV3Alias",
+        "summary": "Alias of POST /api/v3/approvals/{id}/reject",
+        "security": [{ "UserSession": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApprovalDecisionResponse" }
+              }
+            }
+          }
         }
       }
     },
@@ -290,7 +1516,7 @@
         "deprecated": true,
         "operationId": "invokeCapabilityLegacyAgent",
         "summary": "Compatibility alias — prefer POST /api/v3/capabilities/{capabilityId}/invoke",
-        "description": "Legacy Trust Broker invoke. Pass capability in the request body. New agents and SDKs should use the canonical capability-scoped path.",
+        "description": "Legacy Trust Broker invoke. Pass capability in the request body. Response wrappers differ slightly from canonical (ok/pending_approval flags) but map to the same lifecycle. New agents and SDKs should use the canonical capability-scoped path and switch on status.",
         "security": [{ "AgentBearer": [] }],
         "requestBody": {
           "required": true,
@@ -301,9 +1527,46 @@
           }
         },
         "responses": {
-          "200": { "description": "Business result only — no secrets" },
-          "202": { "description": "Pending user confirmation / approval" },
-          "403": { "description": "Authorization required or policy denied" }
+          "200": {
+            "description": "Completed — ok=true with sanitized result (or dry_run preview)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LegacyAgentInvokeCompletedResponse" }
+              }
+            }
+          },
+          "202": {
+            "description": "Pending approval — ok=false, pending_approval=true",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LegacyAgentInvokePendingApprovalResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Failed / validation — structured error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied / authorization required / policy denied",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "409": {
+            "description": "Reconnect required (may appear as 403 with error_code=reconnect_required on legacy path)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
         }
       }
     },
@@ -372,14 +1635,16 @@
     "/v3/authorize/{id}": {
       "get": {
         "tags": ["OAuth"],
-        "summary": "View authorization request (user approval UI)",
+        "deprecated": true,
+        "summary": "View authorization request (compatibility — prefer GET /api/v3/approvals/{id})",
         "responses": { "200": { "description": "Authorization request details" } }
       }
     },
     "/v3/authorize/approve": {
       "post": {
         "tags": ["OAuth"],
-        "summary": "Approve capability authorization request",
+        "deprecated": true,
+        "summary": "Approve capability grant (compatibility — prefer POST /api/v3/approvals/{id}/approve)",
         "security": [{ "UserSession": [] }],
         "responses": { "200": { "description": "Authorization approved" } }
       }
@@ -387,7 +1652,8 @@
     "/v3/authorize/deny": {
       "post": {
         "tags": ["OAuth"],
-        "summary": "Deny capability authorization request",
+        "deprecated": true,
+        "summary": "Deny capability grant (compatibility — prefer POST /api/v3/approvals/{id}/reject)",
         "security": [{ "UserSession": [] }],
         "responses": { "200": { "description": "Authorization denied" } }
       }
@@ -395,7 +1661,8 @@
     "/v3/approve/{authorizationId}": {
       "post": {
         "tags": ["OAuth"],
-        "summary": "Approve agent authorization with OAuth connection",
+        "deprecated": true,
+        "summary": "Approve grant with OAuth connection (compatibility — prefer unified Approvals + OAuth connect)",
         "security": [{ "UserSession": [] }],
         "responses": { "200": { "description": "Grant approved with connection" } }
       }
@@ -403,7 +1670,8 @@
     "/v3/confirmations/pending": {
       "get": {
         "tags": ["OAuth"],
-        "summary": "List pending high-risk invoke confirmations",
+        "deprecated": true,
+        "summary": "List legacy confirmations (compatibility — prefer GET /api/v3/approvals?type=execution_confirmation)",
         "security": [{ "UserSession": [] }],
         "responses": { "200": { "description": "Pending confirmations" } }
       }
@@ -411,7 +1679,8 @@
     "/v3/confirmations/approve": {
       "post": {
         "tags": ["OAuth"],
-        "summary": "Approve pending invoke confirmation",
+        "deprecated": true,
+        "summary": "Approve legacy confirmation (compatibility — prefer POST /api/v3/approvals/{id}/approve)",
         "security": [{ "UserSession": [] }],
         "responses": { "200": { "description": "Confirmation approved" } }
       }
@@ -419,7 +1688,8 @@
     "/v3/confirmations/reject": {
       "post": {
         "tags": ["OAuth"],
-        "summary": "Reject pending invoke confirmation",
+        "deprecated": true,
+        "summary": "Reject legacy confirmation (compatibility — prefer POST /api/v3/approvals/{id}/reject)",
         "security": [{ "UserSession": [] }],
         "responses": { "200": { "description": "Confirmation rejected" } }
       }

@@ -2,7 +2,7 @@
 
 import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, ExternalLink, Github, LayoutGrid, ShieldCheck, Users } from "lucide-react";
+import { ExternalLink, Github, LayoutGrid, Library, ShieldCheck } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { brand } from "@/lib/brand";
@@ -14,10 +14,37 @@ const navigation: Array<{
   matches: string[];
 }> = [
   { href: "/", label: "Home", matches: ["/", "/readme"] },
-  { href: "/catalog", label: "Catalog", icon: LayoutGrid, matches: ["/catalog"] },
-  { href: "/agents", label: "Agents", icon: Bot, matches: ["/agents", "/capabilities", "/grants", "/audit", "/authorize", "/login", "/dashboard"] },
-  { href: "/dashboard/capabilities", label: "Dashboard", icon: LayoutGrid, matches: ["/dashboard"] },
-  { href: "/clients", label: "Clients (v1)", icon: Users, matches: ["/clients", "/kv", "/migration"] },
+  { href: "/catalog", label: "Catalog", icon: LayoutGrid, matches: ["/catalog", "/skills"] },
+  {
+    href: brand.recommendedPath,
+    label: "Dashboard",
+    icon: LayoutGrid,
+    matches: [
+      "/dashboard",
+      "/agents",
+      "/connect",
+      "/authorize",
+      "/approve",
+      "/login",
+    ],
+  },
+  {
+    href: "/migration",
+    label: "Legacy",
+    icon: Library,
+    matches: [
+      "/migration",
+      "/clients",
+      "/kv",
+      "/providers",
+      "/capabilities",
+      "/grants",
+      "/audit",
+      "/import",
+      "/connections",
+      "/admin",
+    ],
+  },
   {
     href: "/standards",
     label: "Standards",
@@ -46,9 +73,8 @@ export function SiteHeader() {
               </div>
             </div>
             <div>
-              <p className="max-w-3xl text-sm text-slate-600">
-                {brand.description}
-              </p>
+              <p className="max-w-3xl text-sm text-slate-600">{brand.description}</p>
+              <p className="mt-1 max-w-3xl text-xs text-slate-500">{brand.principles}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -68,7 +94,9 @@ export function SiteHeader() {
         <nav className="flex flex-wrap gap-2">
           {navigation.map((item) => {
             const isActive = item.matches.some((prefix) =>
-              prefix === "/" ? pathname === "/" : pathname === prefix || pathname.startsWith(`${prefix}/`),
+              prefix === "/"
+                ? pathname === "/"
+                : pathname === prefix || pathname.startsWith(`${prefix}/`),
             );
             const Icon = item.icon;
 

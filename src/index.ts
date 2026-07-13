@@ -96,6 +96,13 @@ function renderHomePage(baseUrl: string): string {
     ["/api/v3/capabilities/{capabilityId}/invoke", "Canonical secretless capability invoke"],
     ["/v3/capabilities/{capabilityId}/invoke", "Alias of canonical capability invoke"],
     ["/v3/agent/invoke", "Compatibility invoke (body.capability) — prefer capability-scoped path"],
+    ["/api/v3/executions", "List executions (lifecycle poll)"],
+    ["/api/v3/executions/{executionId}", "Get execution status"],
+    ["/api/v3/executions/{executionId}/cancel", "Cancel a non-terminal execution"],
+    ["/api/v3/executions/{executionId}/retry", "Retry a failed/timeout execution"],
+    ["/api/v3/approvals", "Unified Approvals list (grant | confirmation | reauth)"],
+    ["/api/v3/approvals/{id}/approve", "Approve"],
+    ["/api/v3/approvals/{id}/reject", "Reject"],
     ["/v3/providers/proposals", "Agent submits provider proposal (public metadata only)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
     ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
@@ -329,6 +336,53 @@ async function router(request: Request): Promise<Response> {
       const capabilityId = aliasMatch[1]!;
       const rewritten = new Request(
         new URL(`/api/v3/capabilities/${capabilityId}/invoke${url.search}`, request.url),
+        request,
+      );
+      const apiV3Response = await handleApiV3Request(rewritten);
+      if (apiV3Response) {
+        return withCors(apiV3Response, request);
+      }
+    }
+  }
+
+  // Alias: /v3/approvals* → /api/v3/approvals*
+  {
+    const approvalAlias = pathname.match(
+      /^\/v3\/approvals(?:\/([^/]+)(?:\/(approve|reject|decide))?)?$/,
+    );
+    if (
+      approvalAlias &&
+      ((request.method === "GET" && !approvalAlias[2]) ||
+        (request.method === "POST" &&
+          (approvalAlias[2] === "approve" ||
+            approvalAlias[2] === "reject" ||
+            approvalAlias[2] === "decide")))
+    ) {
+      const suffix = pathname.slice("/v3/approvals".length);
+      const rewritten = new Request(
+        new URL(`/api/v3/approvals${suffix}${url.search}`, request.url),
+        request,
+      );
+      const apiV3Response = await handleApiV3Request(rewritten);
+      if (apiV3Response) {
+        return withCors(apiV3Response, request);
+      }
+    }
+  }
+
+  // Alias: /v3/executions* → /api/v3/executions*
+  {
+    const execAlias = pathname.match(
+      /^\/v3\/executions(?:\/([^/]+)(?:\/(cancel|retry))?)?$/,
+    );
+    if (
+      execAlias &&
+      ((request.method === "GET" && !execAlias[2]) ||
+        (request.method === "POST" && (execAlias[2] === "cancel" || execAlias[2] === "retry")))
+    ) {
+      const suffix = pathname.slice("/v3/executions".length);
+      const rewritten = new Request(
+        new URL(`/api/v3/executions${suffix}${url.search}`, request.url),
         request,
       );
       const apiV3Response = await handleApiV3Request(rewritten);

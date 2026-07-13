@@ -24,10 +24,14 @@
 | GET | `/api/v3/capabilities` | Capability 列表（含 execution_type / approval_policy） |
 | GET | `/api/v3/capabilities/:id` | Capability 详情 |
 | POST | `/api/v3/capabilities/:id/invoke` | **核心无密钥调用** |
-| GET | `/api/v3/approvals` | 用户审批列表 |
-| GET | `/api/v3/approvals/:id` | 审批状态 |
-| POST | `/api/v3/approvals/:id/decide` | 批准/拒绝（可自动 resume 执行） |
+| GET | `/api/v3/approvals` | 统一 Approval 列表 |
+| GET | `/api/v3/approvals/:id` | Approval 状态 |
+| POST | `/api/v3/approvals/:id/approve` | 批准 |
+| POST | `/api/v3/approvals/:id/reject` | 拒绝 |
+| GET | `/api/v3/executions` | 执行列表（Agent 可查自己的） |
 | GET | `/api/v3/executions/:id` | 执行状态 |
+| POST | `/api/v3/executions/:id/cancel` | 取消非终态执行 |
+| POST | `/api/v3/executions/:id/retry` | 失败/超时等重试 |
 | GET | `/api/v3/audit` | Trust 审计（无 secret） |
 | GET/POST | `/api/v3/policies` | 策略与 capability permissions |
 | GET | `/api/v3/secrets/:ref` | **仅 metadata**；`?include_value=1` → 403 |

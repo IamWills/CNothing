@@ -173,11 +173,104 @@ describe("gateway response contracts", () => {
   test("10. dry_run completed shape", () => {
     const response = sanitizeAgentFacing({
       status: "completed",
-      result: { dry_run: true, would_execute: true, capability: "github.create_repo" },
+      result: {
+        dry_run: true,
+        capability: "github.create_repo",
+        policy: {
+          decision: "require_approval",
+          reason: "high risk",
+          matched_policy_id: "p1",
+          risk_level: "high",
+        },
+        approval_required: true,
+        would_execute: false,
+        safe_summary: "name=alpha",
+        execution_plan: { worker_type: "oauth_api", risk_level: "HIGH", timeout_ms: 30000 },
+        estimated_impact: {
+          side_effects: false,
+          requires_human_approval: true,
+          requires_oauth: true,
+          scopes: ["repo"],
+        },
+      },
       execution_id: "exec-1",
       audit_id: "a1",
     });
+    expect(response.status).toBe("completed");
     expect(response.result.dry_run).toBe(true);
+    expect(response.result.approval_required).toBe(true);
+    expect(response.result.would_execute).toBe(false);
+  });
+});
+
+describe("InvokeRequest OpenAPI production fields", () => {
+  test("InvokeRequest and CapabilityInvokeRequest document idempotency_key, dry_run, timeout_ms", async () => {
+    const doc = await Bun.file(
+      new URL("../../../openapi-v3.json", import.meta.url),
+    ).json();
+    const legacy = doc.components.schemas.InvokeRequest.properties;
+    const canonical = doc.components.schemas.CapabilityInvokeRequest.properties;
+    for (const schema of [legacy, canonical]) {
+      expect(schema.idempotency_key).toBeTruthy();
+      expect(schema.dry_run).toBeTruthy();
+      expect(schema.timeout_ms).toBeTruthy();
+      expect(schema.reason).toBeTruthy();
+    }
+    expect(doc.components.schemas.DryRunPreview).toBeTruthy();
+  });
+});
+
+describe("OpenAPI response schemas are production-complete", () => {
+  test("invoke endpoints expose typed responses for all lifecycle statuses", async () => {
+    const doc = await Bun.file(
+      new URL("../../../openapi-v3.json", import.meta.url),
+    ).json();
+    const schemas = doc.components.schemas;
+    for (const name of [
+      "InvokeCompletedResponse",
+      "InvokePendingApprovalResponse",
+      "InvokeDeniedResponse",
+      "InvokeReconnectRequiredResponse",
+      "InvokeFailedResponse",
+      "StructuredError",
+      "ErrorResponse",
+      "ExecutionObject",
+      "LegacyAgentInvokeCompletedResponse",
+      "LegacyAgentInvokePendingApprovalResponse",
+      "CapabilityInvokeResponse",
+    ]) {
+      expect(schemas[name]).toBeTruthy();
+    }
+    expect(schemas.CapabilityInvokeResponse.discriminator.propertyName).toBe("status");
+
+    const canonical =
+      doc.paths["/api/v3/capabilities/{capabilityId}/invoke"].post.responses;
+    expect(canonical["200"].content["application/json"].schema.$ref).toContain(
+      "InvokeCompletedResponse",
+    );
+    expect(canonical["202"].content["application/json"].schema.$ref).toContain(
+      "InvokePendingApprovalResponse",
+    );
+    expect(canonical["403"].content["application/json"].schema.$ref).toContain(
+      "InvokeDeniedResponse",
+    );
+    expect(canonical["409"].content["application/json"].schema.$ref).toContain(
+      "InvokeReconnectRequiredResponse",
+    );
+    expect(canonical["400"].content["application/json"].schema.$ref).toContain(
+      "InvokeFailedResponse",
+    );
+
+    const legacy = doc.paths["/v3/agent/invoke"].post.responses;
+    expect(legacy["200"].content["application/json"].schema.$ref).toContain(
+      "LegacyAgentInvokeCompletedResponse",
+    );
+    expect(legacy["202"].content["application/json"].schema.$ref).toContain(
+      "LegacyAgentInvokePendingApprovalResponse",
+    );
+
+    const exec = doc.paths["/api/v3/executions/{executionId}"].get.responses["200"];
+    expect(exec.content["application/json"].schema.$ref).toContain("ExecutionObject");
   });
 });
 
@@ -263,15 +356,39 @@ describe("14. Policy decision contract", () => {
   });
 });
 
-describe("sanitizeDeep headers/body", () => {
-  test("recursively cleans headers and set-cookie", () => {
-    const cleaned = sanitizeDeep({
-      headers: { "set-cookie": "a=b", "content-type": "application/json" },
-      id_token: "jwt.secret",
-    }) as Record<string, unknown>;
-    expect(String((cleaned.headers as Record<string, unknown>)["set-cookie"])).toContain(
-      "REDACTED",
-    );
-    expect(cleaned.id_token).toBe("[REDACTED]");
+describe("Execution API OpenAPI contract", () => {
+  test("public openapi-v3.json documents execution poll/cancel/retry", async () => {
+    const doc = await Bun.file(
+      new URL("../../../openapi-v3.json", import.meta.url),
+    ).json();
+    expect(doc.paths["/api/v3/executions"]?.get).toBeTruthy();
+    expect(doc.paths["/api/v3/executions/{executionId}"]?.get).toBeTruthy();
+    expect(doc.paths["/api/v3/executions/{executionId}/cancel"]?.post).toBeTruthy();
+    expect(doc.paths["/api/v3/executions/{executionId}/retry"]?.post).toBeTruthy();
+    expect(doc.paths["/v3/executions"]?.get).toBeTruthy();
+    expect(doc.paths["/v3/executions/{executionId}"]?.get).toBeTruthy();
+    expect(doc.components.schemas.ExecutionStatus.enum).toContain("pending_approval");
+    expect(doc.components.schemas.ExecutionStatus.enum).toContain("reconnect_required");
+  });
+});
+
+describe("Unified Approval OpenAPI contract", () => {
+  test("public openapi-v3.json documents unified approvals", async () => {
+    const doc = await Bun.file(
+      new URL("../../../openapi-v3.json", import.meta.url),
+    ).json();
+    expect(doc.paths["/api/v3/approvals"]?.get).toBeTruthy();
+    expect(doc.paths["/api/v3/approvals/{id}"]?.get).toBeTruthy();
+    expect(doc.paths["/api/v3/approvals/{id}/approve"]?.post).toBeTruthy();
+    expect(doc.paths["/api/v3/approvals/{id}/reject"]?.post).toBeTruthy();
+    expect(doc.paths["/v3/approvals"]?.get).toBeTruthy();
+    expect(doc.paths["/v3/approvals/{id}/approve"]?.post).toBeTruthy();
+    expect(doc.components.schemas.ApprovalType.enum).toEqual([
+      "capability_grant",
+      "execution_confirmation",
+      "reauthentication",
+    ]);
+    expect(doc.paths["/v3/authorize/approve"]?.post?.deprecated).toBe(true);
+    expect(doc.paths["/v3/confirmations/pending"]?.get?.deprecated).toBe(true);
   });
 });

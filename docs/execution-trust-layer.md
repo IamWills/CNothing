@@ -58,14 +58,22 @@ docs/execution-trust-layer.md                 # 本文档
 |--------|------|------|
 | GET | `/api/v3/openapi.json` | Execution Trust Layer OpenAPI 3.2 |
 | POST | `/api/v3/capabilities/:id/invoke` | 核心无密钥调用（四态响应） |
-| GET | `/api/v3/executions` | 执行列表（lifecycle） |
+| GET | `/api/v3/executions` | 执行列表（lifecycle；Agent 可查自己的） |
 | GET | `/api/v3/executions/:id` | 执行详情 + policy_decision + audit_chain_id |
+| POST | `/api/v3/executions/:id/cancel` | 取消非终态执行（同步取消 pending approval） |
+| POST | `/api/v3/executions/:id/retry` | 对 failed/timeout/cancelled/reconnect_required 用 safe_input 重试 |
+| GET/POST | `/v3/executions*` | 上述路径的公开别名（rewrite → `/api/v3/executions*`） |
 | GET | `/api/v3/audit` | 审计查询（可按 audit_chain_id） |
 | GET | `/api/v3/audit/chains/:id` | Audit Chain 视图 + 完整性校验 |
 | GET/POST | `/api/v3/policies` | Trust policies + permissions |
 | GET | `/api/v3/secrets` | Vault **metadata only** |
 | GET | `/api/v3/secrets/:ref` | metadata；`include_value=1` → 403 |
-| GET/POST | `/api/v3/approvals*` | 审批（safe summary） |
+| GET | `/api/v3/approvals` | 统一 Approval 列表（`?type=capability_grant|execution_confirmation|reauthentication`） |
+| GET | `/api/v3/approvals/:id` | Approval 详情 |
+| POST | `/api/v3/approvals/:id/approve` | 批准（preferred） |
+| POST | `/api/v3/approvals/:id/reject` | 拒绝（preferred） |
+| POST | `/api/v3/approvals/:id/decide` | 兼容 decide（deprecated） |
+| GET/POST | `/v3/approvals*` | 上述路径公开别名 |
 | GET | `/api/v3/providers` | Provider 列表 |
 | POST | `/api/v3/oauth/connect` | OAuth 连接 |
 

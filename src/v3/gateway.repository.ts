@@ -4,6 +4,7 @@ import type { JsonObject } from "../v2/v2.entity";
 import type {
   ApprovalRecord,
   ApprovalStatus,
+  ApprovalType,
   CapabilityPermissionRecord,
   ExecutionRecord,
   ExecutionStatus,
@@ -24,6 +25,14 @@ function asStringArray(value: unknown): string[] {
 }
 
 function mapApprovalRow(row: Record<string, unknown>): ApprovalRecord {
+  const rawType = row.approval_type ? String(row.approval_type) : "execution_confirmation";
+  const approval_type: ApprovalType =
+    rawType === "capability_grant" ||
+    rawType === "execution_confirmation" ||
+    rawType === "reauthentication"
+      ? rawType
+      : "execution_confirmation";
+
   return {
     id: String(row.id),
     user_id: String(row.user_id),
@@ -31,6 +40,7 @@ function mapApprovalRow(row: Record<string, unknown>): ApprovalRecord {
     capability_id: String(row.capability_id),
     execution_id: row.execution_id ? String(row.execution_id) : null,
     policy_id: row.policy_id ? String(row.policy_id) : null,
+    approval_type,
     requested_action: String(row.requested_action ?? ""),
     input_summary: String(row.input_summary ?? ""),
     safe_input_summary: row.safe_input_summary
@@ -145,10 +155,12 @@ export async function createApproval(input: {
   approval_token?: string;
   execution_id?: string | null;
   policy_id?: string | null;
+  approval_type?: ApprovalType;
 }): Promise<{ approval: ApprovalRecord; approval_token: string }> {
   const id = randomUUID();
   const token = input.approval_token ?? generateApprovalToken();
   const tokenHash = hashApprovalToken(token);
+  const approvalType: ApprovalType = input.approval_type ?? "execution_confirmation";
 
   const values = [
     id,
@@ -168,10 +180,12 @@ export async function createApproval(input: {
       ...(input.metadata ?? {}),
       execution_id: input.execution_id ?? null,
       policy_id: input.policy_id ?? null,
+      approval_type: approvalType,
     }),
     input.execution_id ?? null,
     input.policy_id ?? null,
     input.input_summary,
+    approvalType,
   ];
 
   try {
@@ -181,23 +195,37 @@ export async function createApproval(input: {
           id, user_id, agent_id, capability_id, requested_action, input_summary,
           input_hash, risk_level, scopes, resource_key, expires_at, status,
           approval_token_hash, tenant_id, metadata, execution_id, policy_id,
-          safe_input_summary
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb,$15,$16,$17)
+          safe_input_summary, approval_type
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb,$15,$16,$17,$18)
       `,
       values,
     );
   } catch {
-    // Pre-018 schema fallback
-    await pool.query(
-      `
-        INSERT INTO cap_approvals (
-          id, user_id, agent_id, capability_id, requested_action, input_summary,
-          input_hash, risk_level, scopes, resource_key, expires_at, status,
-          approval_token_hash, tenant_id, metadata
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb)
-      `,
-      values.slice(0, 14),
-    );
+    // Pre-019 / pre-018 schema fallback
+    try {
+      await pool.query(
+        `
+          INSERT INTO cap_approvals (
+            id, user_id, agent_id, capability_id, requested_action, input_summary,
+            input_hash, risk_level, scopes, resource_key, expires_at, status,
+            approval_token_hash, tenant_id, metadata, execution_id, policy_id,
+            safe_input_summary
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb,$15,$16,$17)
+        `,
+        values.slice(0, 17),
+      );
+    } catch {
+      await pool.query(
+        `
+          INSERT INTO cap_approvals (
+            id, user_id, agent_id, capability_id, requested_action, input_summary,
+            input_hash, risk_level, scopes, resource_key, expires_at, status,
+            approval_token_hash, tenant_id, metadata
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending',$12,$13,$14::jsonb)
+        `,
+        values.slice(0, 14),
+      );
+    }
   }
 
   const approval = await findApprovalById(id);
@@ -224,6 +252,7 @@ export async function listApprovals(input: {
   user_id?: string;
   agent_id?: string;
   status?: ApprovalStatus;
+  approval_type?: ApprovalType;
   limit?: number;
 }): Promise<ApprovalRecord[]> {
   const clauses: string[] = [];
@@ -242,15 +271,34 @@ export async function listApprovals(input: {
     clauses.push(`status = $${i++}`);
     values.push(input.status);
   }
+  if (input.approval_type) {
+    clauses.push(`COALESCE(approval_type, 'execution_confirmation') = $${i++}`);
+    values.push(input.approval_type);
+  }
 
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   values.push(Math.min(input.limit ?? 50, 200));
 
-  const result = await pool.query(
-    `SELECT * FROM cap_approvals ${where} ORDER BY created_at DESC LIMIT $${i}`,
-    values,
-  );
-  return result.rows.map(mapApprovalRow);
+  try {
+    const result = await pool.query(
+      `SELECT * FROM cap_approvals ${where} ORDER BY created_at DESC LIMIT $${i}`,
+      values,
+    );
+    return result.rows.map(mapApprovalRow);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!input.approval_type || !/approval_type/i.test(message)) {
+      throw err;
+    }
+    // Pre-019: approval_type column missing — list without type SQL filter
+    const fallback = await listApprovals({
+      user_id: input.user_id,
+      agent_id: input.agent_id,
+      status: input.status,
+      limit: input.limit,
+    });
+    return fallback.filter((a) => a.approval_type === input.approval_type);
+  }
 }
 
 export async function findReusableApproval(input: {
@@ -344,6 +392,18 @@ export async function expireStaleApprovals(): Promise<number> {
     `,
   );
   return result.rowCount ?? 0;
+}
+
+export async function cancelApproval(id: string): Promise<ApprovalRecord | null> {
+  await pool.query(
+    `
+      UPDATE cap_approvals
+      SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND status = 'pending'
+    `,
+    [id],
+  );
+  return findApprovalById(id);
 }
 
 export async function createExecution(input: {

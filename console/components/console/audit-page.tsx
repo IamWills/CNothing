@@ -4,6 +4,7 @@ import * as React from "react";
 import { Activity } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +41,7 @@ export function AuditPage() {
   return (
     <PageFrame
       title="Invoke Audit"
-      description="Every capability invocation is recorded with policy decisions, agent identity, and execution status."
+      description="Every capability invocation is recorded with policy decisions. Prefer Dashboard Audit for hash-linked chains."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -48,6 +49,7 @@ export function AuditPage() {
         </>
       }
     >
+      <LegacyBanner preferredHref="/dashboard/audit" preferredLabel="Dashboard Audit" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

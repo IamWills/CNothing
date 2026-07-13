@@ -108,6 +108,7 @@ export class ApprovalEngine {
       tenant_id: input.tenant_id,
       execution_id: input.execution_id,
       policy_id: input.policy_id,
+      approval_type: "execution_confirmation",
       metadata: {
         approval_policy: input.policy,
         scopes_key: [...input.capability.scopes].sort().join(","),
@@ -145,6 +146,7 @@ export class ApprovalEngine {
 
   async getApprovalStatus(approvalId: string): Promise<{
     approval_id: string;
+    approval_type: string;
     status: string;
     capability_id: string;
     agent_id: string;
@@ -168,6 +170,7 @@ export class ApprovalEngine {
 
     return {
       approval_id: approval.id,
+      approval_type: approval.approval_type ?? "execution_confirmation",
       status,
       capability_id: approval.capability_id,
       agent_id: approval.agent_id,

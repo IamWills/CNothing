@@ -40,7 +40,10 @@ REST: \`POST /v2/agent/invoke\` with header \`Authorization: Bearer agent_...\`.
 
 **v3 Execution Trust Layer (recommended for new agents):**
 \`POST /api/v3/capabilities/{capabilityId}/invoke\` (canonical; documented in \`/openapi-v3.json\` and \`/api/v3/openapi.json\`).
-Aliases: \`POST /v3/capabilities/{capabilityId}/invoke\`, legacy \`POST /v3/agent/invoke\`.
+Body should include production fields: \`idempotency_key\`, \`dry_run\`, \`timeout_ms\`, \`reason\` (optional \`trace_id\`).
+Aliases: \`POST /v3/capabilities/{capabilityId}/invoke\`, legacy \`POST /v3/agent/invoke\` (same fields).
+Poll async / long tasks: \`GET /api/v3/executions\`, \`GET /api/v3/executions/{executionId}\` (aliases under \`/v3/executions*\`). Cancel/retry: \`POST .../cancel\`, \`POST .../retry\`.
+Unified Approvals: \`GET /api/v3/approvals\`, \`GET /api/v3/approvals/{id}\`, \`POST .../approve\`, \`POST .../reject\` (\`approval_type\`: capability_grant | execution_confirmation | reauthentication). Legacy \`/v3/authorize*\` and \`/v3/confirmations*\` remain as compatibility aliases.
 
 SDK default: \`apiVersion: "v2.5"\` on \`CNothingAgentClient\`.
 

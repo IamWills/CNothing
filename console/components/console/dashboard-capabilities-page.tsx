@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { fetchGatewayCapabilities, type GatewayCapability } from "@/lib/api-v3";
+import { brand } from "@/lib/brand";
 import { dashboardTabs } from "@/lib/v2-channel-tabs";
 
 function approvalBadge(policy: string) {
@@ -44,7 +45,7 @@ export function DashboardCapabilitiesPage() {
   return (
     <PageFrame
       title="Capabilities"
-      description="Secretless capability registry. Agents invoke by handle; approval_policy and risk_level are visible, secrets never are."
+      description={`${brand.tagline}. Secretless capability registry — agents invoke by handle; secrets never leave cnothing.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />

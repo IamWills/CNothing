@@ -22,8 +22,10 @@ import { applyOutputPolicy, evaluatePolicyV25, scopesSatisfied } from "../../v2/
 import { normalizeTenantId } from "../tenant-context.service";
 import type { InvokeGatewayResponse } from "../v3.entity";
 import {
+  cancelApproval,
   createExecution,
   createWorkerRun,
+  findApprovalById,
   findExecutionById,
   findExecutionByIdempotency,
   finishWorkerRun,
@@ -192,6 +194,8 @@ export class CapabilityInvocationGateway {
     dry_run?: boolean;
     approval_id?: string;
     timeout_ms?: number;
+    reason?: string;
+    trace_id?: string;
     request?: Request;
   }): Promise<InvokeGatewayResponse> {
     const { ip, user_agent } = clientMeta(input.request);
@@ -202,6 +206,12 @@ export class CapabilityInvocationGateway {
     const inputSummary = summarizeInputForApproval(payload);
     const auditChainId = createAuditChainId();
     const safeInput = sanitizeAgentFacing(payload) as JsonObject;
+    const reason = input.reason?.trim() || null;
+    const traceId = input.trace_id?.trim() || null;
+    const timeoutMsRequested =
+      typeof input.timeout_ms === "number" && input.timeout_ms > 0
+        ? Math.min(Math.trunc(input.timeout_ms), 300_000)
+        : null;
 
     if (capability.name === "github.oauth.connect") {
       return this.handleOAuthConnect({
@@ -238,7 +248,12 @@ export class CapabilityInvocationGateway {
       tenant_id: normalizeTenantId(input.agent.tenant_id),
       audit_chain_id: auditChainId,
       safe_input: safeInput,
-      metadata: { capability_name: capability.name },
+      metadata: {
+        capability_name: capability.name,
+        ...(reason ? { reason } : {}),
+        ...(traceId ? { trace_id: traceId } : {}),
+        ...(timeoutMsRequested ? { timeout_ms: timeoutMsRequested } : {}),
+      },
     });
 
     await appendAuditChainEvent({
@@ -253,7 +268,12 @@ export class CapabilityInvocationGateway {
       ip,
       user_agent,
       result: "created",
-      metadata: { dry_run: dryRun, capability_name: capability.name },
+      metadata: {
+        dry_run: dryRun,
+        capability_name: capability.name,
+        ...(reason ? { reason } : {}),
+        ...(traceId ? { trace_id: traceId } : {}),
+      },
     });
 
     try {
@@ -436,6 +456,21 @@ export class CapabilityInvocationGateway {
         });
 
         if (requirement.required) {
+          // dry_run: preview approval requirement without creating an approval or side effects
+          if (dryRun) {
+            return this.completeDryRun({
+              executionId: execution.id,
+              auditChainId,
+              capability,
+              policyDecision: publicPolicyDecision(policyDecision),
+              approvalRequired: true,
+              approvalPolicy: requirement.policy,
+              inputSummary,
+              timeoutMs: timeoutMsRequested,
+              reason,
+            });
+          }
+
           const requested = await approvalEngine.requestApproval({
             user_id: userId,
             agent: input.agent,
@@ -503,40 +538,17 @@ export class CapabilityInvocationGateway {
       }
 
       if (dryRun) {
-        const result = {
-          dry_run: true,
-          capability: capability.name,
-          policy: policyDecision.decision,
-          would_execute: true,
-        };
-        const auditId = randomUUID();
-        const now = new Date().toISOString();
-        await updateExecution(execution.id, {
-          status: "completed",
-          approval_id: approvalId,
-          result_hash: hashValue(result),
-          result_payload: result as JsonObject,
-          sanitized_output: result as JsonObject,
-          finished_at: now,
-          completed_at: now,
-        });
-        await appendAuditChainEvent({
-          audit_chain_id: auditChainId,
-          event_type: "execution_completed",
-          execution_id: execution.id,
-          agent_id: input.agent.id,
-          user_id: userId,
-          capability_id: capability.id,
-          result: "dry_run",
-          input_summary: inputSummary,
-          risk_level: capability.risk_level,
-        });
-        return sanitizeAgentFacing({
-          status: "completed",
-          result,
-          execution_id: execution.id,
-          audit_id: auditId,
-          audit_chain_id: auditChainId,
+        return this.completeDryRun({
+          executionId: execution.id,
+          auditChainId,
+          capability,
+          policyDecision: publicPolicyDecision(policyDecision),
+          approvalRequired: false,
+          approvalPolicy: null,
+          inputSummary,
+          timeoutMs: timeoutMsRequested,
+          reason,
+          approvalId,
         });
       }
 
@@ -586,10 +598,7 @@ export class CapabilityInvocationGateway {
           : [];
 
       const worker = resolveWorker(capability);
-      const timeoutMs =
-        typeof input.timeout_ms === "number" && input.timeout_ms > 0
-          ? Math.min(input.timeout_ms, 300_000)
-          : worker.timeoutMs();
+      const timeoutMs = timeoutMsRequested ?? worker.timeoutMs();
 
       await updateExecution(execution.id, {
         status: "running",
@@ -844,6 +853,116 @@ export class CapabilityInvocationGateway {
     });
   }
 
+  /**
+   * Cancel a non-terminal execution. Agents may only cancel their own executions.
+   */
+  async cancelExecution(input: {
+    execution_id: string;
+    agent_id?: string;
+    user_id?: string;
+    reason?: string;
+  }) {
+    const execution = await findExecutionById(input.execution_id);
+    if (!execution) return null;
+
+    if (input.agent_id && execution.agent_id !== input.agent_id) {
+      throw new ForbiddenError("Not allowed to cancel this execution", {
+        error_code: "execution_forbidden",
+      });
+    }
+    if (input.user_id && execution.user_id && execution.user_id !== input.user_id) {
+      throw new ForbiddenError("Not allowed to cancel this execution", {
+        error_code: "execution_forbidden",
+      });
+    }
+
+    const cancellable = new Set([
+      "created",
+      "pending",
+      "policy_checking",
+      "pending_approval",
+      "approved",
+      "running",
+    ]);
+    if (!cancellable.has(execution.status)) {
+      throw new ValidationError(
+        `Execution status '${execution.status}' cannot be cancelled`,
+        { error_code: "execution_not_cancellable", status: execution.status },
+      );
+    }
+
+    const now = new Date().toISOString();
+    await updateExecution(execution.id, {
+      status: "cancelled",
+      error_code: "cancelled",
+      error_message: input.reason?.trim() || "Cancelled by caller",
+      finished_at: now,
+      completed_at: now,
+    });
+
+    if (execution.approval_id) {
+      const approval = await findApprovalById(execution.approval_id);
+      if (approval?.status === "pending") {
+        await cancelApproval(execution.approval_id);
+      }
+    }
+
+    if (execution.audit_chain_id) {
+      await appendAuditChainEvent({
+        audit_chain_id: execution.audit_chain_id,
+        event_type: "execution_failed",
+        execution_id: execution.id,
+        agent_id: execution.agent_id,
+        user_id: execution.user_id,
+        capability_id: execution.capability_id,
+        approval_id: execution.approval_id,
+        result: "cancelled",
+        metadata: { reason: input.reason ?? null },
+      });
+    }
+
+    return this.getExecution(execution.id);
+  }
+
+  /**
+   * Retry a failed/timeout/cancelled/reconnect_required execution by re-invoking
+   * with the stored safe_input. Returns a new execution lifecycle response.
+   */
+  async retryExecution(input: {
+    execution_id: string;
+    agent: AgentRecord;
+    request?: Request;
+  }): Promise<InvokeGatewayResponse> {
+    const execution = await findExecutionById(input.execution_id);
+    if (!execution) {
+      throw new NotFoundError("Execution not found");
+    }
+    if (execution.agent_id !== input.agent.id) {
+      throw new ForbiddenError("Not allowed to retry this execution", {
+        error_code: "execution_forbidden",
+      });
+    }
+
+    const retryable = new Set(["failed", "timeout", "cancelled", "reconnect_required"]);
+    if (!retryable.has(execution.status)) {
+      throw new ValidationError(
+        `Execution status '${execution.status}' cannot be retried`,
+        { error_code: "execution_not_retryable", status: execution.status },
+      );
+    }
+
+    const payload = (execution.safe_input ?? {}) as JsonObject;
+    return this.invoke({
+      agent: input.agent,
+      capability_id: execution.capability_id,
+      user_id: execution.user_id ?? undefined,
+      payload,
+      dry_run: execution.dry_run,
+      request: input.request,
+      // new idempotency: do not reuse old key
+    });
+  }
+
   private async handleOAuthConnect(input: {
     agent: AgentRecord;
     capability: CapabilityRecord;
@@ -1026,6 +1145,82 @@ export class CapabilityInvocationGateway {
     });
   }
 
+  private async completeDryRun(input: {
+    executionId: string;
+    auditChainId: string;
+    capability: CapabilityRecord;
+    policyDecision: ReturnType<typeof publicPolicyDecision>;
+    approvalRequired: boolean;
+    approvalPolicy: string | null;
+    inputSummary: string;
+    timeoutMs: number | null;
+    reason: string | null;
+    approvalId?: string | null;
+  }): Promise<InvokeGatewayResponse> {
+    let workerType: string | null = null;
+    try {
+      workerType = resolveWorker(input.capability).name;
+    } catch {
+      workerType = input.capability.execution_type ?? null;
+    }
+
+    const result = {
+      dry_run: true as const,
+      capability: input.capability.name,
+      policy: input.policyDecision,
+      approval_required: input.approvalRequired,
+      approval_policy: input.approvalPolicy,
+      would_execute: !input.approvalRequired,
+      safe_summary: input.inputSummary,
+      reason: input.reason,
+      execution_plan: {
+        worker_type: workerType,
+        execution_type: input.capability.execution_type ?? null,
+        risk_level: input.capability.risk_level,
+        timeout_ms: input.timeoutMs,
+      },
+      estimated_impact: {
+        side_effects: !input.approvalRequired,
+        requires_human_approval: input.approvalRequired,
+        requires_oauth: Boolean(input.capability.provider_id),
+        scopes: input.capability.scopes ?? [],
+      },
+    };
+
+    const auditId = randomUUID();
+    const now = new Date().toISOString();
+    await updateExecution(input.executionId, {
+      status: "completed",
+      approval_id: input.approvalId ?? null,
+      result_hash: hashValue(result),
+      result_payload: result as JsonObject,
+      sanitized_output: result as JsonObject,
+      finished_at: now,
+      completed_at: now,
+    });
+    await appendAuditChainEvent({
+      audit_chain_id: input.auditChainId,
+      event_type: "execution_completed",
+      execution_id: input.executionId,
+      capability_id: input.capability.id,
+      result: "dry_run",
+      input_summary: input.inputSummary,
+      risk_level: input.capability.risk_level,
+      metadata: {
+        approval_required: input.approvalRequired,
+        policy: input.policyDecision,
+      },
+    });
+
+    return sanitizeAgentFacing({
+      status: "completed",
+      result,
+      execution_id: input.executionId,
+      audit_id: auditId,
+      audit_chain_id: input.auditChainId,
+    });
+  }
+
   private async failExecution(input: {
     executionId: string;
     auditChainId: string;
@@ -1180,6 +1375,12 @@ export async function invokeViaLegacyAgentApi(input: {
   capability: string;
   user_id?: string;
   payload?: JsonObject;
+  idempotency_key?: string;
+  dry_run?: boolean;
+  timeout_ms?: number;
+  reason?: string;
+  trace_id?: string;
+  approval_id?: string;
   request?: Request;
 }): Promise<unknown> {
   const response = await capabilityInvocationGateway.invoke({
@@ -1187,6 +1388,12 @@ export async function invokeViaLegacyAgentApi(input: {
     capability_id: input.capability,
     user_id: input.user_id,
     payload: input.payload,
+    idempotency_key: input.idempotency_key,
+    dry_run: input.dry_run,
+    timeout_ms: input.timeout_ms,
+    reason: input.reason,
+    trace_id: input.trace_id,
+    approval_id: input.approval_id,
     request: input.request,
   });
 

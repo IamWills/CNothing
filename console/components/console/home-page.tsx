@@ -29,16 +29,17 @@ const sections: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   {
-    href: "/standards/authentication/1.0",
-    title: "Authentication",
-    description: "Browse the published CNothing Authentication Standard 1.0 as an expandable implementation profile.",
+    href: brand.recommendedPath,
+    title: "v3 Dashboard",
+    description:
+      "Capabilities, executions, approvals, policies, and Secret Vault — the recommended Execution Trust Layer console.",
     icon: ShieldCheck,
   },
   {
-    href: "/readme",
-    title: "Readme",
-    description: "Review the project overview, privacy model, and SDK guidance from the repository document.",
-    icon: FileText,
+    href: "/dashboard/agents",
+    title: "Agents",
+    description: "Register agents that invoke secretless capabilities. Tokens never leave cnothing.",
+    icon: Bot,
   },
   {
     href: "/catalog",
@@ -47,15 +48,15 @@ const sections: Array<{
     icon: Wrench,
   },
   {
-    href: "/agents",
-    title: "Agents (v3)",
-    description: "Register agents, manage grants, and review capability invoke audit logs via v3 Trust Broker.",
-    icon: Bot,
+    href: "/readme",
+    title: "Readme",
+    description: "Review the project overview, privacy model, and SDK guidance from the repository document.",
+    icon: FileText,
   },
   {
-    href: "/standards/registration-hub",
-    title: "Registration Hub",
-    description: "Review the architecture standard for using CNothing as an AI-safe website registration control plane.",
+    href: "/standards/authentication/1.0",
+    title: "Authentication",
+    description: "Browse the published CNothing Authentication Standard 1.0.",
     icon: KeyRound,
   },
 ];
@@ -178,37 +179,64 @@ export function HomePage() {
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-[color:var(--brand)]" />
           <h2 className="text-lg font-semibold">Execution Trust Layer</h2>
+          <Badge className="border-transparent bg-[color:var(--brand)] text-white">Recommended</Badge>
         </div>
-        <p className="max-w-3xl text-sm text-slate-600">
-          Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited.
+        <p className="max-w-3xl text-sm text-slate-600">{brand.principles}</p>
+        <p className="text-sm text-slate-600">
+          Canonical invoke: <code className="text-xs">{brand.recommendedInvoke}</code> · Spec:{" "}
+          <a href={brand.openApiV3} className="underline">
+            {brand.openApiV3}
+          </a>
         </p>
         <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm text-slate-700">
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
             <strong>1. Connect</strong>
             <p className="mt-2 text-slate-600">
-              <a href="/connect" className="underline">Connect</a> GitHub — tokens go to Secret Vault.
+              <a href="/connect" className="underline">
+                Connect
+              </a>{" "}
+              GitHub — tokens go to Secret Vault.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
-            <strong>2. Grant</strong>
+            <strong>2. Register & grant</strong>
             <p className="mt-2 text-slate-600">
-              Authorize agent for <code className="text-xs">github.*</code> capabilities.
+              <a href="/dashboard/agents" className="underline">
+                Agents
+              </a>{" "}
+              → authorize capabilities in Dashboard.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
             <strong>3. Invoke</strong>
             <p className="mt-2 text-slate-600">
-              <code className="text-xs">POST /api/v3/capabilities/:id/invoke</code> — Policy → Approval → Worker.
+              <code className="text-xs">POST /api/v3/capabilities/:id/invoke</code> — Policy → Approval →
+              Worker.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
             <strong>4. Audit</strong>
             <p className="mt-2 text-slate-600">
-              Review chain at <a href="/dashboard/audit" className="underline">Audit</a> ·{" "}
-              <a href="/dashboard/executions" className="underline">Executions</a>.
+              <a href="/dashboard/audit" className="underline">
+                Audit
+              </a>{" "}
+              ·{" "}
+              <a href="/dashboard/executions" className="underline">
+                Executions
+              </a>
+              .
             </p>
           </li>
         </ol>
+        <p className="text-sm">
+          <a
+            href={brand.recommendedPath}
+            className="inline-flex items-center gap-2 font-medium text-[color:var(--brand)] underline underline-offset-2"
+          >
+            Open v3 Dashboard
+            <ArrowRight className="h-4 w-4" />
+          </a>
+        </p>
       </Card>
 
       {v1SunsetAt ? (
@@ -216,10 +244,6 @@ export function HomePage() {
           v1 AuthAI/KV is deprecated. Sunset date: <strong>{v1SunsetAt}</strong>.{" "}
           <a href="/migration" className="underline">
             Migrate KV records
-          </a>{" "}
-          or read{" "}
-          <a href={`${connection.baseUrl.replace(/\/+$/, "")}/openapi-v2.json`} className="underline">
-            openapi-v2.json
           </a>
           .
         </Card>
@@ -232,56 +256,28 @@ export function HomePage() {
         <MetricCard icon={Wrench} label="MCP tools" value={String(toolCount)} helper={`${resourceCount} resources`} />
       </section>
 
-      <Card className="space-y-4">
+      <Card className="space-y-3 border-amber-200/80 bg-amber-50/50">
         <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-[color:var(--brand)]" />
-          <h2 className="text-lg font-semibold">v2.5 Platform Quick Start</h2>
+          <Bot className="h-4 w-4 text-amber-800" />
+          <h2 className="text-lg font-semibold text-amber-950">Legacy / Migration</h2>
         </div>
-        <p className="max-w-3xl text-sm text-slate-600">
-          Connect OAuth once, import OpenAPI or MCP specs, grant capabilities to agents — no custom connector
-          deployment required.
+        <p className="max-w-3xl text-sm text-amber-950/80">
+          v2 / v2.5 flows (OpenAPI import via <code className="text-xs">/import</code>,{" "}
+          <code className="text-xs">POST /v2/agent/invoke</code>, legacy Providers) remain available for migration.
+          New integrations should use the v3 Dashboard and{" "}
+          <code className="text-xs">{brand.recommendedInvoke}</code>.
         </p>
-        <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 text-sm text-slate-700">
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>1. Configure providers</strong>
-            <p className="mt-2 text-slate-600">
-              <a href="/providers" className="underline">Providers</a> → register OAuth client credentials.
-            </p>
-          </li>
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>2. Import capabilities</strong>
-            <p className="mt-2 text-slate-600">
-              <a href="/import" className="underline">Import</a> → OpenAPI or MCP manifest → activate selected tools.
-            </p>
-          </li>
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>3. Register an agent</strong>
-            <p className="mt-2 text-slate-600">
-              <a href="/agents" className="underline">Agents</a> → copy the agent access token (shown once).
-            </p>
-          </li>
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>4. User connects OAuth</strong>
-            <p className="mt-2 text-slate-600">
-              <a href="/connect" className="underline">Connect</a> → user links GitHub or other providers once.
-            </p>
-          </li>
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>5. Authorize & invoke</strong>
-            <p className="mt-2 text-slate-600">
-              Agent calls <code className="text-xs">POST /v2/agent/authorizations</code> → user approves at{" "}
-              <code className="text-xs">/approve/:id</code> →{" "}
-              <code className="text-xs">POST /v2/agent/invoke</code>.
-            </p>
-          </li>
-          <li className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface-muted)]/70 p-4">
-            <strong>6. Audit</strong>
-            <p className="mt-2 text-slate-600">
-              Review policy decisions at <a href="/audit" className="underline">Audit</a>.
-              API spec: <a href="/openapi-v2.5.json" className="underline">openapi-v2.5.json</a>.
-            </p>
-          </li>
-        </ol>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <a href="/migration" className="underline">
+            Migration hub
+          </a>
+          <a href="/providers" className="underline">
+            Legacy Providers
+          </a>
+          <a href="/openapi-v2.5.json" className="underline">
+            openapi-v2.5.json
+          </a>
+        </div>
       </Card>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -374,9 +370,9 @@ export function HomePage() {
             description="Plain-text skills directory for simpler crawlers and basic agents."
           />
           <DiscoveryLink
-            href="/openapi-v2.json"
-            title="OpenAPI v2"
-            description="Capability platform API specification for agents and connectors."
+            href="/openapi-v3.json"
+            title="OpenAPI v3"
+            description="Execution Trust Layer API — canonical invoke, executions, approvals."
           />
           <DiscoveryLink
             href="/getting-started.md"
@@ -384,9 +380,9 @@ export function HomePage() {
             description="Quick-start skill for safe first-time CNothing integrations."
           />
           <DiscoveryLink
-            href="/standards"
-            title="Standards"
-            description="Published authentication and registration-hub standards."
+            href="/openapi-v2.5.json"
+            title="OpenAPI v2.5 (legacy)"
+            description="Legacy capability platform API — prefer openapi-v3.json for new agents."
           />
         </div>
       </Card>

@@ -13,16 +13,14 @@ import {
 } from "../v2/v2.repository";
 import { pool } from "../db";
 import { capabilityInvocationGateway } from "../v3/invocation/capability-invocation.gateway";
-import { approvalEngine } from "../v3/approval-engine/approval-engine";
+import { unifiedApprovalService } from "../v3/approval-engine/unified-approval.service";
 import {
   createCapabilityPermission,
-  findApprovalById,
-  findApprovalByToken,
   listAllCapabilityPermissions,
-  listApprovals,
 } from "../v3/gateway.repository";
 import { secretVaultService } from "../v3/secret-vault.service";
 import type { JsonObject } from "../v2/v2.entity";
+import type { ApprovalType } from "../v3/v3.entity";
 
 function inferBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
@@ -148,6 +146,8 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
           typeof body.timeout_ms === "number" && body.timeout_ms > 0
             ? body.timeout_ms
             : undefined,
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+        trace_id: typeof body.trace_id === "string" ? body.trace_id : undefined,
         request,
       });
 
@@ -166,57 +166,122 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
     }
   }
 
-  // Approvals
+  // Unified Approvals (capability_grant | execution_confirmation | reauthentication)
   if (request.method === "GET" && path === "/api/v3/approvals") {
-    const session = await requireUserSession(request);
-    const status = url.searchParams.get("status") as
-      | "pending"
-      | "approved"
-      | "rejected"
-      | "expired"
-      | undefined;
-    const items = await listApprovals({
-      user_id: session.user_id,
-      status: status || undefined,
-      limit: 100,
+    let userId: string | undefined;
+    let agentId: string | undefined;
+    try {
+      const agent = await requireAgentFromRequest(request);
+      agentId = agent.id;
+    } catch {
+      const session = await requireUserSession(request);
+      userId = session.user_id;
+    }
+    const status = url.searchParams.get("status") || undefined;
+    const approvalType = url.searchParams.get("type") as ApprovalType | null;
+    const items = await unifiedApprovalService.list({
+      user_id: userId,
+      agent_id: agentId,
+      status,
+      approval_type:
+        approvalType === "capability_grant" ||
+        approvalType === "execution_confirmation" ||
+        approvalType === "reauthentication"
+          ? approvalType
+          : undefined,
+      limit: Math.min(Number(url.searchParams.get("limit") ?? "100"), 200),
     });
-    return Response.json(
-      sanitizeAgentResponse({
-        ok: true,
-        items: items.map((a) => ({
-          approval_id: a.id,
-          status: a.status,
-          capability_id: a.capability_id,
-          agent_id: a.agent_id,
-          execution_id: a.execution_id,
-          policy_id: a.policy_id,
-          safe_summary: a.safe_input_summary ?? a.input_summary,
-          risk_level: a.risk_level,
-          scopes: a.scopes,
-          resource_key: a.resource_key,
-          expires_at: a.expires_at,
-          approved_at: a.approved_at,
-          rejected_at: a.rejected_at,
-          cancelled_at: a.cancelled_at,
-          created_at: a.created_at,
-        })),
-      }),
-    );
+    return Response.json(sanitizeAgentResponse({ ok: true, items }));
   }
 
   {
     const approvalMatch = path.match(/^\/api\/v3\/approvals\/([^/]+)$/);
     if (request.method === "GET" && approvalMatch) {
       const approvalId = decodeURIComponent(approvalMatch[1]!);
-      // Agent or user can poll status (no secrets)
+      let agentId: string | undefined;
+      let userId: string | undefined;
       try {
-        await requireAgentFromRequest(request);
+        const agent = await requireAgentFromRequest(request);
+        agentId = agent.id;
       } catch {
-        await requireUserSession(request);
+        const session = await requireUserSession(request);
+        userId = session.user_id;
       }
-      const status = await approvalEngine.getApprovalStatus(approvalId);
+      const status = await unifiedApprovalService.get(approvalId);
       if (!status) throw new NotFoundError("Approval not found");
+      if (agentId && status.agent_id !== agentId) {
+        throw new ForbiddenError("Not allowed to view this approval", {
+          error_code: "approval_forbidden",
+        });
+      }
+      if (userId && status.user_id && status.user_id !== userId) {
+        throw new ForbiddenError("Not allowed to view this approval", {
+          error_code: "approval_forbidden",
+        });
+      }
       return Response.json(sanitizeAgentResponse({ ok: true, ...status }));
+    }
+  }
+
+  async function handleApprovalDecision(
+    approvalId: string,
+    decision: "approved" | "rejected",
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    const token =
+      typeof body.token === "string" ? body.token : url.searchParams.get("token");
+    let decidedBy: string;
+    if (token) {
+      const { findApprovalByToken } = await import("../v3/gateway.repository");
+      const byToken = await findApprovalByToken(token);
+      if (!byToken || byToken.id !== approvalId) {
+        throw new ForbiddenError("Invalid approval token", { error_code: "invalid_token" });
+      }
+      decidedBy = byToken.user_id;
+    } else {
+      const session = await requireUserSession(request);
+      decidedBy = session.user_id;
+    }
+
+    const granted =
+      Array.isArray(body.granted_capabilities)
+        ? body.granted_capabilities.map(String)
+        : Array.isArray(body.capabilities)
+          ? body.capabilities.map(String)
+          : undefined;
+
+    const result = await unifiedApprovalService.decide({
+      approval_id: approvalId,
+      decision,
+      decided_by: decidedBy,
+      token,
+      granted_capabilities: granted,
+      request,
+    });
+
+    return Response.json(
+      sanitizeAgentResponse({
+        ok: true,
+        ...result.view,
+        execution: result.execution ?? undefined,
+        grants: result.grants ?? undefined,
+      }),
+    );
+  }
+
+  {
+    const approveMatch = path.match(/^\/api\/v3\/approvals\/([^/]+)\/approve$/);
+    if (request.method === "POST" && approveMatch) {
+      const body = await parseJsonBody(request).catch(() => ({} as Record<string, unknown>));
+      return handleApprovalDecision(decodeURIComponent(approveMatch[1]!), "approved", body);
+    }
+  }
+
+  {
+    const rejectMatch = path.match(/^\/api\/v3\/approvals\/([^/]+)\/reject$/);
+    if (request.method === "POST" && rejectMatch) {
+      const body = await parseJsonBody(request).catch(() => ({} as Record<string, unknown>));
+      return handleApprovalDecision(decodeURIComponent(rejectMatch[1]!), "rejected", body);
     }
   }
 
@@ -236,82 +301,29 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
       if (!decision) {
         throw new ValidationError("decision must be 'approved' or 'rejected'");
       }
-
-      let decidedBy: string;
-      const token = typeof body.token === "string" ? body.token : url.searchParams.get("token");
-      if (token) {
-        const byToken = await findApprovalByToken(token);
-        if (!byToken || byToken.id !== approvalId) {
-          throw new ForbiddenError("Invalid approval token", { error_code: "invalid_token" });
-        }
-        decidedBy = byToken.user_id;
-      } else {
-        const session = await requireUserSession(request);
-        const approval = await findApprovalById(approvalId);
-        if (!approval || approval.user_id !== session.user_id) {
-          throw new ForbiddenError("Not allowed to decide this approval");
-        }
-        decidedBy = session.user_id;
-      }
-
-      const updated = await approvalEngine.decide({
-        approval_id: approvalId,
-        decision,
-        decided_by: decidedBy,
-      });
-      if (!updated) throw new NotFoundError("Approval not found or already decided");
-
-      // Auto-resume execution after approval
-      let execution_result: unknown = null;
-      if (decision === "approved") {
-        try {
-          const { findAgentById } = await import("../v2/v2.repository");
-          const agent = await findAgentById(updated.agent_id);
-          if (agent) {
-            const snapshot = approvalEngine.getInputSnapshot(updated);
-            execution_result = await capabilityInvocationGateway.invoke({
-              agent,
-              capability_id: updated.capability_id,
-              user_id: updated.user_id,
-              payload: snapshot,
-              approval_id: updated.id,
-              request,
-            });
-          }
-        } catch (err) {
-          execution_result = {
-            status: "failed",
-            error: {
-              code: "resume_failed",
-              message: err instanceof Error ? err.message : String(err),
-            },
-          };
-        }
-      }
-
-      return Response.json(
-        sanitizeAgentResponse({
-          ok: true,
-          approval_id: updated.id,
-          status: updated.status,
-          execution: execution_result,
-        }),
-      );
+      return handleApprovalDecision(approvalId, decision, body);
     }
   }
 
   // Executions list
   if (request.method === "GET" && path === "/api/v3/executions") {
     let userId: string | undefined;
+    let agentId: string | undefined;
     try {
-      const session = await requireUserSession(request);
-      userId = session.user_id;
+      const agent = await requireAgentFromRequest(request);
+      agentId = agent.id;
     } catch {
-      await requireAdminAccess(request);
+      try {
+        const session = await requireUserSession(request);
+        userId = session.user_id;
+      } catch {
+        await requireAdminAccess(request);
+      }
     }
     const { listExecutions } = await import("../v3/gateway.repository");
     const items = await listExecutions({
       user_id: userId,
+      agent_id: agentId,
       status: (url.searchParams.get("status") as never) || undefined,
       limit: Math.min(Number(url.searchParams.get("limit") ?? "50"), 200),
     });
@@ -336,15 +348,86 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
     );
   }
 
-  // Executions
+  // Executions get / cancel / retry
+  {
+    const cancelMatch = path.match(/^\/api\/v3\/executions\/([^/]+)\/cancel$/);
+    if (request.method === "POST" && cancelMatch) {
+      const executionId = decodeURIComponent(cancelMatch[1]!);
+      const body = await parseJsonBody(request).catch(() => ({} as Record<string, unknown>));
+      let agentId: string | undefined;
+      let userId: string | undefined;
+      try {
+        const agent = await requireAgentFromRequest(request);
+        agentId = agent.id;
+      } catch {
+        const session = await requireUserSession(request);
+        userId = session.user_id;
+      }
+      const updated = await capabilityInvocationGateway.cancelExecution({
+        execution_id: executionId,
+        agent_id: agentId,
+        user_id: userId,
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+      });
+      if (!updated) throw new NotFoundError("Execution not found");
+      return Response.json(sanitizeAgentResponse({ ok: true, ...updated }));
+    }
+  }
+
+  {
+    const retryMatch = path.match(/^\/api\/v3\/executions\/([^/]+)\/retry$/);
+    if (request.method === "POST" && retryMatch) {
+      const agent = await requireAgentFromRequest(request);
+      const executionId = decodeURIComponent(retryMatch[1]!);
+      const response = await capabilityInvocationGateway.retryExecution({
+        execution_id: executionId,
+        agent,
+        request,
+      });
+      const status =
+        response.status === "pending_approval"
+          ? 202
+          : response.status === "denied"
+            ? 403
+            : response.status === "reconnect_required"
+              ? 409
+              : response.status === "failed"
+                ? 400
+                : 200;
+      return Response.json(sanitizeAgentResponse(response), { status });
+    }
+  }
+
   {
     const execMatch = path.match(/^\/api\/v3\/executions\/([^/]+)$/);
     if (request.method === "GET" && execMatch) {
-      await requireAgentFromRequest(request).catch(() => requireUserSession(request));
+      let agentId: string | undefined;
+      let userId: string | undefined;
+      try {
+        const agent = await requireAgentFromRequest(request);
+        agentId = agent.id;
+      } catch {
+        try {
+          const session = await requireUserSession(request);
+          userId = session.user_id;
+        } catch {
+          await requireAdminAccess(request);
+        }
+      }
       const execution = await capabilityInvocationGateway.getExecution(
         decodeURIComponent(execMatch[1]!),
       );
       if (!execution) throw new NotFoundError("Execution not found");
+      if (agentId && execution.agent_id !== agentId) {
+        throw new ForbiddenError("Not allowed to view this execution", {
+          error_code: "execution_forbidden",
+        });
+      }
+      if (userId && execution.user_id && execution.user_id !== userId) {
+        throw new ForbiddenError("Not allowed to view this execution", {
+          error_code: "execution_forbidden",
+        });
+      }
       return Response.json(sanitizeAgentResponse({ ok: true, ...execution }));
     }
   }
@@ -667,103 +750,88 @@ export async function handleApiV3Request(request: Request): Promise<Response | n
 }
 
 async function serveApiV3OpenApi(_request: Request): Promise<Response> {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const pathMod = await import("node:path");
+  const root = pathMod.join(pathMod.dirname(fileURLToPath(import.meta.url)), "../..");
+  const publicDoc = JSON.parse(readFileSync(pathMod.join(root, "openapi-v3.json"), "utf8")) as {
+    components?: { schemas?: Record<string, unknown> };
+    paths?: Record<string, unknown>;
+  };
+
+  const pathKeys = [
+    "/api/v3/capabilities/{capabilityId}/invoke",
+    "/v3/capabilities/{capabilityId}/invoke",
+    "/v3/agent/invoke",
+    "/api/v3/executions",
+    "/api/v3/executions/{executionId}",
+    "/api/v3/executions/{executionId}/cancel",
+    "/api/v3/executions/{executionId}/retry",
+    "/v3/executions",
+    "/v3/executions/{executionId}",
+    "/v3/executions/{executionId}/cancel",
+    "/v3/executions/{executionId}/retry",
+    "/api/v3/approvals",
+    "/api/v3/approvals/{id}",
+    "/api/v3/approvals/{id}/approve",
+    "/api/v3/approvals/{id}/reject",
+    "/api/v3/approvals/{id}/decide",
+    "/v3/approvals",
+    "/v3/approvals/{id}",
+    "/v3/approvals/{id}/approve",
+    "/v3/approvals/{id}/reject",
+  ] as const;
+
+  const paths: Record<string, unknown> = {
+    "/api/v3/providers": {
+      get: { summary: "List OAuth providers (public metadata)" },
+      post: { summary: "Register provider (admin; client_secret never via agent)" },
+    },
+    "/api/v3/oauth/connect": {
+      post: { summary: "Start OAuth connect for current user session" },
+    },
+    "/api/v3/capabilities": {
+      get: { summary: "List capabilities with risk_level, execution_type, approval_policy" },
+    },
+    "/api/v3/capabilities/{capabilityId}": {
+      get: { summary: "Capability detail" },
+    },
+    "/api/v3/audit": {
+      get: { summary: "Trust audit query (no secrets); filter by audit_chain_id" },
+    },
+    "/api/v3/audit/chains/{id}": {
+      get: { summary: "Audit chain view with hash integrity" },
+    },
+    "/api/v3/policies": {
+      get: { summary: "List trust policies, legacy policies, capability permissions" },
+      post: { summary: "Create trust policy or capability permission (admin)" },
+    },
+    "/api/v3/secrets": {
+      get: { summary: "Secret Vault metadata list (never values)" },
+    },
+    "/api/v3/secrets/{ref}": {
+      get: { summary: "Secret metadata only (403 if include_value requested)" },
+    },
+  };
+
+  for (const key of pathKeys) {
+    if (publicDoc.paths?.[key]) {
+      paths[key] = publicDoc.paths[key];
+    }
+  }
+
   const doc = {
     openapi: "3.0.3",
     info: {
       title: "CNothing Execution Trust Layer API",
       version: "3.2.0",
       description:
-        "Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited. No endpoint returns secret values.",
+        "Agent thinks. cnothing executes. Secrets never leave cnothing. Full response schemas shared with /openapi-v3.json for SDK/Agent/MCP generation.",
     },
-    paths: {
-      "/api/v3/providers": {
-        get: { summary: "List OAuth providers (public metadata)" },
-        post: { summary: "Register provider (admin; client_secret never via agent)" },
-      },
-      "/api/v3/oauth/connect": {
-        post: { summary: "Start OAuth connect for current user session" },
-      },
-      "/api/v3/capabilities/{capabilityId}/invoke": {
-        post: {
-          summary: "Canonical secretless capability invoke (Execution Trust Layer)",
-          operationId: "invokeCapability",
-          requestBody: {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    agent_id: { type: "string" },
-                    user_id: { type: "string" },
-                    input: { type: "object" },
-                    idempotency_key: { type: "string" },
-                    dry_run: { type: "boolean" },
-                    approval_id: { type: "string" },
-                    timeout_ms: { type: "integer", description: "Worker timeout (max 300000)" },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            "200": { description: "completed (sanitized result) or dry_run" },
-            "202": { description: "pending_approval" },
-            "403": { description: "denied by policy (status=denied)" },
-            "409": { description: "reconnect_required" },
-            "400": { description: "failed / timeout" },
-          },
-        },
-      },
-      "/v3/capabilities/{capabilityId}/invoke": {
-        post: {
-          summary: "Alias of canonical capability invoke",
-          description: "Rewrites to POST /api/v3/capabilities/{capabilityId}/invoke",
-        },
-      },
-      "/v3/agent/invoke": {
-        post: {
-          summary: "Compatibility alias — prefer /api/v3/capabilities/{capabilityId}/invoke",
-          deprecated: true,
-        },
-      },
-      "/api/v3/capabilities": {
-        get: { summary: "List capabilities with risk_level, execution_type, approval_policy" },
-      },
-      "/api/v3/capabilities/{capabilityId}": {
-        get: { summary: "Capability detail" },
-      },
-      "/api/v3/approvals": {
-        get: { summary: "List approvals (safe summary only)" },
-      },
-      "/api/v3/approvals/{id}": {
-        get: { summary: "Approval status (pending|approved|rejected|expired|cancelled)" },
-      },
-      "/api/v3/approvals/{id}/decide": {
-        post: { summary: "User approve/reject (session or short-lived token); may resume execution" },
-      },
-      "/api/v3/executions": {
-        get: { summary: "List executions (lifecycle status)" },
-      },
-      "/api/v3/executions/{id}": {
-        get: { summary: "Execution status + policy_decision + audit_chain_id" },
-      },
-      "/api/v3/audit": {
-        get: { summary: "Trust audit query (no secrets); filter by audit_chain_id" },
-      },
-      "/api/v3/audit/chains/{id}": {
-        get: { summary: "Audit chain view with hash integrity" },
-      },
-      "/api/v3/policies": {
-        get: { summary: "List trust policies, legacy policies, capability permissions" },
-        post: { summary: "Create trust policy or capability permission (admin)" },
-      },
-      "/api/v3/secrets": {
-        get: { summary: "Secret Vault metadata list (never values)" },
-      },
-      "/api/v3/secrets/{ref}": {
-        get: { summary: "Secret metadata only (403 if include_value requested)" },
-      },
+    components: {
+      schemas: publicDoc.components?.schemas ?? {},
     },
+    paths,
   };
   return Response.json(doc);
 }

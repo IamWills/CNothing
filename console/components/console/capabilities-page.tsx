@@ -4,6 +4,7 @@ import * as React from "react";
 import { Layers, Plug, Zap } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -105,7 +106,7 @@ export function CapabilitiesPage() {
   return (
     <PageFrame
       title="Capabilities"
-      description="Browse registered capabilities. Prefer importing from OpenAPI or MCP on the Import page — manual connector registration is for advanced legacy flows."
+      description="Browse registered capabilities. Prefer the v3 Dashboard for Execution Trust Layer workflows; manual connector registration is legacy."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -113,6 +114,7 @@ export function CapabilitiesPage() {
         </>
       }
     >
+      <LegacyBanner preferredHref="/dashboard/capabilities" preferredLabel="Dashboard Capabilities" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

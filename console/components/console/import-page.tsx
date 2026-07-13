@@ -4,6 +4,7 @@ import * as React from "react";
 import { FileUp, Layers, Sparkles } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -174,6 +175,7 @@ export function ImportPage({ apiVersion = "v3" }: ImportPageProps = {}) {
         </>
       }
     >
+      <LegacyBanner preferredHref="/dashboard/capabilities" preferredLabel="Dashboard Capabilities" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

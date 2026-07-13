@@ -719,6 +719,16 @@ export async function handleV3AgentRequest(request: Request): Promise<Response |
         capability: readRequiredString(body, "capability"),
         user_id: typeof body.user_id === "string" ? body.user_id : undefined,
         payload: readOptionalObject(body, "input"),
+        idempotency_key:
+          typeof body.idempotency_key === "string" ? body.idempotency_key : undefined,
+        dry_run: Boolean(body.dry_run),
+        timeout_ms:
+          typeof body.timeout_ms === "number" && body.timeout_ms > 0
+            ? body.timeout_ms
+            : undefined,
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+        trace_id: typeof body.trace_id === "string" ? body.trace_id : undefined,
+        approval_id: typeof body.approval_id === "string" ? body.approval_id : undefined,
         request,
       });
       if (

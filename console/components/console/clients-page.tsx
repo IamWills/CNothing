@@ -4,6 +4,7 @@ import * as React from "react";
 import { Fingerprint, KeyRound, Shield } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -95,6 +96,7 @@ export function ClientsPage() {
         </>
       }
     >
+      <LegacyBanner preferredHref="/dashboard/capabilities" preferredLabel="v3 Dashboard" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

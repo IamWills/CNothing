@@ -4,6 +4,7 @@ import * as React from "react";
 import { KeyRound, Link2, ShieldCheck } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,8 @@ import {
   type V25OAuthProviderAdmin,
   type V25ProviderTemplate,
 } from "@/lib/api-v2";
-import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
+import { brand } from "@/lib/brand";
+import { dashboardTabs, v2ChannelTabs } from "@/lib/v2-channel-tabs";
 
 const emptyCreateForm = {
   slug: "",
@@ -42,9 +44,15 @@ const emptyCreateForm = {
 type ProvidersPageProps = {
   adminBasePath?: string;
   apiVersion?: "v2.5" | "v2.6" | "v3";
+  /** When true, show LegacyBanner and legacy channel tabs (pre-dashboard route). */
+  legacySurface?: boolean;
 };
 
-export function ProvidersPage({ adminBasePath, apiVersion = "v3" }: ProvidersPageProps = {}) {
+export function ProvidersPage({
+  adminBasePath,
+  apiVersion = "v3",
+  legacySurface = false,
+}: ProvidersPageProps = {}) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const [providers, setProviders] = React.useState<V25OAuthProviderAdmin[]>([]);
   const [templates, setTemplates] = React.useState<V25ProviderTemplate[]>([]);
@@ -190,14 +198,17 @@ export function ProvidersPage({ adminBasePath, apiVersion = "v3" }: ProvidersPag
   return (
     <PageFrame
       title="OAuth Providers"
-      description="Register third-party OAuth providers for the Universal OAuth Broker. Users connect once on the Connect page; imported capabilities bind to these providers."
+      description={`${brand.tagline}. Register third-party OAuth providers; tokens stay in Secret Vault.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={v2ChannelTabs} />
+          <ChannelRouteTabs items={legacySurface ? v2ChannelTabs : dashboardTabs} />
         </>
       }
     >
+      {legacySurface ? (
+        <LegacyBanner preferredHref="/dashboard/providers" preferredLabel="Dashboard Providers" />
+      ) : null}
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

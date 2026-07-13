@@ -284,6 +284,63 @@ async function main() {
     "legacy /v3/agent/invoke must be marked deprecated",
   );
   assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/executions"]),
+    "openapi-v3.json must document GET /api/v3/executions",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/executions/{executionId}"]),
+    "openapi-v3.json must document GET /api/v3/executions/{executionId}",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/executions/{executionId}/cancel"]),
+    "openapi-v3.json must document POST cancel",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/executions/{executionId}/retry"]),
+    "openapi-v3.json must document POST retry",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/v3/executions"]),
+    "openapi-v3.json must document /v3/executions alias",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/approvals"]),
+    "openapi-v3.json must document GET /api/v3/approvals",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/approvals/{id}/approve"]),
+    "openapi-v3.json must document POST approve",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/api/v3/approvals/{id}/reject"]),
+    "openapi-v3.json must document POST reject",
+  );
+  assert(
+    Boolean(publicOpenapi.data.paths?.["/v3/approvals"]),
+    "openapi-v3.json must document /v3/approvals alias",
+  );
+  const invokeProps =
+    (publicOpenapi.data as {
+      components?: {
+        schemas?: {
+          CapabilityInvokeRequest?: { properties?: Record<string, unknown> };
+          InvokeRequest?: { properties?: Record<string, unknown> };
+        };
+      };
+    }).components?.schemas?.CapabilityInvokeRequest?.properties ?? {};
+  const legacyProps =
+    (publicOpenapi.data as {
+      components?: {
+        schemas?: { InvokeRequest?: { properties?: Record<string, unknown> } };
+      };
+    }).components?.schemas?.InvokeRequest?.properties ?? {};
+  assert(Boolean(invokeProps.idempotency_key), "CapabilityInvokeRequest needs idempotency_key");
+  assert(Boolean(invokeProps.dry_run), "CapabilityInvokeRequest needs dry_run");
+  assert(Boolean(invokeProps.timeout_ms), "CapabilityInvokeRequest needs timeout_ms");
+  assert(Boolean(legacyProps.idempotency_key), "InvokeRequest needs idempotency_key");
+  assert(Boolean(legacyProps.dry_run), "InvokeRequest needs dry_run");
+  assert(Boolean(legacyProps.timeout_ms), "InvokeRequest needs timeout_ms");
+  assert(
     String(publicOpenapi.data.info?.title ?? "").includes("Execution Trust Layer"),
     "openapi-v3 title should reflect Execution Trust Layer",
   );

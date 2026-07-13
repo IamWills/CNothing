@@ -94,21 +94,35 @@ export function DashboardApprovalsPage() {
               <div key={item.approval_id} className="grid gap-3 px-6 py-4 lg:grid-cols-[1.5fr_auto]">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">{item.capability_id}</p>
+                    <p className="font-medium">
+                      {item.capability_id || item.approval_type || item.approval_id}
+                    </p>
+                    {item.approval_type ? <Badge>{item.approval_type}</Badge> : null}
                     <Badge>{item.status}</Badge>
-                    <Badge>{item.risk_level}</Badge>
+                    {item.risk_level ? <Badge>{item.risk_level}</Badge> : null}
                   </div>
                   <p className="mt-1 text-sm text-slate-700">{item.safe_summary}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    expires {formatDate(item.expires_at)}
+                    {item.expires_at ? `expires ${formatDate(item.expires_at)}` : "no expiry"}
                     {item.resource_key ? ` · resource ${item.resource_key}` : ""}
+                    {item.connection_url ? " · reconnect required" : ""}
                   </p>
                 </div>
                 {item.status === "pending" ? (
                   <div className="flex gap-2">
-                    <Button onClick={() => void decide(item.approval_id, "approved")}>
-                      Approve
-                    </Button>
+                    {item.approval_type === "reauthentication" && item.connection_url ? (
+                      <Button
+                        onClick={() => {
+                          window.location.href = item.connection_url!;
+                        }}
+                      >
+                        Reconnect
+                      </Button>
+                    ) : (
+                      <Button onClick={() => void decide(item.approval_id, "approved")}>
+                        Approve
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       onClick={() => void decide(item.approval_id, "rejected")}

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Unplug } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ export function ConnectionsPage() {
       description="Third-party connections with encrypted tokens stored by CNothing."
       actions={<ReloadIconButton disabled={loading} onReload={() => void refresh()} />}
     >
+      <LegacyBanner preferredHref="/dashboard/connections" preferredLabel="Dashboard Connections" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

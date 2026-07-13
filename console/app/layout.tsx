@@ -67,14 +67,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         operatingSystem: "Web",
         url: "https://cnothing.com",
         description:
-          "CNothing is an AI-safe control surface for MCP discovery, public skills, challenge-based client authentication, and encrypted KV storage.",
+          "CNothing is the Execution Trust Layer for AI Agents: secretless capability invoke, policy, approval, vault, and audit.",
         sameAs: ["https://github.com/IamWills/CNothing", "https://www.npmjs.com/package/cnothing"],
         featureList: [
+          "Secretless capability invoke via /api/v3/capabilities/{id}/invoke",
+          "Policy Engine, Approval Engine, Secret Vault, Execution Workers",
           "MCP discovery via /.well-known/mcp",
           "Public skills index via /skills/index.json",
-          "AI-safe AuthAI registration and challenge flows",
-          "Encrypted KV storage with private and blind modes",
-          "Published authentication and registration-hub standards",
+          "Unified Approvals and Execution lifecycle APIs",
         ],
       },
       {

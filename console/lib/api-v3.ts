@@ -427,17 +427,21 @@ export async function rejectV3PendingConfirmation(
 
 export type GatewayApproval = {
   approval_id: string;
+  approval_type?: "capability_grant" | "execution_confirmation" | "reauthentication";
+  execution_id?: string | null;
   status: string;
-  capability_id: string;
+  capability_id: string | null;
   agent_id?: string;
   safe_summary: string;
-  risk_level: string;
+  risk_level: string | null;
   scopes?: string[];
   resource_key?: string | null;
-  expires_at: string;
+  expires_at: string | null;
+  connection_url?: string | null;
   approved_at?: string | null;
   rejected_at?: string | null;
-  created_at?: string;
+  cancelled_at?: string | null;
+  created_at?: string | null;
 };
 
 export type GatewayCapability = {
@@ -576,12 +580,13 @@ export async function decideGatewayApproval(
   decision: "approved" | "rejected",
   token?: string,
 ) {
+  const action = decision === "approved" ? "approve" : "reject";
   return requestJson<{ ok: true; approval_id: string; status: string; execution?: unknown }>(
     connection,
-    `/api/v3/approvals/${encodeURIComponent(approvalId)}/decide`,
+    `/api/v3/approvals/${encodeURIComponent(approvalId)}/${action}`,
     {
       method: "POST",
-      body: JSON.stringify({ decision, token }),
+      body: JSON.stringify(token ? { token } : {}),
     },
   );
 }

@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { fetchV3Agents, registerV3Agent, type V3Agent } from "@/lib/api-v3";
-import { v2ChannelTabs } from "@/lib/v2-channel-tabs";
+import { brand } from "@/lib/brand";
+import { dashboardTabs } from "@/lib/v2-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function AgentsPage() {
@@ -60,11 +61,11 @@ export function AgentsPage() {
   return (
     <PageFrame
       title="Agents"
-      description="Register AI agents for the v3 Trust Broker. Agents receive capabilities, never secrets."
+      description={`${brand.tagline}. Register agents that invoke capabilities secretlessly — never receive tokens.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={v2ChannelTabs} />
+          <ChannelRouteTabs items={dashboardTabs} />
         </>
       }
     >

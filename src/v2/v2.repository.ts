@@ -678,6 +678,36 @@ export async function denyAuthorizationRequest(id: string): Promise<Authorizatio
   return result.rows[0] ? mapAuthorizationRequestRow(result.rows[0]) : null;
 }
 
+export async function listAuthorizationRequests(input: {
+  user_id?: string;
+  agent_id?: string;
+  status?: AuthorizationRequestStatus;
+  limit?: number;
+}): Promise<AuthorizationRequestRecord[]> {
+  const clauses: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (input.user_id) {
+    clauses.push(`user_id = $${i++}`);
+    values.push(input.user_id);
+  }
+  if (input.agent_id) {
+    clauses.push(`agent_id = $${i++}`);
+    values.push(input.agent_id);
+  }
+  if (input.status) {
+    clauses.push(`status = $${i++}`);
+    values.push(input.status);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  values.push(Math.min(input.limit ?? 50, 200));
+  const result = await pool.query(
+    `SELECT * FROM cap_authorization_requests ${where} ORDER BY created_at DESC LIMIT $${i}`,
+    values,
+  );
+  return result.rows.map(mapAuthorizationRequestRow);
+}
+
 export async function listPendingConfirmations(filter?: {
   user_id?: string;
 }): Promise<PendingConfirmationSummary[]> {

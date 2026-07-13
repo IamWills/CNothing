@@ -4,6 +4,7 @@ import * as React from "react";
 import { CheckCircle2, Shield, XCircle } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
+import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -123,7 +124,7 @@ export function GrantsPage() {
   return (
     <PageFrame
       title="Grants & Confirmations"
-      description="Users authorize agents via v3 Trust Broker grants. High-risk invocations still require explicit confirmation."
+      description="Users authorize agents via capability grants. Prefer Dashboard Approvals for execution confirmations."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -131,6 +132,7 @@ export function GrantsPage() {
         </>
       }
     >
+      <LegacyBanner preferredHref="/dashboard/approvals" preferredLabel="Dashboard Approvals" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

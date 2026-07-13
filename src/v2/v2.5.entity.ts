@@ -240,4 +240,10 @@ export type AgentInvokeRequest = {
   reason?: string;
   confirmation_id?: string;
   request_id?: string;
+  idempotency_key?: string;
+  dry_run?: boolean;
+  timeout_ms?: number;
+  trace_id?: string;
+  approval_id?: string;
+  user_id?: string;
 };

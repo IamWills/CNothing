@@ -1,5 +1,6 @@
-import { AgentsPage } from "@/components/console/agents-page";
+import { redirect } from "next/navigation";
 
+/** Agents top-nav entry lands on the v3 Dashboard by default. */
 export default function Agents() {
-  return <AgentsPage />;
+  redirect("/dashboard/capabilities" as never);
 }

@@ -84,6 +84,12 @@ export type ApprovalStatus =
   | "cancelled"
   | "consumed";
 
+/** Unified Approval kinds across grant / invoke / reauth flows */
+export type ApprovalType =
+  | "capability_grant"
+  | "execution_confirmation"
+  | "reauthentication";
+
 export type ApprovalRecord = {
   id: string;
   user_id: string;
@@ -91,6 +97,7 @@ export type ApprovalRecord = {
   capability_id: string;
   execution_id: string | null;
   policy_id: string | null;
+  approval_type: ApprovalType;
   requested_action: string;
   input_summary: string;
   safe_input_summary: string | null;
@@ -109,6 +116,28 @@ export type ApprovalRecord = {
   metadata: JsonObject;
   created_at: string;
   updated_at: string;
+};
+
+/** Agent/user-facing unified Approval view (no secrets) */
+export type UnifiedApprovalView = {
+  approval_id: string;
+  approval_type: ApprovalType;
+  execution_id: string | null;
+  status: string;
+  risk_level: string | null;
+  safe_summary: string;
+  expires_at: string | null;
+  capability_id: string | null;
+  agent_id: string;
+  user_id: string | null;
+  policy_id: string | null;
+  scopes: string[];
+  resource_key: string | null;
+  connection_url: string | null;
+  approved_at: string | null;
+  rejected_at: string | null;
+  cancelled_at: string | null;
+  created_at: string | null;
 };
 
 export type ExecutionStatus =

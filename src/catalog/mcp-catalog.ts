@@ -6,6 +6,33 @@ export const MCP_V4_WORKFLOW_URI = "resource://cnothing/v4-workflow";
 
 const MCP_TOOLS: McpToolDescriptor[] = [
   {
+    name: "register_agent",
+    description:
+      "Self-register this agent with CNothing and receive an agent_access_token. No admin token needed: an agent token by itself grants nothing until a human approves an access request. Store the returned token securely — it is shown only once.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "A human-readable name for this agent." },
+        metadata: { type: "object", description: "Optional metadata (purpose, owner, ...)." },
+      },
+      required: ["name"],
+    },
+    useCases: ["First step when the agent has no agent_access_token yet."],
+  },
+  {
+    name: "start_sandbox",
+    description:
+      "Provision a fully auto-approved sandbox grant so the agent can self-test the entire v4 flow (access request → grant → credential-injecting proxy → redaction) WITHOUT any human approval or real OAuth provider. Returns grant_id and an echo_url to call via proxy_request.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_access_token: { type: "string", description: "Agent bearer token." },
+      },
+      required: ["agent_access_token"],
+    },
+    useCases: ["End-to-end self-test before requesting access to a real provider."],
+  },
+  {
     name: "list_providers",
     description:
       "List OAuth 2.0 providers configured on CNothing (github, google, slack, ...). Use this to discover which provider slug to pass to request_access.",
@@ -153,6 +180,10 @@ can call any API of an OAuth 2.0 provider without ever touching tokens.
 
 ## Steps
 
+0. No token yet? \`register_agent\` with \`{ name }\` — self-service, returns
+   \`agent_access_token\` (shown once; store it securely). Optionally verify the whole
+   mechanics first with \`start_sandbox\` + \`proxy_request\` against the returned
+   \`echo_url\` — no human approval needed for the sandbox.
 1. \`list_providers\` — find the provider slug (e.g. \`github\`).
 2. \`request_access\` with \`{ provider: "github", reason: "..." }\`.
    - Response: \`{ access_request_id, approval_url }\`.

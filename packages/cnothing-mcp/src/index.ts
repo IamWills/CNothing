@@ -14,7 +14,8 @@
  */
 
 const BASE_URL = (process.env.CNOTHING_BASE_URL ?? "https://cnothing.com").replace(/\/+$/, "");
-const AGENT_TOKEN = process.env.CNOTHING_AGENT_TOKEN ?? "";
+// Mutable: register_agent can fill it in at runtime if not preconfigured.
+let AGENT_TOKEN = process.env.CNOTHING_AGENT_TOKEN ?? "";
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -24,6 +25,25 @@ type JsonRpcRequest = {
 };
 
 const TOOLS = [
+  {
+    name: "register_agent",
+    description:
+      "Self-register this agent with CNothing and receive an agent access token (no admin needed; a token alone grants nothing until a human approves access). The token is applied to this MCP session automatically — also store it as CNOTHING_AGENT_TOKEN for future sessions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Human-readable agent name" },
+        metadata: { type: "object", description: "Optional metadata" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "start_sandbox",
+    description:
+      "Provision an auto-approved sandbox grant to self-test the full v4 flow (grant + credential-injecting proxy + redaction) without human approval or a real OAuth provider. Returns grant_id and echo_url for proxy_request.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "list_providers",
     description:
@@ -133,13 +153,31 @@ async function api(
 }
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  if (name === "register_agent") {
+    const { status, data } = await api("POST", "/v4/agents/register", {
+      name: args.name,
+      metadata: args.metadata,
+    });
+    if (status < 400 && data && typeof data === "object") {
+      const token = (data as Record<string, unknown>).access_token;
+      if (typeof token === "string" && token) {
+        AGENT_TOKEN = token;
+      }
+    }
+    return data;
+  }
+
   if (!AGENT_TOKEN) {
     throw new Error(
-      "CNOTHING_AGENT_TOKEN is not set. Ask the platform operator to register this agent (POST /v4/agents/register) and put the token in the MCP server env.",
+      "CNOTHING_AGENT_TOKEN is not set. Call the register_agent tool first (self-service), or set the token in the MCP server env.",
     );
   }
 
   switch (name) {
+    case "start_sandbox": {
+      const { data } = await api("POST", "/v4/sandbox/start", {});
+      return data;
+    }
     case "list_providers": {
       const { data } = await api("GET", "/v4/providers");
       return data;
@@ -253,6 +291,10 @@ async function handleMessage(rpc: JsonRpcRequest): Promise<void> {
 }
 
 let buffer = "";
+// Process messages strictly in order: register_agent must finish (and set
+// AGENT_TOKEN) before any subsequent tool call runs.
+let queue: Promise<void> = Promise.resolve();
+
 process.stdin.on("data", (chunk: Buffer) => {
   buffer += chunk.toString("utf8");
   let newlineIndex = buffer.indexOf("\n");
@@ -261,7 +303,8 @@ process.stdin.on("data", (chunk: Buffer) => {
     buffer = buffer.slice(newlineIndex + 1);
     if (line) {
       try {
-        void handleMessage(JSON.parse(line) as JsonRpcRequest);
+        const rpc = JSON.parse(line) as JsonRpcRequest;
+        queue = queue.then(() => handleMessage(rpc));
       } catch {
         respondError(null, -32700, "Parse error");
       }
@@ -270,4 +313,6 @@ process.stdin.on("data", (chunk: Buffer) => {
   }
 });
 
-process.stdin.on("end", () => process.exit(0));
+process.stdin.on("end", () => {
+  void queue.then(() => process.exit(0));
+});

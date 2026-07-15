@@ -11,11 +11,14 @@
 v4 是一次战略性简化。此前的版本要求每个第三方操作都先注册为 *capability*（内置 handler 或 OpenAPI/MCP 导入激活）才能被 agent 调用——通用性正是卡在这一层。v4 彻底移除了该层：用户授权一次之后，agent 可以用普通 HTTP 请求调用 **该 OAuth 2.0 提供方的任意 API**，CNothing 在服务端注入 token。Agent 永远接触不到 access token、refresh token 和 client secret。
 
 ```text
+0. Agent 自助注册（无需管理员）        →  POST /v4/agents/register { name }
 1. 用户连接一次 Provider              →  /connect（token 加密存储）
 2. Agent 申请连接级访问权限            →  POST /v4/access-requests { provider, hosts?, reason? }
 3. 用户批准一次                        →  approval_url（Console 的 /approve-proxy/{id}）
 4. Agent 通过代理调用任意 API          →  POST /v4/proxy { grant_id, method, url, headers?, body? }
 ```
+
+Agent 还可以在完全无人参与的情况下自测全流程：`POST /v4/sandbox/start` 会创建一个自动批准的沙盒 grant（唯一可达的上游是 CNothing 自身的 echo 端点），随后 agent 用返回的 `echo_url` 调用 `POST /v4/proxy`，即可观察到注入的 token 在响应中显示为 `[REDACTED]`。
 
 服务端强制的安全边界：
 

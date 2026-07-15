@@ -5,6 +5,9 @@ seeing access tokens, refresh tokens, client secrets, or API keys. CNothing stor
 user's OAuth connection server-side and injects the Authorization header for you.
 
 Standard workflow:
+0. register_agent { name } — self-register if you have no agent_access_token yet (no
+   admin needed; the token alone grants nothing until a human approves access). Then
+   optionally start_sandbox to self-test the full flow without any human approval.
 1. list_providers — discover which OAuth providers are configured (github, google, ...).
 2. request_access { provider, hosts?, reason? } — ask for connection-level access.
    You receive an approval_url. Show it to the human user; they approve once in the
@@ -23,5 +26,6 @@ Never ask users for tokens or passwords. Never try to extract credentials — re
 are redacted server-side. Human OAuth consent (one click per connection) cannot be
 skipped; that is an OAuth 2.0 protocol requirement, not a CNothing limitation.
 
-Authentication: every tool call requires agent_access_token (issued by the platform
-operator via POST /v4/agents/register).`;
+Authentication: every tool call (except register_agent) requires agent_access_token.
+Get one via the register_agent tool or POST /v4/agents/register — self-service, no
+admin token required.`;

@@ -5,6 +5,7 @@ import { readUserSessionToken, requireUserSession } from "../v2/user-session";
 import { listOAuthProviders, toProviderPublic } from "../v2/oauth.repository";
 import { oauthConnectionService } from "../v2/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
+import { sandboxService } from "../v4/sandbox.service";
 
 function inferBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
@@ -19,6 +20,18 @@ export async function handleV4Request(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const segments = path.split("/").filter(Boolean);
+
+  // --- Sandbox (agent self-test without human approval) ---
+
+  if (request.method === "POST" && path === "/v4/sandbox/start") {
+    const agent = await requireAgentFromRequest(request);
+    const result = await sandboxService.start({ agent, apiBaseUrl: inferBaseUrl(request) });
+    return Response.json(result, { status: 201 });
+  }
+
+  if (path === "/v4/sandbox/echo") {
+    return sandboxService.echo(request);
+  }
 
   // --- Agent-facing ---
 

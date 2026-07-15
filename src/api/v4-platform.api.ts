@@ -202,15 +202,21 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     );
   }
 
-  // --- Agents (admin) ---
+  // --- Agents ---
 
+  // Self-service registration: an agent token by itself grants nothing —
+  // every proxy grant still requires an explicit user approval — so open
+  // registration is safe (protected by the global /v4 rate limiter).
   if (request.method === "POST" && path === "/v4/agents/register") {
-    requireAdminAccess(request);
     const body = await parseJsonBody(request);
+    const ownerUserId =
+      typeof body.owner_user_id === "string" && body.owner_user_id.trim()
+        ? body.owner_user_id.trim()
+        : "self-registered";
     const { createAgent } = await import("../v2/v2.repository");
     const created = await createAgent({
       name: readRequiredString(body, "name"),
-      owner_user_id: readRequiredString(body, "owner_user_id"),
+      owner_user_id: ownerUserId,
       tenant_id:
         typeof body.tenant_id === "string" ? normalizeTenantId(body.tenant_id) : undefined,
       metadata: readOptionalObject(body, "metadata"),
@@ -227,6 +233,11 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
           created_at: created.agent.created_at,
         },
         access_token: created.access_token,
+        next_steps: {
+          sandbox: "POST /v4/sandbox/start — full self-test without human approval",
+          request_access:
+            "POST /v4/access-requests — real providers require the user to open approval_url",
+        },
       },
       { status: 201 },
     );

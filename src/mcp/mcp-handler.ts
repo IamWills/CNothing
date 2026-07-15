@@ -11,8 +11,11 @@ import { sanitizeAgentResponse } from "../v2/secret-redaction";
 import { findAgentByAccessToken } from "../v2/v2.repository";
 import { providerProposalService } from "../v3/provider-proposal.service";
 import { proxyService } from "../v4/proxy.service";
+import { sandboxService } from "../v4/sandbox.service";
 
 const V4_AGENT_MCP_TOOLS = new Set([
+  "register_agent",
+  "start_sandbox",
   "list_providers",
   "request_access",
   "get_access_status",
@@ -120,6 +123,41 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
         }
 
         switch (name) {
+          case "register_agent": {
+            const agentName = typeof args.name === "string" ? args.name.trim() : "";
+            if (!agentName) {
+              return jsonRpcError(id, -32000, "name is required");
+            }
+            const { createAgent } = await import("../v2/v2.repository");
+            const created = await createAgent({
+              name: agentName,
+              owner_user_id: "self-registered",
+              metadata:
+                args.metadata && typeof args.metadata === "object" && !Array.isArray(args.metadata)
+                  ? (args.metadata as Record<string, unknown>)
+                  : {},
+            });
+            result = {
+              ok: true,
+              agent: {
+                id: created.agent.id,
+                name: created.agent.name,
+                status: created.agent.status,
+              },
+              agent_access_token: created.access_token,
+              note: "Store this token securely; it is shown only once.",
+            };
+            break;
+          }
+
+          case "start_sandbox": {
+            const agent = await requireAgentFromMcpArgs(args);
+            result = sanitizeAgentResponse(
+              await sandboxService.start({ agent, apiBaseUrl: apiBaseUrl() }),
+            );
+            break;
+          }
+
           case "list_providers": {
             await requireAgentFromMcpArgs(args);
             const items = await oauthProviderService.listPublicProviders();

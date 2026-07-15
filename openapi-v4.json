@@ -238,17 +238,17 @@
     },
     "/v4/agents/register": {
       "post": {
-        "summary": "Register an agent and issue its access token (admin)",
-        "security": [{ "adminToken": [] }],
+        "summary": "Self-register an agent and issue its access token (no auth required; rate-limited)",
+        "description": "Open self-service registration. An agent token by itself grants nothing: every proxy grant still requires an explicit user approval via approval_url.",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "owner_user_id"],
+                "required": ["name"],
                 "properties": {
                   "name": { "type": "string" },
-                  "owner_user_id": { "type": "string" },
+                  "owner_user_id": { "type": "string", "description": "Optional; defaults to self-registered" },
                   "metadata": { "type": "object" }
                 }
               }
@@ -256,6 +256,20 @@
           }
         },
         "responses": { "201": { "description": "Agent plus one-time access_token" } }
+      }
+    },
+    "/v4/sandbox/start": {
+      "post": {
+        "summary": "Provision an auto-approved sandbox grant for a full agent self-test",
+        "description": "Creates a sandbox provider/connection/grant so the agent can exercise the entire flow (access request, grant, credential-injecting proxy, redaction) without human approval or a real OAuth provider. Returns grant_id and echo_url.",
+        "security": [{ "agentToken": [] }],
+        "responses": { "201": { "description": "Sandbox grant_id + echo_url + example proxy call" } }
+      }
+    },
+    "/v4/sandbox/echo": {
+      "get": {
+        "summary": "Sandbox mock upstream: echoes the request the proxy forwarded",
+        "responses": { "200": { "description": "Echo of method/path/query/headers/body; injected token appears as [REDACTED] in proxied responses" } }
       }
     },
     "/v4/agents": {

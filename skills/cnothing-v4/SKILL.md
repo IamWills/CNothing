@@ -18,9 +18,36 @@ redacts secrets from responses, and audits every call.
 
 ## Prerequisites
 
-- An agent access token (`AGENT_TOKEN`), issued once by the platform operator via
-  `POST /v4/agents/register` (admin) or handed to you in your environment config.
+- An agent access token (`AGENT_TOKEN`). Self-service — register yourself:
+
+```bash
+curl -X POST https://cnothing.com/v4/agents/register \
+  -H "content-type: application/json" \
+  -d '{"name":"my-agent"}'
+# => { "agent": {...}, "access_token": "agent_..." }  # shown once, store it
+```
+
+  No admin token is needed: an agent token alone grants nothing until a human
+  approves an access request.
 - Base URL: `https://cnothing.com` (or your deployment).
+
+## Self-test without a human (sandbox)
+
+Verify the entire mechanics before involving a real provider or user:
+
+```bash
+curl -X POST https://cnothing.com/v4/sandbox/start \
+  -H "Authorization: Bearer $AGENT_TOKEN"
+# => { "grant_id": "...", "echo_url": "https://cnothing.com/v4/sandbox/echo", ... }
+
+curl -X POST https://cnothing.com/v4/proxy \
+  -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" \
+  -d '{"grant_id":"'$GRANT_ID'","method":"GET","url":"https://cnothing.com/v4/sandbox/echo?hello=world"}'
+# The echo shows the forwarded request; the injected token appears as [REDACTED].
+```
+
+The sandbox grant is auto-approved because it can only reach CNothing's own echo
+endpoint with a throwaway token. Real providers always require one human approval.
 
 ## Workflow (plain HTTP)
 
@@ -68,8 +95,9 @@ curl -X POST https://cnothing.com/v4/proxy \
 ## No HTTP tool? Use MCP
 
 If your runtime has no generic HTTP tool, configure the CNothing MCP server instead —
-it exposes the same workflow as callable tools (`list_providers`, `request_access`,
-`get_access_status`, `proxy_request`, `list_grants`, `submit_provider_proposal`).
+it exposes the same workflow as callable tools (`register_agent`, `start_sandbox`,
+`list_providers`, `request_access`, `get_access_status`, `proxy_request`,
+`list_grants`, `submit_provider_proposal`).
 
 - Hosted (remote MCP): `https://cnothing.com/mcp` — pass `agent_access_token` in tool
   arguments.

@@ -11,11 +11,14 @@ It is designed for a specific problem: an AI agent needs to help orchestrate wor
 v4 is a strategic simplification. Earlier versions required every third-party operation to be pre-registered as a *capability* (built-in handlers or OpenAPI/MCP imports) before an agent could call it. v4 removes that layer entirely: after one user approval, an agent can call **any API of an OAuth 2.0 provider** as plain HTTP, while CNothing injects the token server-side. The agent never sees access tokens, refresh tokens, or client secrets.
 
 ```text
-1. User connects a provider once            →  /connect (tokens stored encrypted)
-2. Agent requests connection-level access   →  POST /v4/access-requests { provider, hosts?, reason? }
+0. Agent self-registers (no admin needed)    →  POST /v4/agents/register { name }
+1. User connects a provider once             →  /connect (tokens stored encrypted)
+2. Agent requests connection-level access    →  POST /v4/access-requests { provider, hosts?, reason? }
 3. User approves once                        →  approval_url (/approve-proxy/{id} in Console)
 4. Agent calls any API through the proxy     →  POST /v4/proxy { grant_id, method, url, headers?, body? }
 ```
+
+Agents can also verify the whole mechanics without any human in the loop: `POST /v4/sandbox/start` provisions an auto-approved sandbox grant whose only reachable upstream is CNothing's own echo endpoint — the agent then calls `POST /v4/proxy` against the returned `echo_url` and observes the injected token as `[REDACTED]`.
 
 Example agent call (no capability registration, no import, no per-endpoint grant):
 

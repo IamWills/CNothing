@@ -6,6 +6,7 @@ import { listOAuthProviders, toProviderPublic } from "../v2/oauth.repository";
 import { oauthConnectionService } from "../v2/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
 import { sandboxService } from "../v4/sandbox.service";
+import config from "../config";
 
 function inferBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
@@ -20,6 +21,18 @@ export async function handleV4Request(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const segments = path.split("/").filter(Boolean);
+
+  // Browser approval page lives in the Console at /approve-proxy/{id}, not under
+  // /v4/. Agents sometimes guess /v4/approve/{id}; redirect to the real page.
+  if (
+    request.method === "GET" &&
+    segments.length === 3 &&
+    segments[1] === "approve"
+  ) {
+    const accessRequestId = decodeURIComponent(segments[2] ?? "");
+    const consoleBase = (config.consoleUrl ?? inferBaseUrl(request)).replace(/\/+$/, "");
+    return Response.redirect(`${consoleBase}/approve-proxy/${encodeURIComponent(accessRequestId)}`, 302);
+  }
 
   // --- Sandbox (agent self-test without human approval) ---
 

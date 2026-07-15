@@ -10,7 +10,9 @@ Standard workflow:
    optionally start_sandbox to self-test the full flow without any human approval.
 1. list_providers — discover which OAuth providers are configured (github, google, ...).
 2. request_access { provider, hosts?, reason? } — ask for connection-level access.
-   You receive an approval_url. Show it to the human user; they approve once in the
+   You receive approval_url (e.g. https://cnothing.com/approve-proxy/{uuid}).
+   NEVER construct /v4/approve/... yourself — always use the exact approval_url
+   from the API response. Show it to the human user; they approve once in the
    CNothing Console by picking one of their OAuth connections.
 3. get_access_status { access_request_id } — poll until status is "approved" and you
    have a grant_id.

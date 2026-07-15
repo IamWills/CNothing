@@ -51,7 +51,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "request_access",
     description:
-      "Request connection-level access to one OAuth provider. Returns access_request_id and approval_url. Show approval_url to the human user — they approve ONCE in the CNothing Console by selecting one of their OAuth connections (signing in to the provider in the browser if needed). The agent cannot and must not perform this browser step itself.",
+      "Request connection-level access to one OAuth provider. Returns access_request_id and approval_url (Console page at /approve-proxy/{id} — NOT /v4/approve/...). Always pass the exact approval_url from this response to the human; never guess or construct the URL yourself.",
     inputSchema: {
       type: "object",
       properties: {

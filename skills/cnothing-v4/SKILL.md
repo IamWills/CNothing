@@ -65,7 +65,9 @@ curl -X POST https://cnothing.com/v4/access-requests \
   -d '{"provider":"github","reason":"Manage issues for the user"}'
 ```
 
-Response contains `access_request_id` and `approval_url`.
+Response contains `access_request_id` and `approval_url` (always
+`https://cnothing.com/approve-proxy/{uuid}`). **Do not** construct
+`/v4/approve/...` yourself — use the exact `approval_url` from the response.
 
 3. Send `approval_url` to the human. They open it in a browser, sign in to CNothing,
    pick (or create) their GitHub connection, and click Approve — once.

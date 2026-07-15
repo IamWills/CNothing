@@ -53,13 +53,13 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function loginUserSession(userId: string): Promise<string> {
-  const tokenIssue = await request<{ ok: true; login_token: string }>("/v3/auth/login-tokens", {
+  const tokenIssue = await request<{ ok: true; login_token: string }>("/v4/auth/login-tokens", {
     method: "POST",
     body: JSON.stringify({ user_id: userId }),
   });
   assert(tokenIssue.status === 201, `login token issue failed: ${tokenIssue.text}`);
 
-  const login = await request<{ ok: true; session_token: string }>("/v3/auth/login", {
+  const login = await request<{ ok: true; session_token: string }>("/v4/auth/login", {
     admin: false,
     method: "POST",
     body: JSON.stringify({ user_id: userId, login_token: tokenIssue.data.login_token }),
@@ -105,7 +105,7 @@ async function main() {
 
     console.log("v4 E2E: seed mock provider");
     const seed = await request<{ ok?: true; provider?: { slug: string } }>(
-      "/v2/internal/e2e/seed-device-flow-provider",
+      "/v4/internal/e2e/seed-provider",
       { method: "POST", body: JSON.stringify({ mock_base_url: mockBaseUrl }) },
     );
     assert(seed.status === 200, `seed provider failed (set KEYSERVICE_E2E_INTERNAL=1): ${seed.text}`);
@@ -113,7 +113,7 @@ async function main() {
 
     console.log("v4 E2E: seed OAuth connection for user");
     const seedConnection = await request<{ ok: true; connection: { id: string } }>(
-      "/v2/internal/e2e/seed-oauth-connection",
+      "/v4/internal/e2e/seed-oauth-connection",
       {
         method: "POST",
         body: JSON.stringify({
@@ -132,7 +132,7 @@ async function main() {
       ok: true;
       agent: { id: string };
       access_token: string;
-    }>("/v3/agents/register", {
+    }>("/v4/agents/register", {
       method: "POST",
       body: JSON.stringify({ name: `e2e-v4-agent-${Date.now()}`, owner_user_id: testUserId }),
     });

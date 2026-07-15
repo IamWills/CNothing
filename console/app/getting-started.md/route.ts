@@ -1,7 +1,7 @@
 import { getPublicSkillBySlug } from "@/lib/public-skills";
 
 export async function GET() {
-  const skill = await getPublicSkillBySlug(["cnothing-getting-started"]);
+  const skill = await getPublicSkillBySlug(["cnothing-v4"]);
 
   if (!skill) {
     return new Response("Getting started skill not found", { status: 404 });

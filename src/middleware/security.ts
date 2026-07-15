@@ -13,18 +13,10 @@ const replayCache = new Map<string, number>();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = Number(process.env.KEYSERVICE_RATE_LIMIT_PER_MINUTE ?? "120");
 const REPLAY_TTL_MS = Number(process.env.KEYSERVICE_REPLAY_TTL_SECONDS ?? "300") * 1000;
-const REPLAY_PATH_EXACT = new Set([
-  "/v2/agent/invoke",
-  "/v2/capabilities/invoke",
-  "/v3/agent/invoke",
-]);
+const REPLAY_PATH_EXACT = new Set(["/v4/proxy"]);
 
 function isReplayProtectedPath(pathname: string): boolean {
-  if (REPLAY_PATH_EXACT.has(pathname)) return true;
-  return (
-    /^\/api\/v3\/capabilities\/[^/]+\/invoke$/.test(pathname) ||
-    /^\/v3\/capabilities\/[^/]+\/invoke$/.test(pathname)
-  );
+  return REPLAY_PATH_EXACT.has(pathname);
 }
 
 function clientKey(request: Request): string {
@@ -51,7 +43,7 @@ function pruneExpiredEntries(now: number): void {
 }
 
 function checkRateLimit(request: Request, pathname: string): Response | null {
-  if (!pathname.startsWith("/v2/") && !pathname.startsWith("/v4/")) {
+  if (!pathname.startsWith("/v4/")) {
     return null;
   }
 

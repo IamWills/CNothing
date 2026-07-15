@@ -1,0 +1,15 @@
+{
+  "name": "cnothing-mcp",
+  "version": "0.1.0",
+  "description": "Local stdio MCP server that gives any AI agent the callable tools to register/login to OAuth 2.0 sites through the CNothing v4 credential-injecting proxy (agent never sees tokens).",
+  "type": "module",
+  "bin": {
+    "cnothing-mcp": "./src/index.ts"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts"
+  }
+}

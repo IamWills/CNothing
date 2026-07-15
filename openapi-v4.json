@@ -1,0 +1,302 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CNothing v4 — Universal Credential-Injecting Proxy",
+    "version": "4.0.0",
+    "description": "One user approval per OAuth provider, then agents call any https API of that provider through POST /v4/proxy. CNothing injects the user's OAuth token server-side; agents never see tokens, refresh tokens, or client secrets. Responses are redacted and every proxied request is audited."
+  },
+  "servers": [{ "url": "https://cnothing.com" }],
+  "components": {
+    "securitySchemes": {
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Agent access token issued via POST /v4/agents/register (admin)."
+      },
+      "userSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "cn_session",
+        "description": "User session cookie (browser/Console); a Bearer session token is also accepted."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Platform operator admin token."
+      }
+    }
+  },
+  "paths": {
+    "/v4/providers": {
+      "get": {
+        "summary": "List active OAuth providers",
+        "responses": { "200": { "description": "Provider list (public view, no secrets)" } }
+      },
+      "post": {
+        "summary": "Create an OAuth provider (admin)",
+        "security": [{ "adminToken": [] }],
+        "responses": { "201": { "description": "Provider created" } }
+      }
+    },
+    "/v4/providers/{id}/credentials": {
+      "patch": {
+        "summary": "Set provider client credentials (admin)",
+        "security": [{ "adminToken": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Credentials updated" } }
+      }
+    },
+    "/v4/providers/proposals": {
+      "post": {
+        "summary": "Propose a new OAuth provider (agent, OIDC discovery + RFC 7591 DCR)",
+        "security": [{ "agentToken": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["provider_name"],
+                "properties": {
+                  "provider_name": { "type": "string" },
+                  "discovery_url": { "type": "string" },
+                  "issuer_url": { "type": "string" },
+                  "authorization_url": { "type": "string" },
+                  "token_url": { "type": "string" },
+                  "registration_endpoint": { "type": "string" },
+                  "scopes": { "type": "array", "items": { "type": "string" } },
+                  "slug": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Proposal created (auto-activated when DCR succeeds)" } }
+      }
+    },
+    "/v4/access-requests": {
+      "post": {
+        "summary": "Agent requests connection-level access to a provider",
+        "security": [{ "agentToken": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["provider"],
+                "properties": {
+                  "provider": { "type": "string", "example": "github" },
+                  "hosts": { "type": "array", "items": { "type": "string" }, "example": ["api.github.com"] },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Returns access_request_id and approval_url for the human user" }
+        }
+      }
+    },
+    "/v4/access-requests/{id}": {
+      "get": {
+        "summary": "Poll access request status (agent) / load for approval (user)",
+        "security": [{ "agentToken": [] }, { "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Status; when approved includes grant_id" } }
+      }
+    },
+    "/v4/access-requests/{id}/approve": {
+      "post": {
+        "summary": "User approves the access request with one of their OAuth connections",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["connection_id"],
+                "properties": {
+                  "connection_id": { "type": "string" },
+                  "allowed_hosts": { "type": "array", "items": { "type": "string" } },
+                  "allowed_methods": { "type": "array", "items": { "type": "string" } },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Grant created" } }
+      }
+    },
+    "/v4/access-requests/{id}/deny": {
+      "post": {
+        "summary": "User denies the access request",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Denied" } }
+      }
+    },
+    "/v4/proxy": {
+      "post": {
+        "summary": "Credential-injecting HTTP proxy (agent never sees tokens)",
+        "security": [{ "agentToken": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["grant_id", "method", "url"],
+                "properties": {
+                  "grant_id": { "type": "string" },
+                  "method": { "type": "string", "example": "GET" },
+                  "url": { "type": "string", "example": "https://api.github.com/user/repos" },
+                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "body": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Upstream status/headers/body, redacted server-side" }
+        }
+      }
+    },
+    "/v4/grants": {
+      "get": {
+        "summary": "List connection-level grants (agent: own grants; user: grants they approved)",
+        "security": [{ "agentToken": [] }, { "userSession": [] }],
+        "responses": { "200": { "description": "Grant list" } }
+      }
+    },
+    "/v4/grants/{id}/revoke": {
+      "post": {
+        "summary": "User revokes a grant",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Revoked" } }
+      }
+    },
+    "/v4/connections": {
+      "get": {
+        "summary": "List the user's OAuth connections",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Connection list (no tokens)" } }
+      }
+    },
+    "/v4/connections/{id}": {
+      "delete": {
+        "summary": "Revoke an OAuth connection (also revokes remote tokens when supported)",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Revoked" } }
+      }
+    },
+    "/v4/oauth/connect/start": {
+      "post": {
+        "summary": "Start the OAuth connect flow for a provider (user)",
+        "security": [{ "userSession": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider_slug": { "type": "string" },
+                  "provider_id": { "type": "string" },
+                  "redirect_after": { "type": "string" },
+                  "scopes": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Returns authorization_url to open in the browser" } }
+      }
+    },
+    "/v4/oauth/callback/{slug}": {
+      "get": {
+        "summary": "OAuth authorization-code callback (registered at the provider)",
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "302": { "description": "Redirects back to the Console" } }
+      }
+    },
+    "/v4/oauth/device/start": {
+      "post": {
+        "summary": "Start an OAuth device flow (for providers with device_authorization_endpoint)",
+        "security": [{ "userSession": [] }],
+        "responses": { "201": { "description": "Returns user_code and verification_uri" } }
+      }
+    },
+    "/v4/oauth/device/poll": {
+      "post": {
+        "summary": "Poll the device flow until the connection is created",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Pending or connection created" } }
+      }
+    },
+    "/v4/agents/register": {
+      "post": {
+        "summary": "Register an agent and issue its access token (admin)",
+        "security": [{ "adminToken": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "owner_user_id"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "owner_user_id": { "type": "string" },
+                  "metadata": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Agent plus one-time access_token" } }
+      }
+    },
+    "/v4/agents": {
+      "get": {
+        "summary": "List agents (admin)",
+        "security": [{ "adminToken": [] }],
+        "responses": { "200": { "description": "Agent list" } }
+      }
+    },
+    "/v4/auth/login": {
+      "post": {
+        "summary": "User login with a one-time login token",
+        "responses": { "200": { "description": "Session created (cookie + token)" } }
+      }
+    },
+    "/v4/auth/me": {
+      "get": {
+        "summary": "Current user session",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Session info" } }
+      }
+    },
+    "/v4/auth/logout": {
+      "post": {
+        "summary": "Logout",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Session revoked" } }
+      }
+    },
+    "/v4/auth/login-tokens": {
+      "post": {
+        "summary": "Issue a one-time login token for a user (admin)",
+        "security": [{ "adminToken": [] }],
+        "responses": { "201": { "description": "Login token" } }
+      }
+    },
+    "/v4/auth/providers": {
+      "get": {
+        "summary": "List browser login providers (GitHub / OIDC) for the Console",
+        "responses": { "200": { "description": "Login provider descriptors" } }
+      }
+    }
+  }
+}

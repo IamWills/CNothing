@@ -75,21 +75,14 @@ jobs:
           cat /tmp/keyservice.log
           exit 1
 
-      - name: Unit tests v2.5
-        run: bun test src/v2/__tests__
+      - name: Unit tests v4
+        run: bun test src/v4/__tests__
 
-      - name: E2E v2 flow
+      - name: E2E v4 flow
         run: |
           CNOTHING_BASE_URL=http://127.0.0.1:3021 \
           CNOTHING_ADMIN_TOKEN=ci-test-admin-token \
-          bun run e2e:v2
-
-      - name: E2E v2.5 flow
-        run: |
-          CNOTHING_BASE_URL=http://127.0.0.1:3021 \
-          CNOTHING_ADMIN_TOKEN=ci-test-admin-token \
-          CNOTHING_E2E_SCENARIO_A=1 \
-          bun run e2e:v2.5
+          bun run e2e:v4
 
       - name: Upload server log on failure
         if: failure()

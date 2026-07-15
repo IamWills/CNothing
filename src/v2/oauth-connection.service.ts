@@ -29,7 +29,7 @@ function generatePkcePair(): { verifier: string; challenge: string } {
 function buildCallbackUrl(
   apiBaseUrl: string,
   providerSlug: string,
-  apiVersion: "v2" | "v2.6" | "v3" = "v2",
+  apiVersion: "v2" | "v2.6" | "v3" | "v4" = "v4",
 ): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/${apiVersion}/oauth/callback/${encodeURIComponent(providerSlug)}`;
 }
@@ -58,7 +58,7 @@ export class OAuthConnectionService {
     apiBaseUrl: string;
     redirectAfter?: string;
     scopes?: string[];
-    oauthApiVersion?: "v2" | "v2.6" | "v3";
+    oauthApiVersion?: "v2" | "v2.6" | "v3" | "v4";
     tenantId?: string;
   }) {
     const provider = input.providerId
@@ -99,7 +99,7 @@ export class OAuthConnectionService {
         ? input.scopes
         : provider.default_scopes;
 
-    const oauthApiVersion = input.oauthApiVersion ?? "v2";
+    const oauthApiVersion = input.oauthApiVersion ?? "v4";
     const authorizationUrl = this.buildAuthorizationUrl({
       provider,
       state: connectState.state,
@@ -164,7 +164,7 @@ export class OAuthConnectionService {
     code: string;
     state: string;
     apiBaseUrl: string;
-    oauthApiVersion?: "v2" | "v2.6" | "v3";
+    oauthApiVersion?: "v2" | "v2.6" | "v3" | "v4";
   }) {
     const provider = await findOAuthProviderBySlug(input.providerSlug);
     if (!provider) {
@@ -194,7 +194,7 @@ export class OAuthConnectionService {
     const redirectUri = buildCallbackUrl(
       input.apiBaseUrl,
       provider.slug,
-      input.oauthApiVersion ?? "v2",
+      input.oauthApiVersion ?? "v4",
     );
     const tokenPayload = await this.exchangeCodeForTokens({
       provider,

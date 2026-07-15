@@ -248,7 +248,7 @@ export class ProviderProposalService {
     let pkceRequired = true;
 
     if (registrationEndpoint) {
-      const redirectUri = buildOAuthCallbackUri(input.apiBaseUrl, proposedSlug, "v3");
+      const redirectUri = buildOAuthCallbackUri(input.apiBaseUrl, proposedSlug, "v4");
       const registered = await tryDynamicClientRegistration({
         registration_endpoint: registrationEndpoint,
         redirect_uri: redirectUri,

@@ -38,48 +38,24 @@ Security boundary (enforced server-side):
 - Tokens are auto-refreshed; responses are redacted (any token occurrence becomes `[REDACTED]`) and secret-shaped JSON fields are masked
 - Grants are user-revocable at any time (`POST /v4/grants/{id}/revoke`); every proxied request is audited
 
-Endpoints: `POST /v4/access-requests`, `GET /v4/access-requests/{id}`, `POST /v4/access-requests/{id}/approve|deny`, `POST /v4/proxy`, `GET /v4/grants`, `POST /v4/grants/{id}/revoke`, `GET /v4/providers`, `GET /v4/connections`. E2E: `bun run e2e:v4`.
+Endpoints: `POST /v4/access-requests`, `GET /v4/access-requests/{id}`, `POST /v4/access-requests/{id}/approve|deny`, `POST /v4/proxy`, `GET /v4/grants`, `POST /v4/grants/{id}/revoke`, `GET /v4/providers`, `GET /v4/connections`. Full spec: [`openapi-v4.json`](./openapi-v4.json). E2E: `bun run e2e:v4`.
 
-Known protocol limits (inherent to OAuth 2.0, not solvable by any broker): the user must click through the provider consent screen once per connection, and providers without RFC 7591 Dynamic Client Registration need a one-time operator-configured `client_id`/`client_secret` (DCR is supported via `POST /v3/providers/proposals` when the provider offers a `registration_endpoint`).
+Known protocol limits (inherent to OAuth 2.0, not solvable by any broker): the user must click through the provider consent screen once per connection, and providers without RFC 7591 Dynamic Client Registration need a one-time operator-configured `client_id`/`client_secret` (DCR is supported via `POST /v4/providers/proposals` when the provider offers a `registration_endpoint`).
 
-## v2.5: Universal OAuth Broker + Capability Gateway (Legacy)
+### MCP for agents (two options)
 
-CNothing v2.5 removes the need for a dedicated connector per OAuth provider:
+If an agent cannot make raw HTTP calls, it can use CNothing through MCP:
 
-- **Universal OAuth Provider Registry** — GitHub, Google, Microsoft, Slack, Notion built-in; custom providers via admin API
-- **OAuth Connection Flow** — users connect once at `/connect`; tokens encrypted at rest, never returned to agents
-- **Capability Gateway** — agents call `POST /v2/agent/invoke`; CNothing resolves grants, refreshes tokens, executes APIs
-- **OpenAPI / MCP Importers** — generate candidate capabilities from API specs or MCP tool lists
-- **Policy Engine v2.5** — risk levels, confidential query controls, output redaction
+- **Hosted MCP** — point any MCP-over-HTTP client at `https://cnothing.com/mcp` (JSON-RPC 2.0, tools: `list_providers`, `request_access`, `get_access_status`, `proxy_request`, `list_grants`, `submit_provider_proposal`, `get_provider_proposal`). Pass the agent token as `Authorization: Bearer …`.
+- **Local stdio MCP** — install [`packages/cnothing-mcp`](./packages/cnothing-mcp) in the agent's own environment and configure `CNOTHING_BASE_URL` + `CNOTHING_AGENT_TOKEN`. See its [README](./packages/cnothing-mcp/README.md).
 
-```ts
-// Agent workflow (v2.5)
-// 1. GET /v2/agent/capabilities
-// 2. POST /v2/agent/authorizations { capability: "github.create_issue" }
-// 3. User opens approval_url, selects OAuth connection, approves
-// 4. POST /v2/agent/invoke { capability, input }
-```
+Agent-readable skill: [`skills/cnothing-v4/SKILL.md`](./skills/cnothing-v4/SKILL.md) (served at `/skill.md`).
 
-- API spec: [`openapi-v2.5.json`](./openapi-v2.5.json)
-- MCP tools (v2.5 only): `list_capabilities`, `request_authorization`, `get_authorization_status`, `invoke_capability`, `list_grants`, `revoke_grant`
-- E2E: `bun run e2e:v2.5`
-- Console: `/providers`, `/connect`, `/import`, `/connections`, `/approve/:id`, `/grants`, `/audit`
+## v2–v3: Decommissioned
 
-**Security boundary:** agents receive capability permissions (grants), never OAuth tokens, refresh tokens, client secrets, or API keys.
+The capability-registration architecture (v2, v2.5, v2.6, v3) has been removed. All `/v2/*`, `/v2.6/*`, `/v3/*` API paths now return `410 Gone` pointing to the v4 equivalents. Existing OAuth app registrations keep working: legacy callback paths (`/v2/oauth/callback/*`, `/v3/oauth/callback/*`, etc.) remain as aliases to the v4 callback handler.
 
-Configure OAuth providers in Console **Providers** or via `POST /v2/oauth/providers`. Import third-party APIs at **Import** (`POST /v2/import/openapi` or MCP manifest) — activation uses the built-in gateway connector; `connector_id` is optional.
-
-## v2: Agent Capability Authorization Platform (Legacy)
-
-CNothing v2 remains available for existing integrations. **New agents should use v2.5** (SDK default `apiVersion: "v2.5"`):
-
-- Legacy invoke: `POST /v2/capabilities/invoke`
-- Legacy authorization: `POST /v2/authorize/request`
-- Opt into v2 API explicitly: `new CNothingAgentClient({ ..., apiVersion: "v2" })`
-- **Connectors** (optional advanced path) hold third-party credentials locally; example apps live under `examples/*-connector`
-- E2E validation: `bun run e2e:v2`
-
-**v1 AuthAI + Encrypted KV** remains available during a compatibility period but is **deprecated** (see `Deprecation` / `Sunset` headers and `_deprecation` in JSON responses). Migrate via `GET /v2/platform/migration`.
+**v1 AuthAI + Encrypted KV** remains available during a compatibility period but is **deprecated** (see `Deprecation` / `Sunset` headers and `_deprecation` in JSON responses).
 
 ## Why CNothing
 
@@ -514,11 +490,11 @@ curl http://127.0.0.1:3021/mcp
 
 This repository already includes deployment helpers under [deploy/](./deploy).
 
-See [deploy/README.md](./deploy/README.md) for production pull/migrate/restart, v2 `.env` upgrades, and verification steps.
+See [deploy/README.md](./deploy/README.md) for production pull/migrate/restart and verification steps.
 
 ### CI
 
-Every push to `main` runs GitHub Actions: typecheck, build, PostgreSQL migrate, and `bun run e2e:v2`. See [.github/workflows/ci.yml](./.github/workflows/ci.yml).
+Every push to `main` runs GitHub Actions: typecheck, build, PostgreSQL migrate, unit tests, and `bun run e2e:v4`. See [.github/workflows/ci.yml](./.github/workflows/ci.yml).
 
 ## File Guide
 

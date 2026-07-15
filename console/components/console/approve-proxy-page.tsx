@@ -16,13 +16,13 @@ import {
   fetchV4Connections,
   type V4AccessRequest,
 } from "@/lib/api-v4";
-import type { V25OAuthConnection } from "@/lib/api-v2";
+import type { V4OAuthConnection } from "@/lib/api-v4";
 
 export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string }) {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const { isLoggedIn } = useUserSession();
   const [request, setRequest] = React.useState<V4AccessRequest | null>(null);
-  const [connections, setConnections] = React.useState<V25OAuthConnection[]>([]);
+  const [connections, setConnections] = React.useState<V4OAuthConnection[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");

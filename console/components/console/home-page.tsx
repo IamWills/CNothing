@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Bot, BookKey, FileText, Fingerprint, KeyRound, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, Bot, BookKey, FileText, Fingerprint, KeyRound, Link2, Shield, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
@@ -10,15 +10,8 @@ import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { fetchAuthaiPublicKey, fetchClients, fetchMcpCatalog, fetchSkills, type AuthaiPublicKey } from "@/lib/api";
-import { fetchPlatformStatus } from "@/lib/api-v2";
-import {
-  fetchV3Agents,
-  fetchV3Capabilities,
-  fetchV3Grants,
-  fetchV3PlatformStatus,
-  fetchV3Providers,
-} from "@/lib/api-v3";
+import { fetchAuthaiPublicKey, fetchMcpCatalog, fetchSkills, type AuthaiPublicKey } from "@/lib/api";
+import { fetchV4Grants, fetchV4Providers } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
 import { homeChannelTabs } from "@/lib/channel-tabs";
 
@@ -29,23 +22,22 @@ const sections: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   {
-    href: brand.recommendedPath,
-    title: "v3 Dashboard",
-    description:
-      "Capabilities, executions, approvals, policies, and Secret Vault — the recommended Execution Trust Layer console.",
-    icon: ShieldCheck,
+    href: "/connect",
+    title: "Connect",
+    description: "Connect your OAuth providers once — tokens are stored encrypted, server-side.",
+    icon: Link2,
   },
   {
-    href: "/dashboard/agents",
+    href: "/agents",
     title: "Agents",
-    description: "Register agents that invoke secretless capabilities. Tokens never leave cnothing.",
+    description: "Register agents and issue their access tokens for the v4 universal proxy.",
     icon: Bot,
   },
   {
-    href: "/catalog",
-    title: "Catalog",
-    description: "Browse MCP tools, resources, and shipped skills from the public backend APIs.",
-    icon: Wrench,
+    href: "/grants",
+    title: "Grants",
+    description: "Review and revoke the connection-level access you granted to agents.",
+    icon: Shield,
   },
   {
     href: "/readme",
@@ -67,13 +59,8 @@ export function HomePage() {
   const [toolCount, setToolCount] = React.useState(0);
   const [resourceCount, setResourceCount] = React.useState(0);
   const [skillCount, setSkillCount] = React.useState(0);
-  const [clientCount, setClientCount] = React.useState(0);
-  const [agentCount, setAgentCount] = React.useState(0);
-  const [capabilityCount, setCapabilityCount] = React.useState(0);
+  const [providerCount, setProviderCount] = React.useState(0);
   const [grantCount, setGrantCount] = React.useState(0);
-  const [connectorCount, setConnectorCount] = React.useState(0);
-  const [v1SunsetAt, setV1SunsetAt] = React.useState("");
-  const [platformVersion, setPlatformVersion] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -96,46 +83,18 @@ export function HomePage() {
       setSkillCount(skillsResponse.items.length);
 
       try {
-        const clientsResponse = await fetchClients(connection);
-        setClientCount(clientsResponse.items.length);
+        const providersResponse = await fetchV4Providers(connection);
+        setProviderCount(providersResponse.items.length);
       } catch {
-        setClientCount(0);
+        setProviderCount(0);
       }
 
       try {
-        const [platformResponse, v3Status] = await Promise.all([
-          fetchPlatformStatus(connection),
-          fetchV3PlatformStatus(connection),
-        ]);
-        setPlatformVersion(v3Status.version || platformResponse.platform.version);
-        setV1SunsetAt(platformResponse.v1.sunset_at);
-      } catch {
-        setPlatformVersion("");
-        setV1SunsetAt("");
-      }
-
-      try {
-        const [agentsResponse, capabilitiesResponse, grantsResponse, providersResponse] =
-          await Promise.all([
-            fetchV3Agents(connection),
-            fetchV3Capabilities(connection),
-            fetchV3Grants(connection),
-            fetchV3Providers(connection),
-          ]);
-        setAgentCount(agentsResponse.items.length);
-        setCapabilityCount(capabilitiesResponse.items.length);
+        const grantsResponse = await fetchV4Grants(connection);
         setGrantCount(grantsResponse.items.length);
-        setConnectorCount(providersResponse.items.length);
-      } catch (error) {
-        setAgentCount(0);
-        setCapabilityCount(0);
+      } catch {
+        // Grants require a signed-in user session; that's fine on first visit.
         setGrantCount(0);
-        setConnectorCount(0);
-        if (!statusMessage) {
-          setStatusMessage(
-            error instanceof Error ? error.message : "Some v3 admin endpoints are unavailable.",
-          );
-        }
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load CNothing overview.");
@@ -169,23 +128,23 @@ export function HomePage() {
       />
 
       <section className="grid gap-4 lg:grid-cols-4">
-        <MetricCard icon={Bot} label="Platform" value={platformVersion || "v3"} helper="Execution Trust Layer" />
-        <MetricCard icon={Bot} label="Agents" value={String(agentCount)} helper="Registered AI agents" />
-        <MetricCard icon={Sparkles} label="Capabilities" value={String(capabilityCount)} helper="Executable capabilities" />
-        <MetricCard icon={Shield} label="Active grants" value={String(grantCount)} helper="User → agent authorizations" />
+        <MetricCard icon={ShieldCheck} label="Platform" value="v4" helper="Universal credential-injecting proxy" />
+        <MetricCard icon={Link2} label="Providers" value={String(providerCount)} helper="Connectable OAuth providers" />
+        <MetricCard icon={Shield} label="Your grants" value={String(grantCount)} helper="Connection-level agent grants" />
+        <MetricCard icon={Wrench} label="MCP tools" value={String(toolCount)} helper={`${resourceCount} resources`} />
       </section>
 
       <Card className="space-y-4 border-[color:var(--brand)]/20 bg-[color:var(--surface-muted)]/40">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-[color:var(--brand)]" />
-          <h2 className="text-lg font-semibold">Execution Trust Layer</h2>
+          <h2 className="text-lg font-semibold">How v4 works</h2>
           <Badge className="border-transparent bg-[color:var(--brand)] text-white">Recommended</Badge>
         </div>
         <p className="max-w-3xl text-sm text-slate-600">{brand.principles}</p>
         <p className="text-sm text-slate-600">
-          Canonical invoke: <code className="text-xs">{brand.recommendedInvoke}</code> · Spec:{" "}
-          <a href={brand.openApiV3} className="underline">
-            {brand.openApiV3}
+          Canonical call: <code className="text-xs">{brand.recommendedInvoke}</code> · Spec:{" "}
+          <a href={brand.openApiV4} className="underline">
+            {brand.openApiV4}
           </a>
         </p>
         <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm text-slate-700">
@@ -195,89 +154,28 @@ export function HomePage() {
               <a href="/connect" className="underline">
                 Connect
               </a>{" "}
-              GitHub — tokens go to Secret Vault.
+              a provider once — tokens stay encrypted server-side.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
-            <strong>2. Register & grant</strong>
+            <strong>2. Agent requests access</strong>
             <p className="mt-2 text-slate-600">
-              <a href="/dashboard/agents" className="underline">
-                Agents
-              </a>{" "}
-              → authorize capabilities in Dashboard.
+              <code className="text-xs">POST /v4/access-requests</code> returns an approval link for you.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
-            <strong>3. Invoke</strong>
+            <strong>3. Approve once</strong>
             <p className="mt-2 text-slate-600">
-              <code className="text-xs">POST /api/v3/capabilities/:id/invoke</code> — Policy → Approval →
-              Worker.
+              Pick your connection on the approval page — one click, one time.
             </p>
           </li>
           <li className="rounded-[24px] border border-[color:var(--border)] bg-white/70 p-4">
-            <strong>4. Audit</strong>
+            <strong>4. Agent calls any API</strong>
             <p className="mt-2 text-slate-600">
-              <a href="/dashboard/audit" className="underline">
-                Audit
-              </a>{" "}
-              ·{" "}
-              <a href="/dashboard/executions" className="underline">
-                Executions
-              </a>
-              .
+              <code className="text-xs">POST /v4/proxy</code> — token injected, response redacted, fully audited.
             </p>
           </li>
         </ol>
-        <p className="text-sm">
-          <a
-            href={brand.recommendedPath}
-            className="inline-flex items-center gap-2 font-medium text-[color:var(--brand)] underline underline-offset-2"
-          >
-            Open v3 Dashboard
-            <ArrowRight className="h-4 w-4" />
-          </a>
-        </p>
-      </Card>
-
-      {v1SunsetAt ? (
-        <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          v1 AuthAI/KV is deprecated. Sunset date: <strong>{v1SunsetAt}</strong>.{" "}
-          <a href="/migration" className="underline">
-            Migrate KV records
-          </a>
-          .
-        </Card>
-      ) : null}
-
-      <section className="grid gap-4 lg:grid-cols-4">
-        <MetricCard icon={Fingerprint} label="Clients (v1)" value={String(clientCount)} helper="Legacy AuthAI clients" />
-        <MetricCard icon={Fingerprint} label="Connectors" value={String(connectorCount)} helper="Registered backend connectors" />
-        <MetricCard icon={Sparkles} label="Skills" value={String(skillCount)} helper="Markdown skills for AI discovery" />
-        <MetricCard icon={Wrench} label="MCP tools" value={String(toolCount)} helper={`${resourceCount} resources`} />
-      </section>
-
-      <Card className="space-y-3 border-amber-200/80 bg-amber-50/50">
-        <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-amber-800" />
-          <h2 className="text-lg font-semibold text-amber-950">Legacy / Migration</h2>
-        </div>
-        <p className="max-w-3xl text-sm text-amber-950/80">
-          v2 / v2.5 flows (OpenAPI import via <code className="text-xs">/import</code>,{" "}
-          <code className="text-xs">POST /v2/agent/invoke</code>, legacy Providers) remain available for migration.
-          New integrations should use the v3 Dashboard and{" "}
-          <code className="text-xs">{brand.recommendedInvoke}</code>.
-        </p>
-        <div className="flex flex-wrap gap-3 text-sm">
-          <a href="/migration" className="underline">
-            Migration hub
-          </a>
-          <a href="/providers" className="underline">
-            Legacy Providers
-          </a>
-          <a href="/openapi-v2.5.json" className="underline">
-            openapi-v2.5.json
-          </a>
-        </div>
       </Card>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -291,7 +189,7 @@ export function HomePage() {
                   {brand.tagline}
                 </h2>
                 <p className="max-w-2xl text-sm text-slate-600">
-                  {brand.description} Policy Engine, Approval Engine, Secret Vault, and Execution Workers keep tokens inside cnothing.
+                  {brand.description}
                 </p>
               </div>
             </div>
@@ -335,6 +233,10 @@ export function HomePage() {
                 {publicKey?.public_key_fingerprint ?? "Loading..."}
               </p>
             </div>
+            <div className="rounded-[24px] bg-[color:var(--surface-muted)]/80 p-4">
+              <p className="text-xs text-slate-500">Skills</p>
+              <p className="mt-1 text-sm font-medium">{skillCount} bundled skill(s)</p>
+            </div>
           </div>
         </Card>
       </section>
@@ -345,14 +247,15 @@ export function HomePage() {
           <h2 className="text-lg font-semibold">For AI Agents</h2>
         </div>
         <p className="max-w-3xl text-sm text-slate-600">
-          Start from the discovery endpoints below when another agent or host needs to understand
-          what CNothing exposes, how to integrate safely, and where to find skills and standards.
+          Agents can integrate over plain HTTP (see the OpenAPI spec) or install the CNothing MCP
+          server as their callable tool — hosted at <code className="text-xs">/mcp</code> or locally
+          via the <code className="text-xs">cnothing-mcp</code> package.
         </p>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <DiscoveryLink
             href="/.well-known/mcp"
             title="MCP Discovery"
-            description="Machine-readable MCP entry with cross-links to skills, guides, and standards."
+            description="Machine-readable MCP entry with the v4 universal proxy tools."
           />
           <DiscoveryLink
             href="/mcp/manifest"
@@ -360,29 +263,24 @@ export function HomePage() {
             description="Manifest metadata for MCP-compatible hosts and tool discovery."
           />
           <DiscoveryLink
+            href="/openapi-v4.json"
+            title="OpenAPI v4"
+            description="Universal credential-injecting proxy API — access requests, grants, proxy."
+          />
+          <DiscoveryLink
+            href="/skill.md"
+            title="Primary Skill"
+            description="The v4 quick-start skill for AI agents (plain markdown)."
+          />
+          <DiscoveryLink
             href="/skills/index.json"
             title="Skills JSON"
             description="Public JSON index of all bundled skills and markdown URLs."
           />
           <DiscoveryLink
-            href="/skills.txt"
-            title="Skills Text"
-            description="Plain-text skills directory for simpler crawlers and basic agents."
-          />
-          <DiscoveryLink
-            href="/openapi-v3.json"
-            title="OpenAPI v3"
-            description="Execution Trust Layer API — canonical invoke, executions, approvals."
-          />
-          <DiscoveryLink
-            href="/getting-started.md"
-            title="Getting Started"
-            description="Quick-start skill for safe first-time CNothing integrations."
-          />
-          <DiscoveryLink
-            href="/openapi-v2.5.json"
-            title="OpenAPI v2.5 (legacy)"
-            description="Legacy capability platform API — prefer openapi-v3.json for new agents."
+            href="/openapi.json"
+            title="OpenAPI v1 (legacy)"
+            description="Legacy AuthAI + Encrypted KV API — kept for the published v1 standard."
           />
         </div>
       </Card>

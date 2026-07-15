@@ -1,29 +1,5 @@
 export { CNothingClient, createCNothingClient } from "./client";
 export {
-  CNothingAgentClient,
-  createCNothingAgentClient,
-  CNothingAgentError,
-} from "./agent-client";
-export type {
-  AgentAuthorizationResponse,
-  AgentAuthorizationStatusResponse,
-  AgentCapabilityView,
-  AgentGrantSummary,
-  AuthorizationRequiredResponse,
-  AuthorizationRequestResponse,
-  AuthorizationRequestStatusResponse,
-  CapabilitySummary,
-  CNothingAgentApiVersion,
-  CNothingAgentClientConfig,
-  InvokeCapabilityPending,
-  InvokeCapabilityRequest,
-  InvokeCapabilitySuccess,
-  ProviderProposalRequest,
-  ProviderProposalView,
-  RequestAuthorizationV25Input,
-  RequestAuthorizationV2Input,
-} from "./agent-entity";
-export {
   buildAuthEnvelope,
   buildReadEnvelope,
   buildSaveEnvelope,

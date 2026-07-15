@@ -4,7 +4,6 @@ import * as React from "react";
 import { KeyRound, Link2, ShieldCheck } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
-import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -14,17 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import {
-  createOAuthProvider,
-  discoverOAuthProvider,
-  fetchOAuthProvidersAdmin,
-  fetchProviderTemplates,
-  syncOAuthProvidersFromEnv,
-  updateOAuthProviderCredentials,
-  type V25OAuthProviderAdmin,
-  type V25ProviderTemplate,
-} from "@/lib/api-v2";
+  createV4Provider,
+  fetchV4ProvidersAdmin,
+  updateV4ProviderCredentials,
+  type V4OAuthProviderAdmin,
+} from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
-import { dashboardTabs, v2ChannelTabs } from "@/lib/v2-channel-tabs";
+import { v4ChannelTabs } from "@/lib/v2-channel-tabs";
 
 const emptyCreateForm = {
   slug: "",
@@ -41,21 +36,9 @@ const emptyCreateForm = {
   supported_scopes: '["openid"]',
 };
 
-type ProvidersPageProps = {
-  adminBasePath?: string;
-  apiVersion?: "v2.5" | "v2.6" | "v3";
-  /** When true, show LegacyBanner and legacy channel tabs (pre-dashboard route). */
-  legacySurface?: boolean;
-};
-
-export function ProvidersPage({
-  adminBasePath,
-  apiVersion = "v3",
-  legacySurface = false,
-}: ProvidersPageProps = {}) {
+export function ProvidersPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const [providers, setProviders] = React.useState<V25OAuthProviderAdmin[]>([]);
-  const [templates, setTemplates] = React.useState<V25ProviderTemplate[]>([]);
+  const [providers, setProviders] = React.useState<V4OAuthProviderAdmin[]>([]);
   const [createForm, setCreateForm] = React.useState(emptyCreateForm);
   const [credentialForms, setCredentialForms] = React.useState<
     Record<string, { client_id: string; client_secret: string }>
@@ -68,12 +51,8 @@ export function ProvidersPage({
     setLoading(true);
     setErrorMessage("");
     try {
-      const [providerResponse, templateResponse] = await Promise.all([
-        fetchOAuthProvidersAdmin(connection, apiVersion),
-        fetchProviderTemplates(connection),
-      ]);
+      const providerResponse = await fetchV4ProvidersAdmin(connection);
       setProviders(providerResponse.items);
-      setTemplates(templateResponse.items);
       setCredentialForms((prev) => {
         const next = { ...prev };
         for (const provider of providerResponse.items) {
@@ -91,36 +70,11 @@ export function ProvidersPage({
     } finally {
       setLoading(false);
     }
-  }, [connection, apiVersion]);
+  }, [connection]);
 
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  async function handleDiscover() {
-    setErrorMessage("");
-    try {
-      const payload: { discovery_url?: string; issuer?: string } = {};
-      const discoveryUrl = createForm.discovery_url.trim();
-      const issuer = createForm.issuer.trim();
-      if (discoveryUrl) payload.discovery_url = discoveryUrl;
-      if (issuer) payload.issuer = issuer;
-      const response = await discoverOAuthProvider(connection, payload);
-      const discovered = response.discovered;
-      setCreateForm((prev) => ({
-        ...prev,
-        issuer: discovered.issuer,
-        authorization_url: discovered.authorization_url,
-        token_url: discovered.token_url,
-        userinfo_url: discovered.userinfo_url ?? "",
-        revoke_url: discovered.revoke_url ?? "",
-        supported_scopes: JSON.stringify(discovered.scopes_supported.length ? discovered.scopes_supported : JSON.parse(prev.supported_scopes)),
-      }));
-      setStatusMessage("OIDC discovery completed — review URLs before saving.");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "OIDC discovery failed.");
-    }
-  }
 
   async function handleCreateProvider(event: React.FormEvent) {
     event.preventDefault();
@@ -131,7 +85,7 @@ export function ProvidersPage({
         const parsed = JSON.parse(raw) as unknown;
         return Array.isArray(parsed) ? parsed.map(String) : [];
       };
-      const payload: Parameters<typeof createOAuthProvider>[1] = {
+      const payload: Parameters<typeof createV4Provider>[1] = {
         slug: createForm.slug.trim(),
         display_name: createForm.display_name.trim(),
         default_scopes: parseScopeList(createForm.default_scopes),
@@ -151,7 +105,7 @@ export function ProvidersPage({
       if (createForm.issuer.trim()) payload.issuer = createForm.issuer.trim();
       if (clientId) payload.client_id = clientId;
       if (clientSecret) payload.client_secret = clientSecret;
-      const response = await createOAuthProvider(connection, payload, apiVersion);
+      const response = await createV4Provider(connection, payload);
       setStatusMessage(`Registered provider ${response.provider.display_name}.`);
       setCreateForm(emptyCreateForm);
       await refresh();
@@ -160,7 +114,7 @@ export function ProvidersPage({
     }
   }
 
-  async function handleSaveCredentials(provider: V25OAuthProviderAdmin) {
+  async function handleSaveCredentials(provider: V4OAuthProviderAdmin) {
     const form = credentialForms[provider.id];
     if (!form?.client_id.trim()) {
       setErrorMessage("Client ID is required.");
@@ -174,7 +128,7 @@ export function ProvidersPage({
       };
       const clientSecret = form.client_secret.trim();
       if (clientSecret) payload.client_secret = clientSecret;
-      await updateOAuthProviderCredentials(connection, provider.id, payload);
+      await updateV4ProviderCredentials(connection, provider.id, payload);
       setStatusMessage(`Updated credentials for ${provider.display_name}.`);
       await refresh();
     } catch (error) {
@@ -182,33 +136,17 @@ export function ProvidersPage({
     }
   }
 
-  async function handleSyncFromEnv() {
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      const response = await syncOAuthProvidersFromEnv(connection);
-      const connectable = response.oauth_providers.filter((item) => item.connectable).length;
-      setStatusMessage(`Synced OAuth credentials from environment (${connectable} connectable providers).`);
-      await refresh();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Environment sync failed.");
-    }
-  }
-
   return (
     <PageFrame
       title="OAuth Providers"
-      description={`${brand.tagline}. Register third-party OAuth providers; tokens stay in Secret Vault.`}
+      description={`${brand.tagline}. Register third-party OAuth providers; tokens stay in the encrypted vault.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={legacySurface ? v2ChannelTabs : dashboardTabs} />
+          <ChannelRouteTabs items={v4ChannelTabs} />
         </>
       }
     >
-      {legacySurface ? (
-        <LegacyBanner preferredHref="/dashboard/providers" preferredLabel="Dashboard Providers" />
-      ) : null}
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}
@@ -224,41 +162,6 @@ export function ProvidersPage({
       {statusMessage ? (
         <Card className="border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{statusMessage}</Card>
       ) : null}
-
-      <Card className="p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="font-semibold">Built-in provider templates</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Set env vars on the server, then sync credentials into the OAuth registry.
-            </p>
-          </div>
-          <Button type="button" variant="outline" onClick={() => void handleSyncFromEnv()}>
-            Sync from .env
-          </Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {templates.map((template) => (
-            <div
-              key={template.slug}
-              className="rounded-md border border-slate-200 p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{template.display_name}</span>
-                <Badge variant="outline">{template.slug}</Badge>
-                {template.connectable ? (
-                  <Badge className="bg-emerald-100 text-emerald-800">Connectable</Badge>
-                ) : (
-                  <Badge className="bg-amber-100 text-amber-800">{template.status}</Badge>
-                )}
-              </div>
-              <p className="mt-2 text-xs text-slate-500">
-                {template.capability_count} capabilities · {template.env_client_id_key ?? "no env key"}
-              </p>
-            </div>
-          ))}
-        </div>
-      </Card>
 
       <Card className="p-5">
         <div className="mb-4 flex items-center gap-2">
@@ -299,11 +202,6 @@ export function ProvidersPage({
                   setCreateForm((prev) => ({ ...prev, discovery_url: event.target.value }))
                 }
               />
-              {apiVersion === "v2.6" ? (
-                <Button type="button" variant="outline" onClick={() => void handleDiscover()}>
-                  Discover
-                </Button>
-              ) : null}
             </div>
           </div>
           <div className="space-y-2">

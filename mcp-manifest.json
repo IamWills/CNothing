@@ -1,16 +1,16 @@
 {
-  "schema_version": "v2.5",
-  "name_for_human": "CNothing v2.5",
-  "name_for_model": "cnothing_v25_oauth_broker",
-  "description_for_human": "Universal OAuth Broker + Capability Gateway: connect OAuth providers once, grant capabilities to agents, invoke third-party APIs without exposing tokens.",
-  "description_for_model": "CNothing v2.5 MCP. Agent NEVER receives OAuth tokens, API keys, or client secrets. Flow: list_capabilities → request_authorization (returns approval_url) → user approves in browser → get_authorization_status → invoke_capability. Use v2.5 agent API only. v1 kv_* and authai_* tools are deprecated internal tools — do not use for OAuth or capability workflows.",
+  "schema_version": "v4",
+  "name_for_human": "CNothing v4",
+  "name_for_model": "cnothing_v4_universal_proxy",
+  "description_for_human": "Universal credential-injecting proxy: one user approval per OAuth provider, then agents call any API of that provider without ever seeing tokens.",
+  "description_for_model": "CNothing v4 MCP. Agent NEVER receives OAuth tokens, API keys, or client secrets. Flow: list_providers -> request_access (returns approval_url) -> human approves once in browser -> get_access_status (returns grant_id) -> proxy_request for any https API on the granted hosts. Authorization headers are injected server-side; responses are redacted.",
   "auth": {
     "type": "none",
-    "instructions": "Agent uses agent_access_token on v2.5 agent endpoints. Human OAuth and capability approval happen in browser at approval_url only."
+    "instructions": "Every tool call requires agent_access_token (issued by the platform operator via POST /v4/agents/register). Human OAuth consent happens in the browser at approval_url only."
   },
   "api": {
     "type": "openapi",
-    "url": "https://cnothing.com/openapi-v2.5.json",
+    "url": "https://cnothing.com/openapi-v4.json",
     "is_user_authenticated": false
   },
   "server": {
@@ -19,119 +19,23 @@
   },
   "documentation": {
     "homepage": "https://cnothing.com",
-    "openapi_v25": "https://cnothing.com/openapi-v2.5.json",
-    "v2_auth_workflow": "resource://cnothing/v2-user-authorization"
+    "openapi_v4": "https://cnothing.com/openapi-v4.json",
+    "v4_workflow": "resource://cnothing/v4-workflow",
+    "primary_skill": "https://cnothing.com/skill.md"
   },
   "tool_groups": [
     {
-      "name": "agent_v25",
-      "description": "Primary v2.5 agent tools",
+      "name": "agent_v4",
+      "description": "CNothing v4 universal proxy tools",
       "tools": [
-        "list_capabilities",
-        "request_authorization",
-        "get_authorization_status",
-        "invoke_capability",
+        "list_providers",
+        "request_access",
+        "get_access_status",
+        "proxy_request",
         "list_grants",
-        "revoke_grant"
+        "submit_provider_proposal",
+        "get_provider_proposal"
       ]
-    },
-    {
-      "name": "deprecated_v1",
-      "description": "Deprecated v1 internal tools — hidden from default manifest",
-      "visible": false,
-      "tools": [
-        "get_authai_public_key",
-        "authai_register",
-        "authai_refresh",
-        "authai_key_holder_sign_challenge",
-        "authai_key_holder_verify_signature",
-        "authai_key_holder_challenge",
-        "authai_key_holder_verify",
-        "kv_save",
-        "kv_read"
-      ]
-    }
-  ],
-  "tools": [
-    {
-      "name": "list_capabilities",
-      "group": "agent_v25",
-      "description": "List available capabilities with schemas and authorization status. Never returns tokens or invocation secrets.",
-      "input_schema": {
-        "type": "object",
-        "required": ["agent_access_token"],
-        "properties": {
-          "agent_access_token": { "type": "string" }
-        }
-      }
-    },
-    {
-      "name": "request_authorization",
-      "group": "agent_v25",
-      "description": "Request user approval for a capability. Returns approval_url for browser. Do not pass user_id.",
-      "input_schema": {
-        "type": "object",
-        "required": ["agent_access_token", "capability"],
-        "properties": {
-          "agent_access_token": { "type": "string" },
-          "capability": { "type": "string", "description": "e.g. github.create_issue" },
-          "requested_scopes": { "type": "array", "items": { "type": "string" } },
-          "reason": { "type": "string" }
-        }
-      }
-    },
-    {
-      "name": "get_authorization_status",
-      "group": "agent_v25",
-      "description": "Poll authorization status after user opens approval_url.",
-      "input_schema": {
-        "type": "object",
-        "required": ["agent_access_token", "authorization_id"],
-        "properties": {
-          "agent_access_token": { "type": "string" },
-          "authorization_id": { "type": "string" }
-        }
-      }
-    },
-    {
-      "name": "invoke_capability",
-      "group": "agent_v25",
-      "description": "Invoke an approved capability. Agent never receives third-party tokens.",
-      "input_schema": {
-        "type": "object",
-        "required": ["agent_access_token", "capability"],
-        "properties": {
-          "agent_access_token": { "type": "string" },
-          "capability": { "type": "string" },
-          "input": { "type": "object" },
-          "confirmation_id": { "type": "string" }
-        }
-      }
-    },
-    {
-      "name": "list_grants",
-      "group": "agent_v25",
-      "description": "List capability grants for this agent.",
-      "input_schema": {
-        "type": "object",
-        "required": ["agent_access_token"],
-        "properties": {
-          "agent_access_token": { "type": "string" }
-        }
-      }
-    },
-    {
-      "name": "revoke_grant",
-      "group": "agent_v25",
-      "description": "Revoke a capability grant.",
-      "input_schema": {
-        "type": "object",
-        "required": ["agent_access_token", "grant_id"],
-        "properties": {
-          "agent_access_token": { "type": "string" },
-          "grant_id": { "type": "string" }
-        }
-      }
     }
   ]
 }

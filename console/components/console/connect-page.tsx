@@ -11,12 +11,12 @@ import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  fetchV3Providers,
-  pollV3DeviceFlow,
-  startV3DeviceFlow,
-  startV3OAuthConnect,
-  type V25OAuthProvider,
-} from "@/lib/api-v3";
+  fetchV4Providers,
+  pollV4DeviceFlow,
+  startV4DeviceFlow,
+  startV4OAuthConnect,
+  type V4OAuthProvider,
+} from "@/lib/api-v4";
 
 type DeviceSessionState = {
   providerSlug: string;
@@ -34,7 +34,7 @@ type DeviceSessionState = {
 export function ConnectPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const { isLoggedIn } = useUserSession();
-  const [providers, setProviders] = React.useState<V25OAuthProvider[]>([]);
+  const [providers, setProviders] = React.useState<V4OAuthProvider[]>([]);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -44,7 +44,7 @@ export function ConnectPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchV3Providers(connection);
+      const response = await fetchV4Providers(connection);
       setProviders(response.items);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load providers.");
@@ -65,7 +65,7 @@ export function ConnectPage() {
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       try {
-        const result = await pollV3DeviceFlow(connection, deviceSession.sessionId);
+        const result = await pollV4DeviceFlow(connection, deviceSession.sessionId);
         if (cancelled) return;
 
         if (result.status === "completed") {
@@ -113,7 +113,7 @@ export function ConnectPage() {
     };
   }, [connection, deviceSession]);
 
-  async function handleConnect(provider: V25OAuthProvider) {
+  async function handleConnect(provider: V4OAuthProvider) {
     if (!isLoggedIn) {
       setErrorMessage("Sign in first from the Login page.");
       return;
@@ -124,7 +124,7 @@ export function ConnectPage() {
     try {
       const redirectAfter =
         typeof window !== "undefined" ? `${window.location.origin}/connections` : undefined;
-      const response = await startV3OAuthConnect(connection, {
+      const response = await startV4OAuthConnect(connection, {
         provider_slug: provider.slug,
         ...(redirectAfter ? { redirect_after: redirectAfter } : {}),
       });
@@ -134,7 +134,7 @@ export function ConnectPage() {
     }
   }
 
-  async function handleDeviceConnect(provider: V25OAuthProvider) {
+  async function handleDeviceConnect(provider: V4OAuthProvider) {
     if (!isLoggedIn) {
       setErrorMessage("Sign in first from the Login page.");
       return;
@@ -142,7 +142,7 @@ export function ConnectPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const response = await startV3DeviceFlow(connection, { provider_slug: provider.slug });
+      const response = await startV4DeviceFlow(connection, { provider_slug: provider.slug });
       setDeviceSession({
         providerSlug: provider.slug,
         providerName: provider.display_name,

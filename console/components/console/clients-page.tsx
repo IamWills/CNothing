@@ -96,7 +96,7 @@ export function ClientsPage() {
         </>
       }
     >
-      <LegacyBanner preferredHref="/dashboard/capabilities" preferredLabel="v3 Dashboard" />
+      <LegacyBanner preferredHref="/connect" preferredLabel="v4 Connect" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}
@@ -109,11 +109,11 @@ export function ClientsPage() {
       <Card className="mb-6 border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
         <p className="font-medium">v1 Clients / AuthAI / KV are deprecated</p>
         <p className="mt-1 text-amber-900">
-          New integrations should use v2 agents and capabilities. Migrate existing KV secrets via{" "}
-          <a href="/migration" className="underline">
-            Migration
-          </a>
-          .
+          New integrations should use the v4 universal proxy: connect providers on{" "}
+          <a href="/connect" className="underline">
+            Connect
+          </a>{" "}
+          and let agents call APIs via <code className="text-xs">POST /v4/proxy</code>.
         </p>
       </Card>
 

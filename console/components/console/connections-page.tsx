@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Unplug } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
-import { LegacyBanner } from "@/components/layout/legacy-banner";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Badge } from "@/components/ui/badge";
@@ -12,16 +11,16 @@ import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  fetchV3OAuthConnections,
-  revokeV3OAuthConnection,
-  type V25OAuthConnection,
-} from "@/lib/api-v3";
+  fetchV4Connections,
+  revokeV4Connection,
+  type V4OAuthConnection,
+} from "@/lib/api-v4";
 import { formatDate } from "@/lib/console-utils";
 
 export function ConnectionsPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const { isLoggedIn } = useUserSession();
-  const [items, setItems] = React.useState<V25OAuthConnection[]>([]);
+  const [items, setItems] = React.useState<V4OAuthConnection[]>([]);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
@@ -33,7 +32,7 @@ export function ConnectionsPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchV3OAuthConnections(connection);
+      const response = await fetchV4Connections(connection);
       setItems(response.items);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load connections.");
@@ -48,7 +47,7 @@ export function ConnectionsPage() {
 
   async function handleRevoke(connectionId: string) {
     try {
-      await revokeV3OAuthConnection(connection, connectionId);
+      await revokeV4Connection(connection, connectionId);
       await refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to revoke connection.");
@@ -61,7 +60,6 @@ export function ConnectionsPage() {
       description="Third-party connections with encrypted tokens stored by CNothing."
       actions={<ReloadIconButton disabled={loading} onReload={() => void refresh()} />}
     >
-      <LegacyBanner preferredHref="/dashboard/connections" preferredLabel="Dashboard Connections" />
       <ConnectionPanel
         draft={draft}
         onDraftChange={setDraft}

@@ -3,36 +3,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { handleAdminRequest } from "./admin/admin.api";
 import { handleKeyRequest } from "./api/key.api";
-import { handleV2PlatformRequest } from "./api/v2-platform.api";
-import { handleV2InternalRequest } from "./api/v2-internal.api";
-import { handleV2Request } from "./api/v2.api";
-import {
-  handleV25AgentRequest,
-  handleV25ApproveRequest,
-  handleV25ImportRequest,
-  handleV25OAuthRequest,
-  handleV25PlatformRequest,
-} from "./api/v2.5.api";
-import {
-  handleV26AgentInvokeOnly,
-  handleV26ApproveRequest,
-  handleV26CapabilitiesRequest,
-  handleV26ImportRequest,
-  handleV26OAuthRequest,
-  handleV26PlatformRequest,
-} from "./api/v2.6.api";
-import { handleV3Request } from "./api/v3.api";
 import { handleV4Request } from "./api/v4.api";
-import { handleApiV3Request } from "./api/api-v3.api";
+import { handleOAuthCallbackRequest, handleV4PlatformRequest } from "./api/v4-platform.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
-import { initDb } from "./db";
-import { runStartupBootstrap } from "./v2/platform-bootstrap.service";
-import { runSearchStartupBootstrap } from "./v2/search-bootstrap.service";
-import { runV25StartupBootstrap } from "./v2/v2.5-bootstrap.service";
-import { migrateCredentialsToOAuthConnections } from "./v2/credential-migration.service";
+import { initDb, pool } from "./db";
+import { runV4StartupBootstrap } from "./v4/bootstrap.service";
 import { migrateOAuthTokensToVault } from "./v3/oauth-token-vault-migration.service";
-import { handleV2E2eInternalRequest } from "./api/v2-e2e-internal.api";
 import { applySecurityMiddleware } from "./middleware/security";
 import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
 import { toHttpResponse } from "./utils/errors";
@@ -87,32 +64,15 @@ function renderHomePage(baseUrl: string): string {
   const endpointRows = [
     ["/health", "Health check"],
     ["/skill.md", "Primary skill markdown for AI discovery"],
-    ["/mcp", "MCP info endpoint"],
-    ["/openapi.json", "OpenAPI document (v1 legacy)"],
-    ["/openapi-v2.json", "OpenAPI document (v2 capability platform)"],
-    ["/openapi-v2.5.json", "OpenAPI document (v2.5 OAuth broker + capability gateway)"],
-    ["/openapi-v2.6.json", "OpenAPI document (v2.6 universal OAuth + zero-code import)"],
-    ["/openapi-v3.json", "OpenAPI document (v3 Execution Trust Layer — canonical invoke documented)"],
-    ["/api/v3/openapi.json", "OpenAPI document (v3 Capability Execution Gateway)"],
-    ["/v4/access-requests", "v4: agent requests connection-level proxy access"],
-    ["/v4/proxy", "v4: universal credential-injecting HTTP proxy (agent never sees tokens)"],
-    ["/v4/grants", "v4: list/revoke connection-level grants"],
-    ["/api/v3/capabilities/{capabilityId}/invoke", "Canonical secretless capability invoke"],
-    ["/v3/capabilities/{capabilityId}/invoke", "Alias of canonical capability invoke"],
-    ["/v3/agent/invoke", "Compatibility invoke (body.capability) — prefer capability-scoped path"],
-    ["/api/v3/executions", "List executions (lifecycle poll)"],
-    ["/api/v3/executions/{executionId}", "Get execution status"],
-    ["/api/v3/executions/{executionId}/cancel", "Cancel a non-terminal execution"],
-    ["/api/v3/executions/{executionId}/retry", "Retry a failed/timeout execution"],
-    ["/api/v3/approvals", "Unified Approvals list (grant | confirmation | reauth)"],
-    ["/api/v3/approvals/{id}/approve", "Approve"],
-    ["/api/v3/approvals/{id}/reject", "Reject"],
-    ["/v3/providers/proposals", "Agent submits provider proposal (public metadata only)"],
+    ["/mcp", "MCP endpoint (v4 universal proxy tools)"],
+    ["/openapi-v4.json", "OpenAPI document (v4 universal credential-injecting proxy)"],
+    ["/v4/providers", "List OAuth providers"],
+    ["/v4/access-requests", "Agent requests connection-level proxy access"],
+    ["/v4/proxy", "Universal credential-injecting HTTP proxy (agent never sees tokens)"],
+    ["/v4/grants", "List/revoke connection-level grants"],
+    ["/v4/connections", "User OAuth connections"],
+    ["/openapi.json", "OpenAPI document (v1 AuthAI + Encrypted KV, legacy)"],
     ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
-    ["/v2/capabilities/invoke", "Invoke a capability (v2 primary agent API)"],
-    ["/v2/authorize/request", "Request user authorization for capabilities"],
-    ["/v2/jwks", "JWKS for Capability Grant verification"],
-    ["/v2/capabilities", "List registered capabilities"],
     ["/v1/catalog/mcp", "Browsable MCP tools and resources"],
     ["/v1/catalog/skills", "Bundled skills catalog"],
   ];
@@ -140,7 +100,7 @@ function renderHomePage(baseUrl: string): string {
       <section style="border:1px solid #e8e8ee;border-radius:28px;background:rgba(255,255,255,0.92);box-shadow:0 18px 60px rgba(15,23,42,0.06);padding:32px">
         <div style="display:inline-flex;align-items:center;border:1px solid #e8e8ee;border-radius:999px;padding:6px 10px;font-size:12px;background:#f1f2f6">CNothing API</div>
         <h1 style="font-size:40px;line-height:1.05;margin:16px 0 12px">CNothing is running.</h1>
-        <p style="font-size:17px;line-height:1.6;color:#475569;margin:0 0 20px">This deployment is serving the CNothing backend at <code>${baseUrl}</code>.</p>
+        <p style="font-size:17px;line-height:1.6;color:#475569;margin:0 0 20px">This deployment is serving the CNothing v4 universal proxy backend at <code>${baseUrl}</code>.</p>
         ${consoleHint}
       </section>
 
@@ -182,36 +142,9 @@ async function router(request: Request): Promise<Response> {
 
   if (pathname === "/health") {
     try {
-      const { checkTrustLayerReadiness } = await import("./v3/trust-layer-readiness");
-      const readiness = await checkTrustLayerReadiness();
-      if (!readiness.ready) {
-        return withCors(
-          Response.json(
-            {
-              status: "degraded",
-              service: config.serviceName,
-              ready: false,
-              error: {
-                code: "schema_not_ready",
-                message: "Execution Trust Layer schema is incomplete",
-                missing_relations: readiness.missing_relations,
-              },
-            },
-            { status: 503 },
-          ),
-          request,
-        );
-      }
+      await pool.query("SELECT 1 FROM proxy_grants LIMIT 1");
       return withCors(
-        Response.json({
-          status: "ok",
-          service: config.serviceName,
-          ready: true,
-          trust_layer: {
-            ready: true,
-            trust_policy_count: readiness.trust_policy_count,
-          },
-        }),
+        Response.json({ status: "ok", service: config.serviceName, ready: true }),
         request,
       );
     } catch (error) {
@@ -237,7 +170,7 @@ async function router(request: Request): Promise<Response> {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const content = readFileSync(
-      path.join(__dirname, "..", "skills", "keyservice-authai", "SKILL.md"),
+      path.join(__dirname, "..", "skills", "cnothing-v4", "SKILL.md"),
       "utf8",
     );
     return withCors(
@@ -318,101 +251,23 @@ async function router(request: Request): Promise<Response> {
     return serveOpenApiDocument(request, "openapi.json");
   }
 
-  if (pathname === "/openapi-v2.6.json" && isOpenApiDocumentRequest(request)) {
-    return serveOpenApiDocument(request, "openapi-v2.6.json");
+  if (pathname === "/openapi-v4.json" && isOpenApiDocumentRequest(request)) {
+    return serveOpenApiDocument(request, "openapi-v4.json");
   }
 
-  if (pathname === "/openapi-v3.json" && isOpenApiDocumentRequest(request)) {
-    return serveOpenApiDocument(request, "openapi-v3.json");
-  }
-
-  if (pathname.startsWith("/api/v3")) {
-    const apiV3Response = await handleApiV3Request(request);
-    if (apiV3Response) {
-      return withCors(apiV3Response, request);
-    }
-  }
-
-  // Alias: POST /v3/capabilities/{id}/invoke → canonical /api/v3/capabilities/{id}/invoke
-  {
-    const aliasMatch = pathname.match(/^\/v3\/capabilities\/([^/]+)\/invoke$/);
-    if (request.method === "POST" && aliasMatch) {
-      const capabilityId = aliasMatch[1]!;
-      const rewritten = new Request(
-        new URL(`/api/v3/capabilities/${capabilityId}/invoke${url.search}`, request.url),
-        request,
-      );
-      const apiV3Response = await handleApiV3Request(rewritten);
-      if (apiV3Response) {
-        return withCors(apiV3Response, request);
-      }
-    }
-  }
-
-  // Alias: /v3/approvals* → /api/v3/approvals*
-  {
-    const approvalAlias = pathname.match(
-      /^\/v3\/approvals(?:\/([^/]+)(?:\/(approve|reject|decide))?)?$/,
-    );
-    if (
-      approvalAlias &&
-      ((request.method === "GET" && !approvalAlias[2]) ||
-        (request.method === "POST" &&
-          (approvalAlias[2] === "approve" ||
-            approvalAlias[2] === "reject" ||
-            approvalAlias[2] === "decide")))
-    ) {
-      const suffix = pathname.slice("/v3/approvals".length);
-      const rewritten = new Request(
-        new URL(`/api/v3/approvals${suffix}${url.search}`, request.url),
-        request,
-      );
-      const apiV3Response = await handleApiV3Request(rewritten);
-      if (apiV3Response) {
-        return withCors(apiV3Response, request);
-      }
-    }
-  }
-
-  // Alias: /v3/executions* → /api/v3/executions*
-  {
-    const execAlias = pathname.match(
-      /^\/v3\/executions(?:\/([^/]+)(?:\/(cancel|retry))?)?$/,
-    );
-    if (
-      execAlias &&
-      ((request.method === "GET" && !execAlias[2]) ||
-        (request.method === "POST" && (execAlias[2] === "cancel" || execAlias[2] === "retry")))
-    ) {
-      const suffix = pathname.slice("/v3/executions".length);
-      const rewritten = new Request(
-        new URL(`/api/v3/executions${suffix}${url.search}`, request.url),
-        request,
-      );
-      const apiV3Response = await handleApiV3Request(rewritten);
-      if (apiV3Response) {
-        return withCors(apiV3Response, request);
-      }
-    }
-  }
-
-  if (pathname.startsWith("/v3/")) {
-    const v3Response = await handleV3Request(request);
-    if (v3Response) {
-      return withCors(v3Response, request);
-    }
+  // OAuth callback URLs are registered inside third-party OAuth apps.
+  // Legacy /v2 and /v3 callback paths stay mounted for compatibility.
+  const callbackResponse = await handleOAuthCallbackRequest(request);
+  if (callbackResponse) {
+    return withCors(callbackResponse, request);
   }
 
   if (pathname.startsWith("/v4/")) {
+    const platformResponse = await handleV4PlatformRequest(request);
+    if (platformResponse) {
+      return withCors(platformResponse, request);
+    }
     return withCors(await handleV4Request(request), request);
-  }
-
-  if (pathname === "/openapi-v2.5.json" && isOpenApiDocumentRequest(request)) {
-    return serveOpenApiDocument(request, "openapi-v2.5.json");
-  }
-
-  if (pathname === "/openapi-v2.json" && isOpenApiDocumentRequest(request)) {
-    return serveOpenApiDocument(request, "openapi-v2.json");
   }
 
   if (pathname.startsWith("/v1/")) {
@@ -425,69 +280,32 @@ async function router(request: Request): Promise<Response> {
     return withCors(await handleKeyRequest(request, baseUrl), request);
   }
 
-  if (pathname.startsWith("/v2.6/")) {
-    if (
-      pathname.startsWith("/v2.6/agent/") ||
-      pathname === "/v2.6/agent/invoke"
-    ) {
-      return withCors(await handleV26AgentInvokeOnly(request), request);
-    }
-    if (pathname.startsWith("/v2.6/oauth/")) {
-      return withCors(await handleV26OAuthRequest(request), request);
-    }
-    if (
-      pathname.startsWith("/v2.6/import/") ||
-      pathname.startsWith("/v2.6/capabilities/")
-    ) {
-      return withCors(await handleV26ImportRequest(request), request);
-    }
-    if (pathname.startsWith("/v2.6/approve/") && request.method === "POST") {
-      return withCors(await handleV26ApproveRequest(request), request);
-    }
-    const v26Platform = await handleV26PlatformRequest(request);
-    if (v26Platform) {
-      return withCors(v26Platform, request);
-    }
-    const v26Capabilities = await handleV26CapabilitiesRequest(request);
-    if (v26Capabilities) {
-      return withCors(v26Capabilities, request);
-    }
-  }
-
-  if (pathname.startsWith("/v2/")) {
-    if (pathname.startsWith("/v2/internal/e2e/")) {
-      return withCors(await handleV2E2eInternalRequest(request), request);
-    }
-    if (pathname.startsWith("/v2/internal/")) {
-      return withCors(await handleV2InternalRequest(request), request);
-    }
-    if (
-      pathname.startsWith("/v2/agent/") ||
-      pathname === "/v2/agent/invoke"
-    ) {
-      return withCors(await handleV25AgentRequest(request), request);
-    }
-    if (pathname.startsWith("/v2/admin/oauth/") || pathname.startsWith("/v2/oauth/")) {
-      return withCors(await handleV25OAuthRequest(request), request);
-    }
-    if (pathname.startsWith("/v2/import/") || pathname.startsWith("/v2/capabilities/from-")) {
-      return withCors(await handleV25ImportRequest(request), request);
-    }
-    if (pathname.startsWith("/v2/approve/") && request.method === "POST") {
-      return withCors(await handleV25ApproveRequest(request), request);
-    }
-    const v25Platform = await handleV25PlatformRequest(request);
-    if (v25Platform) {
-      return withCors(v25Platform, request);
-    }
-    if (
-      pathname.startsWith("/v2/platform/") ||
-      pathname.startsWith("/v2/admin/") ||
-      pathname.startsWith("/v2/auth/")
-    ) {
-      return withCors(await handleV2PlatformRequest(request), request);
-    }
-    return withCors(await handleV2Request(request), request);
+  // v2 / v2.5 / v2.6 / v3 are decommissioned. Point old integrations at v4.
+  if (
+    pathname.startsWith("/v2/") ||
+    pathname.startsWith("/v2.6/") ||
+    pathname.startsWith("/v3/") ||
+    pathname.startsWith("/api/v3")
+  ) {
+    return withCors(
+      Response.json(
+        {
+          error: {
+            type: "Gone",
+            message:
+              "The v2/v3 capability APIs are decommissioned. Use the v4 universal proxy API instead.",
+            error_code: "api_version_decommissioned",
+            migration: {
+              docs: `${baseUrl}/openapi-v4.json`,
+              request_access: "POST /v4/access-requests",
+              proxy: "POST /v4/proxy",
+            },
+          },
+        },
+        { status: 410 },
+      ),
+      request,
+    );
   }
 
   return withCors(
@@ -506,10 +324,7 @@ async function router(request: Request): Promise<Response> {
 
 async function main(): Promise<void> {
   await initDb();
-  await runStartupBootstrap();
-  await runSearchStartupBootstrap();
-  await runV25StartupBootstrap();
-  await migrateCredentialsToOAuthConnections();
+  await runV4StartupBootstrap();
   await migrateOAuthTokensToVault();
   Bun.serve({
     port: config.port,

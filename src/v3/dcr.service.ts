@@ -53,7 +53,7 @@ export async function registerOAuthClient(input: {
   };
 }
 
-export function buildOAuthCallbackUri(apiBaseUrl: string, providerSlug: string, apiVersion = "v3"): string {
+export function buildOAuthCallbackUri(apiBaseUrl: string, providerSlug: string, apiVersion = "v4"): string {
   const base = (config.publicBaseUrl || apiBaseUrl).replace(/\/+$/, "");
   return `${base}/${apiVersion}/oauth/callback/${encodeURIComponent(providerSlug)}`;
 }

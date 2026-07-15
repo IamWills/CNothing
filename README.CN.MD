@@ -24,84 +24,22 @@ v4 是一次战略性简化。此前的版本要求每个第三方操作都先�
 - Token 自动刷新；响应做脱敏（token 出现即替换为 `[REDACTED]`，秘密形态的 JSON 字段被掩码）
 - Grant 用户可随时撤销（`POST /v4/grants/{id}/revoke`）；每次代理请求都有审计记录
 
-端点：`POST /v4/access-requests`、`GET /v4/access-requests/{id}`、`POST /v4/access-requests/{id}/approve|deny`、`POST /v4/proxy`、`GET /v4/grants`、`POST /v4/grants/{id}/revoke`、`GET /v4/providers`、`GET /v4/connections`。E2E：`bun run e2e:v4`。
+端点：`POST /v4/access-requests`、`GET /v4/access-requests/{id}`、`POST /v4/access-requests/{id}/approve|deny`、`POST /v4/proxy`、`GET /v4/grants`、`POST /v4/grants/{id}/revoke`、`GET /v4/providers`、`GET /v4/connections`。完整规范：[`openapi-v4.json`](./openapi-v4.json)。E2E：`bun run e2e:v4`。
 
-OAuth 2.0 协议的固有边界（任何中间平台都无法绕过）：用户对每个连接需要在提供方的授权页点一次同意；不支持 RFC 7591 动态客户端注册（DCR）的站点需要运营者配置一次 `client_id`/`client_secret`（提供 `registration_endpoint` 的站点可通过 `POST /v3/providers/proposals` 自动完成 DCR）。
+OAuth 2.0 协议的固有边界（任何中间平台都无法绕过）：用户对每个连接需要在提供方的授权页点一次同意；不支持 RFC 7591 动态客户端注册（DCR）的站点需要运营者配置一次 `client_id`/`client_secret`（提供 `registration_endpoint` 的站点可通过 `POST /v4/providers/proposals` 自动完成 DCR）。
 
-## v3 Execution Trust Layer（兼容）
+### Agent 使用 MCP（两种方式）
 
-定位：**The execution trust layer between AI agents and the real world.**
+如果 agent 自身不具备发起 HTTP 请求的可调用工具，可以通过 MCP 使用 CNothing：
 
-产品定位：Capability Authorization Platform → **Execution Trust Layer for AI Agents**
+- **托管 MCP** — 任何支持 MCP-over-HTTP 的客户端直接指向 `https://cnothing.com/mcp`（JSON-RPC 2.0），工具集：`list_providers`、`request_access`、`get_access_status`、`proxy_request`、`list_grants`、`submit_provider_proposal`、`get_provider_proposal`。Agent token 通过 `Authorization: Bearer …` 传入。
+- **本地 stdio MCP** — 在 agent 自己的环境安装 [`packages/cnothing-mcp`](./packages/cnothing-mcp)，配置 `CNOTHING_BASE_URL` 与 `CNOTHING_AGENT_TOKEN` 即可。详见其 [README](./packages/cnothing-mcp/README.md)。
 
-核心原则：Agent thinks. cnothing executes. Secrets never leave cnothing. Every risky action is approved, executed, and audited.
+供 agent 阅读的技能文档：[`skills/cnothing-v4/SKILL.md`](./skills/cnothing-v4/SKILL.md)（在线地址 `/skill.md`）。
 
-- Agent 只调用 Capability Handle（如 `github.create_repo`），**永不接触** token / cookie / password / API key
-- 调用链：Policy Engine → Approval Engine → Secret Vault → Execution Worker → Sanitizer → Audit Chain
-- 契约：`POST /api/v3/capabilities/:id/invoke` → `completed` | `pending_approval` | `denied` | `reconnect_required`
-- Console：`/dashboard/capabilities|providers|connections|approvals|executions|policies|secrets|audit`
-- 详细说明：[docs/execution-trust-layer.md](./docs/execution-trust-layer.md)
+### Admin 配置
 
-```bash
-# 无密钥调用示例
-curl -X POST "$BASE/api/v3/capabilities/github.get_user/invoke" \
-  -H "Authorization: Bearer $AGENT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"USER","input":{}}'
-```
-
-旧 `/v2` / `/v3` API 保持兼容；`/v2/agent/invoke` 内部转发新 Execution Lifecycle。
-
-## v2.5：Universal OAuth Broker + Capability Gateway
-
-CNothing v2.5 不再需要为每个第三方网站手写专用 Connector：
-
-- **Universal OAuth Provider Registry** — 内置 GitHub、Google、Microsoft、Slack、Notion；支持自定义 OAuth Provider
-- **OAuth Connection Flow** — 用户在 `/connect` 连接一次；access/refresh token 加密存储，**永不返回给 Agent**
-- **Capability Gateway** — Agent 调用 `POST /v2/agent/invoke`；CNothing 校验 Grant、刷新 token、执行第三方 API
-- **OpenAPI / MCP 导入** — 从 API 规范或 MCP tools 自动生成候选 Capability
-- **Policy Engine v2.5** — 风险等级、机密查询、输出脱敏/metadata/summary
-
-```ts
-// Agent 工作流（v2.5）
-// 1. GET  /v2/agent/capabilities
-// 2. POST /v2/agent/authorizations  { capability: "github.create_issue", reason: "..." }
-// 3. 用户打开 approval_url，选择 OAuth Connection，批准
-// 4. POST /v2/agent/invoke          { capability, input }
-```
-
-```ts
-import { CNothingAgentClient } from "cnothing";
-
-const agent = new CNothingAgentClient({
-  baseUrl: "https://cnothing.com",
-  accessToken: process.env.AGENT_ACCESS_TOKEN!,
-  // 默认 apiVersion: "v2.5"
-});
-
-const auth = await agent.requestAuthorization({
-  capability: "github.create_issue",
-  reason: "自动创建 issue",
-});
-// 将 auth.approval_url 发给用户，用户在浏览器完成 OAuth + 批准
-
-await agent.invoke({
-  capability: "github.create_issue",
-  input: { owner: "org", repo: "repo", title: "Bug report" },
-});
-```
-
-- API 规范：[`openapi-v2.5.json`](./openapi-v2.5.json)
-- MCP 工具（仅 v2.5）：`list_capabilities`、`request_authorization`、`get_authorization_status`、`invoke_capability`、`list_grants`、`revoke_grant`
-- 内置 Capability：GitHub / Google Gmail / Slack 等（见 `src/v2/builtin-providers.ts`）
-- 端到端验证：`bun run e2e:v2.5`
-- Console：`/providers`、`/connect`、`/import`、`/connections`、`/approve/:id`、`/grants`、`/audit`
-
-**安全边界：** Agent 只获得 Capability 授权（Grant），永远不接触 OAuth token、refresh token、client secret 或 API key。
-
-### Admin 配置（v2.5）
-
-在 `.env` 中配置各 Provider 的 OAuth 凭据（至少配置 client_id 后 Provider 才显示为可连接）：
+在 `.env` 中配置各内置 Provider 的 OAuth 凭据（至少配置 client_id 后 Provider 才显示为可连接），启动时自动同步：
 
 ```bash
 KEYSERVICE_GITHUB_OAUTH_CLIENT_ID=
@@ -113,28 +51,13 @@ KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET=
 # Microsoft、Notion 同理
 ```
 
-自定义 Provider：Console **Providers** 页或 `POST /v2/oauth/providers`（需 Admin Bearer Token）。内置模板目录：`GET /v2/platform/provider-templates`；从 `.env` 同步凭据：`POST /v2/admin/oauth/sync-env`。
+自定义 Provider：Console **Providers** 页或 `POST /v4/providers`（需 Admin Bearer Token）。
 
-OpenAPI 导入：Console **Import** 页或 `POST /v2/import/openapi` → 审核候选 → `POST /v2/capabilities/from-openapi`（无需 `connector_id`，默认走 gateway connector）。
+## v2–v3：已下线
 
-平台 Webhook（可选）：设置 `KEYSERVICE_PLATFORM_WEBHOOK_URL` 接收 `oauth.connection.created`、`grant.approved`、`import.capabilities.activated` 事件。
+基于 capability 注册的旧架构（v2、v2.5、v2.6、v3）已全部移除。所有 `/v2/*`、`/v2.6/*`、`/v3/*` API 路径统一返回 `410 Gone` 并指向对应的 v4 端点。已有的 OAuth 应用注册不受影响：历史回调路径（`/v2/oauth/callback/*`、`/v3/oauth/callback/*` 等）作为别名继续由 v4 回调处理器处理。
 
-## v2：Agent 能力授权平台（兼容）
-
-CNothing v2 仍可用，但新 Agent 应优先使用 **v2.5 SDK**（默认 `apiVersion: "v2.5"`）：
-
-- Legacy 端点：`POST /v2/capabilities/invoke`、`POST /v2/authorize/request`
-- 如需继续使用 v2 API：`new CNothingAgentClient({ ..., apiVersion: "v2" })`
-- **Connector** 在本地保管第三方凭据；CNothing 校验 Grant 并转发请求
-- **用户**在 Console 或 OAuth 风格审批流中授权的是**能力**，不是 Secret
-- **策略引擎**按风险等级执行确认策略并写入审计
-
-- API 规范：[`openapi-v2.json`](./openapi-v2.json)
-- MCP 工具：`invoke_capability`、`list_capabilities`、`request_authorization`
-- 示例 Connector（高级/遗留）：`examples/github-connector` 等 — 新集成优先走 OAuth + Import，无需部署 Connector 进程
-- 端到端验证：`bun run e2e:v2`
-
-**v1 AuthAI + Encrypted KV** 在兼容期内仍可用，但已**废弃**（响应含 `Deprecation` / `Sunset` 头与 `_deprecation` 字段）。迁移见 `GET /v2/platform/migration`。
+**v1 AuthAI + Encrypted KV** 在兼容期内仍可用，但已**废弃**（响应含 `Deprecation` / `Sunset` 头与 `_deprecation` 字段）。
 
 ## 为什么是 CNothing
 
@@ -573,7 +496,7 @@ curl http://127.0.0.1:3021/mcp
 
 ### CI
 
-推送到 `main` 会触发 GitHub Actions：typecheck、build、PostgreSQL 迁移与 `bun run e2e:v2`。见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)。
+推送到 `main` 会触发 GitHub Actions：typecheck、build、PostgreSQL 迁移、单元测试与 `bun run e2e:v4`。见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)。
 
 ## 文件导览
 

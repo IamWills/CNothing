@@ -12,25 +12,25 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { fetchV3Agents, registerV3Agent, type V3Agent } from "@/lib/api-v3";
+import { fetchV4Agents, registerV4Agent, type V4Agent } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
 import { dashboardTabs } from "@/lib/v2-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function AgentsPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const [agents, setAgents] = React.useState<V3Agent[]>([]);
+  const [agents, setAgents] = React.useState<V4Agent[]>([]);
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", owner_user_id: "user123", tenant_id: "default" });
+  const [form, setForm] = React.useState({ name: "", owner_user_id: "user123" });
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchV3Agents(connection);
+      const response = await fetchV4Agents(connection);
       setAgents(response.items);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load agents.");
@@ -49,7 +49,7 @@ export function AgentsPage() {
     setStatusMessage("");
     setIssuedToken(null);
     try {
-      const response = await registerV3Agent(connection, form);
+      const response = await registerV4Agent(connection, form);
       setIssuedToken(response.access_token);
       setStatusMessage(`Registered agent ${response.agent.name}. Copy the access token now — it won't be shown again.`);
       await refresh();
@@ -61,7 +61,7 @@ export function AgentsPage() {
   return (
     <PageFrame
       title="Agents"
-      description={`${brand.tagline}. Register agents that invoke capabilities secretlessly — never receive tokens.`}
+      description={`${brand.tagline}. Register agents and issue their access tokens for the v4 universal proxy.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -109,15 +109,6 @@ export function AgentsPage() {
                 value={form.owner_user_id}
                 onChange={(event) => setForm((prev) => ({ ...prev, owner_user_id: event.target.value }))}
                 required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tenant-id">Tenant ID</Label>
-              <Input
-                id="tenant-id"
-                value={form.tenant_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, tenant_id: event.target.value }))}
-                placeholder="default"
               />
             </div>
             <Button type="submit" className="w-full">

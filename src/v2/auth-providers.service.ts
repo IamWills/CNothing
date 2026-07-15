@@ -21,7 +21,7 @@ export async function listAuthProviders(apiBaseUrl: string): Promise<{
       type: "oidc",
       name: provider.name,
       display_name: provider.display_name,
-      start_path: `${apiBaseUrl.replace(/\/+$/, "")}/v2/auth/oidc/${encodeURIComponent(provider.name)}/start`,
+      start_path: `${apiBaseUrl.replace(/\/+$/, "")}/v4/auth/oidc/${encodeURIComponent(provider.name)}/start`,
     });
   }
 

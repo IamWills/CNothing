@@ -1,7 +1,8 @@
 import config from "../config";
 import { encryptOidcClientSecret } from "./oidc-crypto";
-import { GITHUB_OAUTH_SCOPES } from "./github-credential.service";
 import { pool } from "../db";
+
+const GITHUB_OAUTH_SCOPES = "read:user user:email";
 import { randomUUID } from "node:crypto";
 
 const GITHUB_PROVIDER_NAME = "github";

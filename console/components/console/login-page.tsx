@@ -11,27 +11,27 @@ import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  buildV3GitHubStartUrl,
-  buildV3OidcStartUrl,
-  fetchV3AuthMe,
-  fetchV3AuthProviders,
-  issueV3LoginToken,
-  loginV3User,
-  type V2AuthProvider,
-} from "@/lib/api-v3";
+  buildV4GitHubStartUrl,
+  buildV4OidcStartUrl,
+  fetchV4AuthMe,
+  fetchV4AuthProviders,
+  issueV4LoginToken,
+  loginV4User,
+  type V4AuthProvider,
+} from "@/lib/api-v4";
 
 export function LoginPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
   const { session, saveSession, syncSessionFromServer, clearSession, isLoggedIn } = useUserSession();
   const [form, setForm] = React.useState({ user_id: "user123", login_token: "" });
-  const [authProviders, setAuthProviders] = React.useState<V2AuthProvider[]>([]);
+  const [authProviders, setAuthProviders] = React.useState<V4AuthProvider[]>([]);
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    void fetchV3AuthMe(connection)
+    void fetchV4AuthMe(connection)
       .then((response) => {
         syncSessionFromServer({
           userId: response.user_id,
@@ -57,7 +57,7 @@ export function LoginPage() {
   }, [connection, saveSession, syncSessionFromServer]);
 
   React.useEffect(() => {
-    void fetchV3AuthProviders(connection)
+    void fetchV4AuthProviders(connection)
       .then((response) => setAuthProviders(response.items))
       .catch(() => setAuthProviders([]));
   }, [connection]);
@@ -67,7 +67,7 @@ export function LoginPage() {
     setStatusMessage("");
     setIssuedToken(null);
     try {
-      const response = await issueV3LoginToken(connection, form.user_id);
+      const response = await issueV4LoginToken(connection, form.user_id);
       setIssuedToken(response.login_token);
       setForm((prev) => ({ ...prev, login_token: response.login_token }));
       setStatusMessage("One-time login token issued. Sign in within 15 minutes.");
@@ -82,7 +82,7 @@ export function LoginPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const response = await loginV3User(connection, {
+      const response = await loginV4User(connection, {
         user_id: form.user_id,
         login_token: form.login_token,
       });
@@ -166,10 +166,10 @@ export function LoginPage() {
                     onClick={() => {
                       const redirectAfter = `${window.location.origin}/login`;
                       if (provider.type === "github") {
-                        window.location.href = buildV3GitHubStartUrl(connection, redirectAfter);
+                        window.location.href = buildV4GitHubStartUrl(connection, redirectAfter);
                         return;
                       }
-                      window.location.href = buildV3OidcStartUrl(connection, provider.name, redirectAfter);
+                      window.location.href = buildV4OidcStartUrl(connection, provider.name, redirectAfter);
                     }}
                   >
                     {provider.display_name}

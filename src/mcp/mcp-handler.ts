@@ -1,32 +1,26 @@
 import config from "../config";
 import { MCP_SERVER_INSTRUCTIONS } from "../catalog/mcp-instructions";
-import { MCP_V2_AUTH_WORKFLOW_URI } from "../catalog/mcp-v2-auth-workflow";
-import { listMcpResources, listMcpTools, readMcpResource } from "../catalog/mcp-catalog";
-import { ForbiddenError } from "../utils/errors";
-import { agentAuthorizationV25Service } from "../v2/agent-authorization-v25.service";
-import { invocationGatewayService } from "../v2/invocation-gateway.service";
-import { sanitizeAgentResponse } from "../v2/secret-redaction";
-import { findAgentByAccessToken, revokeGrant } from "../v2/v2.repository";
-
+import {
+  MCP_V4_WORKFLOW_URI,
+  listMcpResources,
+  listMcpTools,
+  readMcpResource,
+} from "../catalog/mcp-catalog";
 import { oauthProviderService } from "../v2/oauth-connection.service";
+import { sanitizeAgentResponse } from "../v2/secret-redaction";
+import { findAgentByAccessToken } from "../v2/v2.repository";
 import { providerProposalService } from "../v3/provider-proposal.service";
+import { proxyService } from "../v4/proxy.service";
 
-const V26_AGENT_MCP_TOOLS = new Set([
-  "list_capabilities",
-  "request_authorization",
-  "get_authorization_status",
-  "invoke_capability",
+const V4_AGENT_MCP_TOOLS = new Set([
+  "list_providers",
+  "request_access",
+  "get_access_status",
+  "proxy_request",
   "list_grants",
-  "revoke_grant",
-]);
-
-const V3_AGENT_MCP_TOOLS = new Set([
   "submit_provider_proposal",
   "get_provider_proposal",
-  "list_providers",
 ]);
-
-const PUBLIC_AGENT_MCP_TOOLS = new Set([...V26_AGENT_MCP_TOOLS, ...V3_AGENT_MCP_TOOLS]);
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -72,16 +66,6 @@ async function requireAgentFromMcpArgs(args: Record<string, unknown>) {
   return agent;
 }
 
-function readCapabilityName(args: Record<string, unknown>): string {
-  if (typeof args.capability === "string" && args.capability.trim()) {
-    return args.capability.trim();
-  }
-  if (Array.isArray(args.capabilities) && args.capabilities[0]) {
-    return String(args.capabilities[0]);
-  }
-  return "";
-}
-
 export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcResponse> {
   if (rpc.jsonrpc !== "2.0" || !rpc.method) {
     return jsonRpcError(rpc.id ?? null, -32600, "Invalid Request");
@@ -98,7 +82,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
       case "initialize":
         result = {
           protocolVersion: config.protocolVersion,
-          serverInfo: { name: config.serviceName, version: "3.0.0" },
+          serverInfo: { name: config.serviceName, version: "4.0.0" },
           instructions: MCP_SERVER_INSTRUCTIONS,
           capabilities: {
             resources: { subscribe: false, listChanged: false },
@@ -113,7 +97,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 
       case "resources/read":
         result = {
-          contents: [readMcpResource(String(params.uri ?? "resource://keyservice/protocol"))],
+          contents: [readMcpResource(String(params.uri ?? MCP_V4_WORKFLOW_URI))],
         };
         break;
 
@@ -128,108 +112,78 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
             ? (params.arguments as Record<string, unknown>)
             : {};
 
-        if (!PUBLIC_AGENT_MCP_TOOLS.has(name)) {
+        if (!V4_AGENT_MCP_TOOLS.has(name)) {
           return jsonRpcError(id, -32601, "Tool not available on public MCP surface", {
             tool: name,
-            allowed_tools: [...PUBLIC_AGENT_MCP_TOOLS],
+            allowed_tools: [...V4_AGENT_MCP_TOOLS],
           });
         }
 
         switch (name) {
-          case "invoke_capability": {
-            const agent = await requireAgentFromMcpArgs(args);
-            try {
-              result = await invocationGatewayService.invoke({
-                agent,
-                body: {
-                  capability: readCapabilityName(args),
-                  input:
-                    args.input && typeof args.input === "object" && !Array.isArray(args.input)
-                      ? (args.input as Record<string, unknown>)
-                      : {},
-                  reason: typeof args.reason === "string" ? args.reason : undefined,
-                  confirmation_id:
-                    typeof args.confirmation_id === "string" ? args.confirmation_id : undefined,
-                },
-              });
-            } catch (error) {
-              if (error instanceof ForbiddenError) {
-                result = sanitizeAgentResponse({
-                  ok: false,
-                  error_code:
-                    (error.details as { error_code?: string } | undefined)?.error_code ??
-                    "forbidden",
-                  message: error.message,
-                  ...(typeof error.details === "object" && error.details
-                    ? (error.details as Record<string, unknown>)
-                    : {}),
-                });
-                break;
-              }
-              throw error;
-            }
-            break;
-          }
-
-          case "list_capabilities": {
-            const agent = await requireAgentFromMcpArgs(args);
-            const items = await agentAuthorizationV25Service.listCapabilitiesForAgent(agent);
+          case "list_providers": {
+            await requireAgentFromMcpArgs(args);
+            const items = await oauthProviderService.listPublicProviders();
             result = sanitizeAgentResponse({ ok: true, items });
             break;
           }
 
-          case "request_authorization": {
+          case "request_access": {
             const agent = await requireAgentFromMcpArgs(args);
-            const capability = readCapabilityName(args);
-            if (!capability) {
-              return jsonRpcError(id, -32000, "capability is required");
+            const provider = typeof args.provider === "string" ? args.provider.trim() : "";
+            if (!provider) {
+              return jsonRpcError(id, -32000, "provider is required");
             }
-            result = await agentAuthorizationV25Service.requestAuthorization({
-              agent,
-              body: {
-                capability,
-                requested_scopes: Array.isArray(args.requested_scopes)
-                  ? args.requested_scopes.map(String)
-                  : undefined,
+            result = sanitizeAgentResponse(
+              await proxyService.requestAccess({
+                agent,
+                provider,
+                hosts: args.hosts,
                 reason: typeof args.reason === "string" ? args.reason : undefined,
-              },
-              apiBaseUrl: apiBaseUrl(),
-            });
+                apiBaseUrl: apiBaseUrl(),
+              }),
+            );
             break;
           }
 
-          case "get_authorization_status": {
+          case "get_access_status": {
             const agent = await requireAgentFromMcpArgs(args);
-            const authorizationId =
-              typeof args.authorization_id === "string" ? args.authorization_id.trim() : "";
-            if (!authorizationId) {
-              return jsonRpcError(id, -32000, "authorization_id is required");
+            const accessRequestId =
+              typeof args.access_request_id === "string" ? args.access_request_id.trim() : "";
+            if (!accessRequestId) {
+              return jsonRpcError(id, -32000, "access_request_id is required");
             }
-            result = await agentAuthorizationV25Service.getAuthorizationStatus(
-              authorizationId,
-              agent,
+            result = sanitizeAgentResponse(
+              await proxyService.getAccessStatus(accessRequestId, agent),
             );
+            break;
+          }
+
+          case "proxy_request": {
+            const agent = await requireAgentFromMcpArgs(args);
+            const grantId = typeof args.grant_id === "string" ? args.grant_id.trim() : "";
+            const method = typeof args.method === "string" ? args.method.trim() : "";
+            const targetUrl = typeof args.url === "string" ? args.url.trim() : "";
+            if (!grantId || !method || !targetUrl) {
+              return jsonRpcError(id, -32000, "grant_id, method and url are required");
+            }
+            result = await proxyService.proxy({
+              agent,
+              grantId,
+              method,
+              url: targetUrl,
+              headers:
+                args.headers && typeof args.headers === "object" && !Array.isArray(args.headers)
+                  ? (args.headers as Record<string, unknown>)
+                  : undefined,
+              body: args.body,
+            });
             break;
           }
 
           case "list_grants": {
             const agent = await requireAgentFromMcpArgs(args);
-            const items = await agentAuthorizationV25Service.listGrantsForAgent(agent.id);
+            const items = await proxyService.listGrants({ agentId: agent.id });
             result = sanitizeAgentResponse({ ok: true, items });
-            break;
-          }
-
-          case "revoke_grant": {
-            const agent = await requireAgentFromMcpArgs(args);
-            const grantId = typeof args.grant_id === "string" ? args.grant_id.trim() : "";
-            if (!grantId) {
-              return jsonRpcError(id, -32000, "grant_id is required");
-            }
-            const revoked = await revokeGrant(grantId);
-            if (!revoked || revoked.agent_id !== agent.id) {
-              return jsonRpcError(id, -32000, "Grant not found for this agent");
-            }
-            result = sanitizeAgentResponse({ ok: true, grant_id: grantId, status: "revoked" });
             break;
           }
 
@@ -257,8 +211,6 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
                     typeof args.registration_endpoint === "string"
                       ? args.registration_endpoint
                       : undefined,
-                  openapi_url: typeof args.openapi_url === "string" ? args.openapi_url : undefined,
-                  mcp_url: typeof args.mcp_url === "string" ? args.mcp_url : undefined,
                   scopes: Array.isArray(args.scopes) ? args.scopes.map(String) : undefined,
                   slug: typeof args.slug === "string" ? args.slug : undefined,
                 },
@@ -278,13 +230,6 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
               ok: true,
               proposal: await providerProposalService.getProposal({ agent, proposalId }),
             });
-            break;
-          }
-
-          case "list_providers": {
-            await requireAgentFromMcpArgs(args);
-            const items = await oauthProviderService.listPublicProviders();
-            result = sanitizeAgentResponse({ ok: true, items });
             break;
           }
 
@@ -312,7 +257,7 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
 export function handleMcpInfo(baseUrl: string) {
   return {
     name: config.serviceName,
-    version: "3.0.0",
+    version: "4.0.0",
     protocolVersion: config.protocolVersion,
     instructions: MCP_SERVER_INSTRUCTIONS,
     capabilities: {
@@ -326,20 +271,9 @@ export function handleMcpInfo(baseUrl: string) {
     },
     discovery: {
       manifest: `${baseUrl}/mcp/manifest`,
-      v2_auth_workflow: MCP_V2_AUTH_WORKFLOW_URI,
-      openapi_v3: `${baseUrl}/openapi-v3.json`,
-      openapi_api_v3: `${baseUrl}/api/v3/openapi.json`,
-      canonical_invoke: `${baseUrl}/api/v3/capabilities/{capabilityId}/invoke`,
-      openapi_v26: `${baseUrl}/openapi-v2.6.json`,
-      openapi_v25: `${baseUrl}/openapi-v2.5.json`,
-      openapi_v2: `${baseUrl}/openapi-v2.json`,
-      skills_index: `${baseUrl}/skills/index.json`,
-      skills_text: `${baseUrl}/skills.txt`,
-      getting_started: `${baseUrl}/getting-started.md`,
+      v4_workflow: MCP_V4_WORKFLOW_URI,
+      openapi_v4: `${baseUrl}/openapi-v4.json`,
       primary_skill: `${baseUrl}/skill.md`,
-      standards: `${baseUrl}/standards`,
-      authentication_standard: `${baseUrl}/standards/authentication/1.0`,
-      registration_hub_standard: `${baseUrl}/standards/registration-hub`,
     },
   };
 }

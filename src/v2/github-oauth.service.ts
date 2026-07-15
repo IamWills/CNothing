@@ -11,11 +11,10 @@ import {
   generateUserSessionToken,
   hashSessionToken,
 } from "./user-session";
-import { ensurePlatformGrantsForUser } from "./platform-bootstrap.service";
-import { ensureSearchGrantsForUser } from "./search-bootstrap.service";
 import { ensureGitHubIdentityProvider } from "./github-identity.provider";
-import { GITHUB_OAUTH_SCOPES, storeGitHubOAuthCredential } from "./github-credential.service";
 import { buildUserSessionCookie } from "./session-cookie";
+
+const GITHUB_OAUTH_SCOPES = "read:user user:email";
 
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -54,7 +53,7 @@ export class GitHubOAuthService {
       type: "github",
       name: "github",
       display_name: "GitHub",
-      start_path: `${apiBaseUrl.replace(/\/+$/, "")}/v2/auth/github/start`,
+      start_path: `${apiBaseUrl.replace(/\/+$/, "")}/v4/auth/github/start`,
     };
   }
 
@@ -141,13 +140,6 @@ export class GitHubOAuthService {
       },
     });
 
-    await storeGitHubOAuthCredential({
-      userId,
-      accessToken: tokenPayload.access_token,
-      scope: tokenPayload.scope,
-      tokenType: tokenPayload.token_type,
-    });
-
     const sessionToken = generateUserSessionToken();
     const session = await createUserSession({
       user_id: userId,
@@ -155,11 +147,6 @@ export class GitHubOAuthService {
       ttl_seconds: config.userSessionTtlSeconds,
       metadata: { provider: "github", login: profile.login },
     });
-
-    if (config.autoGrantLowRiskCapabilities) {
-      await ensurePlatformGrantsForUser(userId);
-      await ensureSearchGrantsForUser(userId);
-    }
 
     return {
       ok: true as const,

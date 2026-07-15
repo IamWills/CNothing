@@ -6,7 +6,29 @@
 
 它解决的是一个非常具体的问题：AI 代理需要参与工具选择、流程决策和请求转发，但实际使用到的 secrets 又必须留在可信后端边界内。CNothing 提供了一种协议化方式，让 AI 能参与工作流，而私钥和解密后的秘密值始终不进入模型上下文。
 
-## v3 Execution Trust Layer（推荐）
+## v4 通用凭证注入代理（最新，推荐）
+
+v4 是一次战略性简化。此前的版本要求每个第三方操作都先注册为 *capability*（内置 handler 或 OpenAPI/MCP 导入激活）才能被 agent 调用——通用性正是卡在这一层。v4 彻底移除了该层：用户授权一次之后，agent 可以用普通 HTTP 请求调用 **该 OAuth 2.0 提供方的任意 API**，CNothing 在服务端注入 token。Agent 永远接触不到 access token、refresh token 和 client secret。
+
+```text
+1. 用户连接一次 Provider              →  /connect（token 加密存储）
+2. Agent 申请连接级访问权限            →  POST /v4/access-requests { provider, hosts?, reason? }
+3. 用户批准一次                        →  approval_url（Console 的 /approve-proxy/{id}）
+4. Agent 通过代理调用任意 API          →  POST /v4/proxy { grant_id, method, url, headers?, body? }
+```
+
+服务端强制的安全边界：
+
+- `Authorization` 头由平台从加密连接注入；agent 提交的 `authorization` / `cookie` / 传输类头一律剥离
+- URL 必须是 https、通过 SSRF 校验（内网 IP / DNS 重绑定拦截）、且命中 grant 的主机白名单（如 `api.github.com`、`*.googleapis.com`）
+- Token 自动刷新；响应做脱敏（token 出现即替换为 `[REDACTED]`，秘密形态的 JSON 字段被掩码）
+- Grant 用户可随时撤销（`POST /v4/grants/{id}/revoke`）；每次代理请求都有审计记录
+
+端点：`POST /v4/access-requests`、`GET /v4/access-requests/{id}`、`POST /v4/access-requests/{id}/approve|deny`、`POST /v4/proxy`、`GET /v4/grants`、`POST /v4/grants/{id}/revoke`、`GET /v4/providers`、`GET /v4/connections`。E2E：`bun run e2e:v4`。
+
+OAuth 2.0 协议的固有边界（任何中间平台都无法绕过）：用户对每个连接需要在提供方的授权页点一次同意；不支持 RFC 7591 动态客户端注册（DCR）的站点需要运营者配置一次 `client_id`/`client_secret`（提供 `registration_endpoint` 的站点可通过 `POST /v3/providers/proposals` 自动完成 DCR）。
+
+## v3 Execution Trust Layer（兼容）
 
 定位：**The execution trust layer between AI agents and the real world.**
 

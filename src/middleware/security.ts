@@ -51,7 +51,7 @@ function pruneExpiredEntries(now: number): void {
 }
 
 function checkRateLimit(request: Request, pathname: string): Response | null {
-  if (!pathname.startsWith("/v2/")) {
+  if (!pathname.startsWith("/v2/") && !pathname.startsWith("/v4/")) {
     return null;
   }
 

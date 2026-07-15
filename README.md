@@ -6,7 +6,43 @@ For Chinese documentation, see [README.CN.MD](./README.CN.MD).
 
 It is designed for a specific problem: an AI agent needs to help orchestrate work, choose tools, and route requests, but the sensitive values used by that workflow must stay inside a trusted backend boundary. CNothing gives you a way to let the AI participate in the flow while keeping private keys and decrypted secrets out of the model.
 
-## v2.5: Universal OAuth Broker + Capability Gateway (Latest)
+## v4: Universal Credential-Injecting Proxy (Latest, Recommended)
+
+v4 is a strategic simplification. Earlier versions required every third-party operation to be pre-registered as a *capability* (built-in handlers or OpenAPI/MCP imports) before an agent could call it. v4 removes that layer entirely: after one user approval, an agent can call **any API of an OAuth 2.0 provider** as plain HTTP, while CNothing injects the token server-side. The agent never sees access tokens, refresh tokens, or client secrets.
+
+```text
+1. User connects a provider once            →  /connect (tokens stored encrypted)
+2. Agent requests connection-level access   →  POST /v4/access-requests { provider, hosts?, reason? }
+3. User approves once                        →  approval_url (/approve-proxy/{id} in Console)
+4. Agent calls any API through the proxy     →  POST /v4/proxy { grant_id, method, url, headers?, body? }
+```
+
+Example agent call (no capability registration, no import, no per-endpoint grant):
+
+```bash
+curl -X POST https://cnothing.com/v4/proxy \
+  -H "Authorization: Bearer $AGENT_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+    "grant_id": "…",
+    "method": "POST",
+    "url": "https://api.github.com/repos/me/repo/issues",
+    "body": { "title": "Created via CNothing v4 proxy" }
+  }'
+```
+
+Security boundary (enforced server-side):
+
+- `Authorization` is injected from the encrypted connection; agent-supplied `authorization` / `cookie` / transport headers are stripped
+- URLs must be https, pass SSRF checks (private IP / DNS-rebinding blocked), and match the grant's host allowlist (`api.github.com`, `*.googleapis.com`)
+- Tokens are auto-refreshed; responses are redacted (any token occurrence becomes `[REDACTED]`) and secret-shaped JSON fields are masked
+- Grants are user-revocable at any time (`POST /v4/grants/{id}/revoke`); every proxied request is audited
+
+Endpoints: `POST /v4/access-requests`, `GET /v4/access-requests/{id}`, `POST /v4/access-requests/{id}/approve|deny`, `POST /v4/proxy`, `GET /v4/grants`, `POST /v4/grants/{id}/revoke`, `GET /v4/providers`, `GET /v4/connections`. E2E: `bun run e2e:v4`.
+
+Known protocol limits (inherent to OAuth 2.0, not solvable by any broker): the user must click through the provider consent screen once per connection, and providers without RFC 7591 Dynamic Client Registration need a one-time operator-configured `client_id`/`client_secret` (DCR is supported via `POST /v3/providers/proposals` when the provider offers a `registration_endpoint`).
+
+## v2.5: Universal OAuth Broker + Capability Gateway (Legacy)
 
 CNothing v2.5 removes the need for a dedicated connector per OAuth provider:
 

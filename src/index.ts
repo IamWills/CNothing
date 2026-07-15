@@ -22,6 +22,7 @@ import {
   handleV26PlatformRequest,
 } from "./api/v2.6.api";
 import { handleV3Request } from "./api/v3.api";
+import { handleV4Request } from "./api/v4.api";
 import { handleApiV3Request } from "./api/api-v3.api";
 import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
@@ -93,6 +94,9 @@ function renderHomePage(baseUrl: string): string {
     ["/openapi-v2.6.json", "OpenAPI document (v2.6 universal OAuth + zero-code import)"],
     ["/openapi-v3.json", "OpenAPI document (v3 Execution Trust Layer — canonical invoke documented)"],
     ["/api/v3/openapi.json", "OpenAPI document (v3 Capability Execution Gateway)"],
+    ["/v4/access-requests", "v4: agent requests connection-level proxy access"],
+    ["/v4/proxy", "v4: universal credential-injecting HTTP proxy (agent never sees tokens)"],
+    ["/v4/grants", "v4: list/revoke connection-level grants"],
     ["/api/v3/capabilities/{capabilityId}/invoke", "Canonical secretless capability invoke"],
     ["/v3/capabilities/{capabilityId}/invoke", "Alias of canonical capability invoke"],
     ["/v3/agent/invoke", "Compatibility invoke (body.capability) — prefer capability-scoped path"],
@@ -397,6 +401,10 @@ async function router(request: Request): Promise<Response> {
     if (v3Response) {
       return withCors(v3Response, request);
     }
+  }
+
+  if (pathname.startsWith("/v4/")) {
+    return withCors(await handleV4Request(request), request);
   }
 
   if (pathname === "/openapi-v2.5.json" && isOpenApiDocumentRequest(request)) {

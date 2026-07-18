@@ -34,6 +34,12 @@ export interface AppConfig {
   searchAutoBootstrap: boolean;
   e2eInternalEnabled: boolean;
   githubApiBaseUrl: string;
+  apns?: {
+    keyPem: string;
+    keyId: string;
+    teamId: string;
+    bundleId: string;
+  };
 }
 
 function readRequiredEnv(name: string): string {
@@ -177,6 +183,23 @@ const githubApiBaseUrl =
   process.env.KEYSERVICE_GITHUB_API_BASE_URL?.trim().replace(/\/+$/, "") ||
   "https://api.github.com";
 
+const apns = (() => {
+  const keyPath = process.env.KEYSERVICE_APNS_KEY_PATH?.trim();
+  const keyId = process.env.KEYSERVICE_APNS_KEY_ID?.trim();
+  const teamId = process.env.KEYSERVICE_APNS_TEAM_ID?.trim();
+  const bundleId =
+    process.env.KEYSERVICE_APNS_BUNDLE_ID?.trim() || "com.molobaya.app.cnothing";
+  if (!keyPath || !keyId || !teamId) {
+    return undefined;
+  }
+  return {
+    keyPem: readRequiredFile(keyPath, "KEYSERVICE_APNS_KEY_PATH"),
+    keyId,
+    teamId,
+    bundleId,
+  };
+})();
+
 const publicBaseUrl = (() => {
   const explicit = process.env.KEYSERVICE_PUBLIC_URL?.trim();
   if (explicit) {
@@ -223,6 +246,7 @@ const config: AppConfig = {
   searchAutoBootstrap,
   e2eInternalEnabled,
   githubApiBaseUrl,
+  apns,
 };
 
 export default config;

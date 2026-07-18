@@ -12,6 +12,8 @@ export type ProxyAccessRequestRecord = {
   reason: string | null;
   status: ProxyAccessRequestStatus;
   user_id: string | null;
+  user_hint: string | null;
+  callback_url: string | null;
   connection_id: string | null;
   grant_id: string | null;
   expires_at: string;
@@ -61,6 +63,8 @@ function mapAccessRequestRow(row: Record<string, unknown>): ProxyAccessRequestRe
     reason: row.reason ? String(row.reason) : null,
     status: String(row.status) as ProxyAccessRequestStatus,
     user_id: row.user_id ? String(row.user_id) : null,
+    user_hint: row.user_hint ? String(row.user_hint) : null,
+    callback_url: row.callback_url ? String(row.callback_url) : null,
     connection_id: row.connection_id ? String(row.connection_id) : null,
     grant_id: row.grant_id ? String(row.grant_id) : null,
     expires_at: asIso(row.expires_at),
@@ -93,6 +97,8 @@ export async function createProxyAccessRequest(input: {
   provider_slug: string;
   requested_hosts: string[];
   reason?: string;
+  user_hint?: string;
+  callback_url?: string;
   ttl_seconds?: number;
   metadata?: JsonObject;
 }): Promise<ProxyAccessRequestRecord> {
@@ -100,8 +106,8 @@ export async function createProxyAccessRequest(input: {
   const result = await pool.query(
     `
       INSERT INTO proxy_access_requests (
-        id, agent_id, provider_slug, requested_hosts, reason, expires_at, metadata
-      ) VALUES ($1,$2,$3,$4,$5,NOW() + ($6 || ' seconds')::interval,$7)
+        id, agent_id, provider_slug, requested_hosts, reason, user_hint, callback_url, expires_at, metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval,$9)
       RETURNING *
     `,
     [
@@ -110,11 +116,27 @@ export async function createProxyAccessRequest(input: {
       input.provider_slug,
       JSON.stringify(input.requested_hosts),
       input.reason ?? null,
+      input.user_hint ?? null,
+      input.callback_url ?? null,
       String(input.ttl_seconds ?? 3600),
       JSON.stringify(input.metadata ?? {}),
     ],
   );
   return mapAccessRequestRow(result.rows[0]!);
+}
+
+export async function listPendingAccessRequestsForUser(
+  userId: string,
+): Promise<ProxyAccessRequestRecord[]> {
+  const result = await pool.query(
+    `
+      SELECT * FROM proxy_access_requests
+      WHERE user_hint = $1 AND status = 'pending' AND expires_at > NOW()
+      ORDER BY created_at DESC
+    `,
+    [userId],
+  );
+  return result.rows.map(mapAccessRequestRow);
 }
 
 export async function findProxyAccessRequest(id: string): Promise<ProxyAccessRequestRecord | null> {

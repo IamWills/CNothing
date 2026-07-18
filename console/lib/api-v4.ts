@@ -351,3 +351,35 @@ export async function revokeV4Grant(connection: ConsoleConnection, grantId: stri
     { method: "POST", body: JSON.stringify({}) },
   );
 }
+
+// --- Devices (iOS authenticator) ---
+
+export type V4Device = {
+  id: string;
+  platform: string;
+  device_name: string;
+  status: "active" | "revoked";
+  has_push_token: boolean;
+  last_seen_at: string | null;
+  created_at: string;
+};
+
+export async function createV4DevicePairingCode(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; pairing_code: string; expires_at: string; instructions: string }>(
+    connection,
+    "/v4/devices/pairing-codes",
+    { method: "POST", body: JSON.stringify({}) },
+  );
+}
+
+export async function fetchV4Devices(connection: ConsoleConnection) {
+  return requestJson<{ ok: true; items: V4Device[] }>(connection, "/v4/devices");
+}
+
+export async function revokeV4Device(connection: ConsoleConnection, deviceId: string) {
+  return requestJson<{ ok: true; status: "revoked" }>(
+    connection,
+    `/v4/devices/${encodeURIComponent(deviceId)}`,
+    { method: "DELETE" },
+  );
+}

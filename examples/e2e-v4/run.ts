@@ -69,6 +69,9 @@ async function loginUserSession(userId: string): Promise<string> {
 }
 
 async function main() {
+  // Captures agent callback deliveries (access_request.decided events).
+  const callbackDeliveries: Array<Record<string, unknown>> = [];
+
   // Mock upstream API: verifies the injected Authorization header and
   // deliberately echoes the token so we can prove the proxy redacts it.
   const mockServer = Bun.serve({
@@ -76,6 +79,13 @@ async function main() {
     fetch(req) {
       const url = new URL(req.url);
       const auth = req.headers.get("authorization") ?? "";
+
+      if (url.pathname === "/agent-callback" && req.method === "POST") {
+        return req.json().then((body) => {
+          callbackDeliveries.push(body as Record<string, unknown>);
+          return Response.json({ received: true });
+        });
+      }
 
       if (url.pathname === "/api/hello") {
         if (auth !== `Bearer ${MOCK_ACCESS_TOKEN}`) {
@@ -288,6 +298,128 @@ async function main() {
       afterRevoke.data.error?.details?.error_code === "grant_revoked",
       afterRevoke.text,
     );
+
+    console.log("v4 E2E: device pairing (iOS authenticator flow)");
+    const pairingCodeResponse = await request<{ ok: true; pairing_code: string }>(
+      "/v4/devices/pairing-codes",
+      { admin: false, userSessionToken, method: "POST", body: JSON.stringify({}) },
+    );
+    assert(pairingCodeResponse.status === 201, pairingCodeResponse.text);
+
+    const pair = await request<{
+      ok: true;
+      device: { id: string; user_id: string };
+      session_token: string;
+    }>("/v4/devices/pair", {
+      admin: false,
+      method: "POST",
+      body: JSON.stringify({
+        pairing_code: pairingCodeResponse.data.pairing_code,
+        device_name: "e2e-iphone",
+        platform: "ios",
+      }),
+    });
+    assert(pair.status === 201, pair.text);
+    assert(pair.data.device.user_id === testUserId, "device bound to wrong user");
+    const deviceSessionToken = pair.data.session_token;
+    const deviceId = pair.data.device.id;
+
+    const reusedCode = await request("/v4/devices/pair", {
+      admin: false,
+      method: "POST",
+      body: JSON.stringify({ pairing_code: pairingCodeResponse.data.pairing_code }),
+    });
+    assert(reusedCode.status === 401, "pairing code must be single-use");
+
+    const pushToken = await request<{ ok: true }>(`/v4/devices/${deviceId}/push-token`, {
+      admin: false,
+      userSessionToken: deviceSessionToken,
+      method: "POST",
+      body: JSON.stringify({ push_token: "e2e-apns-token", push_environment: "sandbox" }),
+    });
+    assert(pushToken.status === 200, pushToken.text);
+
+    const devices = await request<{ ok: true; items: Array<{ id: string; has_push_token: boolean }> }>(
+      "/v4/devices",
+      { admin: false, userSessionToken },
+    );
+    assert(devices.status === 200, devices.text);
+    assert(
+      devices.data.items.some((item) => item.id === deviceId && item.has_push_token),
+      "expected paired device with push token",
+    );
+
+    console.log("v4 E2E: targeted access request (user_id + callback_url)");
+    const targetedRequest = await request<{
+      ok: true;
+      access_request_id: string;
+      approval_url: string;
+      callback_registered: boolean;
+    }>("/v4/access-requests", {
+      admin: false,
+      agentToken,
+      method: "POST",
+      body: JSON.stringify({
+        provider: providerSlug,
+        hosts: ["127.0.0.1"],
+        reason: "v4 e2e targeted approval",
+        user_id: testUserId,
+        callback_url: `${mockBaseUrl}/agent-callback`,
+      }),
+    });
+    assert(targetedRequest.status === 201, targetedRequest.text);
+    assert(targetedRequest.data.callback_registered === true, "expected callback_registered");
+    assert(
+      targetedRequest.data.approval_url.includes(`user=${encodeURIComponent(testUserId)}`),
+      "approval_url must carry the user context",
+    );
+    const targetedId = targetedRequest.data.access_request_id;
+
+    console.log("v4 E2E: device sees the pending request (polling path)");
+    const pending = await request<{ ok: true; items: Array<{ access_request_id: string }> }>(
+      "/v4/access-requests/pending",
+      { admin: false, userSessionToken: deviceSessionToken },
+    );
+    assert(pending.status === 200, pending.text);
+    assert(
+      pending.data.items.some((item) => item.access_request_id === targetedId),
+      "device must see the targeted pending request",
+    );
+
+    console.log("v4 E2E: approve from the device, agent gets the callback");
+    const deviceApprove = await request<{ ok: true; grant: { id: string } }>(
+      `/v4/access-requests/${targetedId}/approve`,
+      {
+        admin: false,
+        userSessionToken: deviceSessionToken,
+        method: "POST",
+        body: JSON.stringify({ connection_id: connectionId }),
+      },
+    );
+    assert(deviceApprove.status === 201, deviceApprove.text);
+
+    let callbackArrived = false;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (
+        callbackDeliveries.some(
+          (delivery) =>
+            delivery.access_request_id === targetedId && delivery.status === "approved",
+        )
+      ) {
+        callbackArrived = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert(callbackArrived, "agent callback was not delivered after approval");
+
+    console.log("v4 E2E: revoke device");
+    const revokeDevice = await request<{ ok: true }>(`/v4/devices/${deviceId}`, {
+      admin: false,
+      userSessionToken,
+      method: "DELETE",
+    });
+    assert(revokeDevice.status === 200, revokeDevice.text);
 
     console.log("v4 E2E: all checks passed");
   } finally {

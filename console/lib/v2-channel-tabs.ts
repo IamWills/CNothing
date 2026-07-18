@@ -5,6 +5,7 @@ export const v4ChannelTabs: ChannelTab[] = [
   { href: "/connect", label: "Connect", activePrefixes: ["/connect"] },
   { href: "/connections", label: "Connections", activePrefixes: ["/connections"] },
   { href: "/grants", label: "Grants", activePrefixes: ["/grants"] },
+  { href: "/devices", label: "Devices", activePrefixes: ["/devices"] },
   { href: "/agents", label: "Agents", activePrefixes: ["/agents"] },
   { href: "/providers", label: "Providers", activePrefixes: ["/providers"] },
 ];

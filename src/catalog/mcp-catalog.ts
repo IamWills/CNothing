@@ -68,6 +68,16 @@ const MCP_TOOLS: McpToolDescriptor[] = [
             "Optional host allowlist for the grant, e.g. [\"api.github.com\"]. Defaults to the provider's known API hosts.",
         },
         reason: { type: "string", description: "Shown to the user on the approval page." },
+        user_id: {
+          type: "string",
+          description:
+            "Optional CNothing user id of the human. When set, the approval is pushed to the user's paired iOS authenticator devices and the approval_url carries the user context.",
+        },
+        callback_url: {
+          type: "string",
+          description:
+            "Optional https URL. When the user approves/denies, CNothing POSTs { event, access_request_id, status, grant_id } to it, so you don't need to poll.",
+        },
       },
       required: ["agent_access_token", "provider"],
     },

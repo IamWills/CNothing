@@ -177,6 +177,9 @@ export async function processMcpRequest(rpc: JsonRpcRequest): Promise<JsonRpcRes
                 provider,
                 hosts: args.hosts,
                 reason: typeof args.reason === "string" ? args.reason : undefined,
+                userId: typeof args.user_id === "string" ? args.user_id : undefined,
+                callbackUrl:
+                  typeof args.callback_url === "string" ? args.callback_url : undefined,
                 apiBaseUrl: apiBaseUrl(),
               }),
             );

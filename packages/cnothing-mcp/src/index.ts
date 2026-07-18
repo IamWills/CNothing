@@ -64,6 +64,16 @@ const TOOLS = [
           description: "Optional host allowlist, e.g. [\"api.github.com\"]",
         },
         reason: { type: "string", description: "Shown to the user on the approval page" },
+        user_id: {
+          type: "string",
+          description:
+            "Optional CNothing user id. When set, the approval is pushed to the user's paired iOS authenticator devices.",
+        },
+        callback_url: {
+          type: "string",
+          description:
+            "Optional https URL that receives a POST when the user approves/denies (no polling needed).",
+        },
       },
       required: ["provider"],
     },
@@ -183,12 +193,13 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
       return data;
     }
     case "request_access": {
-      const { status, data } = await api("POST", "/v4/access-requests", {
+      const { data } = await api("POST", "/v4/access-requests", {
         provider: args.provider,
         hosts: args.hosts,
         reason: args.reason,
+        user_id: args.user_id,
+        callback_url: args.callback_url,
       });
-      if (status >= 400) return data;
       return data;
     }
     case "get_access_status": {

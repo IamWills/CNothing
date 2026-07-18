@@ -6,6 +6,7 @@ import { listOAuthProviders, toProviderPublic } from "../v2/oauth.repository";
 import { oauthConnectionService } from "../v2/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
 import { sandboxService } from "../v4/sandbox.service";
+import { deviceService } from "../v4/device.service";
 import config from "../config";
 
 function inferBaseUrl(request: Request): string {
@@ -54,6 +55,55 @@ export async function handleV4Request(request: Request): Promise<Response> {
     return sandboxService.echo(request);
   }
 
+  // --- Devices (iOS authenticator pairing) ---
+
+  if (request.method === "POST" && path === "/v4/devices/pairing-codes") {
+    const session = await requireUserSession(request);
+    return Response.json(await deviceService.issuePairingCode(session.user_id), { status: 201 });
+  }
+
+  if (request.method === "POST" && path === "/v4/devices/pair") {
+    const body = await parseJsonBody(request);
+    const result = await deviceService.pairDevice({
+      pairingCode: readRequiredString(body, "pairing_code"),
+      deviceName: typeof body.device_name === "string" ? body.device_name : "",
+      platform: typeof body.platform === "string" ? body.platform : undefined,
+    });
+    return Response.json(result, { status: 201 });
+  }
+
+  if (
+    request.method === "POST" &&
+    segments.length === 4 &&
+    segments[1] === "devices" &&
+    segments[3] === "push-token"
+  ) {
+    const session = await requireUserSession(request);
+    const body = await parseJsonBody(request);
+    const result = await deviceService.registerPushToken({
+      userId: session.user_id,
+      deviceId: decodeURIComponent(segments[2] ?? ""),
+      pushToken: readRequiredString(body, "push_token"),
+      pushEnvironment:
+        typeof body.push_environment === "string" ? body.push_environment : undefined,
+    });
+    return Response.json(result);
+  }
+
+  if (request.method === "GET" && path === "/v4/devices") {
+    const session = await requireUserSession(request);
+    return Response.json({ ok: true, items: await deviceService.listDevices(session.user_id) });
+  }
+
+  if (request.method === "DELETE" && segments.length === 3 && segments[1] === "devices") {
+    const session = await requireUserSession(request);
+    const result = await deviceService.revokeDevice({
+      userId: session.user_id,
+      deviceId: decodeURIComponent(segments[2] ?? ""),
+    });
+    return Response.json(result);
+  }
+
   // --- Agent-facing ---
 
   if (request.method === "POST" && path === "/v4/access-requests") {
@@ -64,9 +114,20 @@ export async function handleV4Request(request: Request): Promise<Response> {
       provider: readRequiredString(body, "provider"),
       hosts: body.hosts,
       ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+      ...(typeof body.user_id === "string" ? { userId: body.user_id } : {}),
+      ...(typeof body.callback_url === "string" ? { callbackUrl: body.callback_url } : {}),
       apiBaseUrl: inferBaseUrl(request),
     });
     return Response.json(result, { status: 201 });
+  }
+
+  // Pending approvals for the signed-in user (iOS authenticator polling).
+  if (request.method === "GET" && path === "/v4/access-requests/pending") {
+    const session = await requireUserSession(request);
+    return Response.json({
+      ok: true,
+      items: await proxyService.listPendingForUser(session.user_id),
+    });
   }
 
   if (

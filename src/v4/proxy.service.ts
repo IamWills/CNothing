@@ -18,6 +18,7 @@ import {
   decideProxyAccessRequest,
   findProxyAccessRequest,
   findProxyGrantById,
+  listPendingAccessRequestsForUser,
   listProxyGrantsForAgent,
   listProxyGrantsForUser,
   revokeProxyGrant,
@@ -25,6 +26,9 @@ import {
   writeProxyRequestAudit,
   type ProxyGrantRecord,
 } from "./proxy.repository";
+import { sendApprovalPush } from "./apns.service";
+import { dispatchAccessRequestCallback, validateCallbackUrl } from "./callback.service";
+import { listActivePushDevices } from "./device.repository";
 
 import {
   DEFAULT_ALLOWED_METHODS,
@@ -92,6 +96,8 @@ export class ProxyService {
     provider: string;
     hosts?: unknown;
     reason?: string;
+    userId?: string;
+    callbackUrl?: string;
     apiBaseUrl: string;
   }) {
     const provider = await findOAuthProviderBySlug(input.provider.trim().toLowerCase());
@@ -108,15 +114,45 @@ export class ProxyService {
       );
     }
 
+    const userHint = input.userId?.trim() || undefined;
+    const callbackUrl = input.callbackUrl?.trim()
+      ? await validateCallbackUrl(input.callbackUrl)
+      : undefined;
+
     const request = await createProxyAccessRequest({
       agent_id: input.agent.id,
       provider_slug: provider.slug,
       requested_hosts: hosts,
       ...(input.reason ? { reason: input.reason } : {}),
+      ...(userHint ? { user_hint: userHint } : {}),
+      ...(callbackUrl ? { callback_url: callbackUrl } : {}),
       metadata: { provider_id: provider.id },
     });
 
+    // Known user → push the approval to their paired authenticator devices
+    // (Microsoft Authenticator style). Failure to push never fails the request;
+    // the approval_url and iOS polling still work.
+    let pushedToDevices = 0;
+    if (userHint) {
+      try {
+        const devices = await listActivePushDevices(userHint);
+        const result = await sendApprovalPush({
+          devices,
+          accessRequestId: request.id,
+          provider: provider.slug,
+          agentName: input.agent.name,
+          reason: input.reason ?? null,
+        });
+        pushedToDevices = result.sent;
+      } catch (error) {
+        console.warn(
+          `[v4-push] failed for ${request.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     const approvalBase = config.consoleUrl?.replace(/\/+$/, "") ?? input.apiBaseUrl.replace(/\/+$/, "");
+    const userQuery = userHint ? `?user=${encodeURIComponent(userHint)}` : "";
     return {
       ok: true as const,
       access_request_id: request.id,
@@ -124,11 +160,28 @@ export class ProxyService {
       provider: provider.slug,
       requested_hosts: request.requested_hosts,
       // Browser page in Console — NOT an API path. Do not rewrite this URL.
-      approval_url: `${approvalBase}/approve-proxy/${request.id}`,
+      approval_url: `${approvalBase}/approve-proxy/${request.id}${userQuery}`,
       human_instruction:
         "Give the human this exact approval_url. Do not invent /v4/approve/... or /v4/access-requests/.../approve — those are not browser pages.",
+      pushed_to_devices: pushedToDevices,
+      callback_registered: Boolean(callbackUrl),
       expires_at: request.expires_at,
     };
+  }
+
+  /** Pending approvals targeted at this user (for the iOS authenticator app). */
+  async listPendingForUser(userId: string) {
+    const requests = await listPendingAccessRequestsForUser(userId);
+    return requests.map((request) => ({
+      access_request_id: request.id,
+      agent_id: request.agent_id,
+      provider: request.provider_slug,
+      requested_hosts: request.requested_hosts,
+      reason: request.reason,
+      status: request.status,
+      expires_at: request.expires_at,
+      created_at: request.created_at,
+    }));
   }
 
   async getAccessStatus(id: string, agent: AgentRecord) {
@@ -225,6 +278,17 @@ export class ProxyService {
       grant_id: grant.id,
     });
 
+    if (request.callback_url) {
+      dispatchAccessRequestCallback({
+        callbackUrl: request.callback_url,
+        accessRequestId: request.id,
+        status: "approved",
+        provider: provider.slug,
+        grantId: grant.id,
+        agentId: request.agent_id,
+      });
+    }
+
     return {
       ok: true as const,
       grant: {
@@ -255,6 +319,17 @@ export class ProxyService {
       status: "denied",
       user_id: input.userId,
     });
+
+    if (request.callback_url) {
+      dispatchAccessRequestCallback({
+        callbackUrl: request.callback_url,
+        accessRequestId: request.id,
+        status: "denied",
+        provider: request.provider_slug,
+        agentId: request.agent_id,
+      });
+    }
+
     return { ok: true as const, status: "denied" as const };
   }
 

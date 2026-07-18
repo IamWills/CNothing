@@ -62,8 +62,23 @@ curl https://cnothing.com/v4/providers
 ```bash
 curl -X POST https://cnothing.com/v4/access-requests \
   -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" \
-  -d '{"provider":"github","reason":"Manage issues for the user"}'
+  -d '{
+    "provider": "github",
+    "reason": "Manage issues for the user",
+    "user_id": "github:alice",
+    "callback_url": "https://my-agent.example.com/hooks/cnothing"
+  }'
 ```
+
+Optional fields:
+
+- `user_id` — the human's CNothing user id, if you know it. CNothing then pushes
+  the approval straight to the user's paired iOS authenticator devices (like a
+  Microsoft Authenticator prompt), so they may approve on their phone without
+  you sending them a link at all. The response includes `pushed_to_devices`.
+- `callback_url` — an https endpoint you control. On approve/deny CNothing POSTs
+  `{ "event": "access_request.decided", "access_request_id", "status", "grant_id", "provider", "agent_id" }`
+  to it, so you don't need to poll `get_access_status`.
 
 Response contains `access_request_id` and `approval_url` (always
 `https://cnothing.com/approve-proxy/{uuid}`). **Do not** construct or rewrite

@@ -86,7 +86,15 @@
                 "properties": {
                   "provider": { "type": "string", "example": "github" },
                   "hosts": { "type": "array", "items": { "type": "string" }, "example": ["api.github.com"] },
-                  "reason": { "type": "string" }
+                  "reason": { "type": "string" },
+                  "user_id": {
+                    "type": "string",
+                    "description": "Optional CNothing user id. When set, the approval is pushed to the user's paired iOS authenticator devices and approval_url carries ?user=."
+                  },
+                  "callback_url": {
+                    "type": "string",
+                    "description": "Optional https URL. On approve/deny CNothing POSTs { event, access_request_id, status, grant_id, provider, agent_id }."
+                  }
                 }
               }
             }
@@ -97,12 +105,84 @@
         }
       }
     },
+    "/v4/access-requests/pending": {
+      "get": {
+        "summary": "List pending access requests targeted at the signed-in user (iOS authenticator polling)",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Pending requests where user_hint matches the session user" } }
+      }
+    },
     "/v4/access-requests/{id}": {
       "get": {
         "summary": "Poll access request status (agent) / load for approval (user)",
         "security": [{ "agentToken": [] }, { "userSession": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "Status; when approved includes grant_id" } }
+      }
+    },
+    "/v4/devices/pairing-codes": {
+      "post": {
+        "summary": "Generate a device pairing code (user, Console)",
+        "security": [{ "userSession": [] }],
+        "responses": { "201": { "description": "pairing_code valid for 10 minutes" } }
+      }
+    },
+    "/v4/devices/pair": {
+      "post": {
+        "summary": "iOS app redeems a pairing code and receives a device session token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["pairing_code"],
+                "properties": {
+                  "pairing_code": { "type": "string" },
+                  "device_name": { "type": "string" },
+                  "platform": { "type": "string", "default": "ios" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "device + long-lived session_token" } }
+      }
+    },
+    "/v4/devices/{id}/push-token": {
+      "post": {
+        "summary": "Register the device's APNs push token",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["push_token"],
+                "properties": {
+                  "push_token": { "type": "string" },
+                  "push_environment": { "type": "string", "enum": ["production", "sandbox"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Token stored" } }
+      }
+    },
+    "/v4/devices": {
+      "get": {
+        "summary": "List the user's paired authenticator devices",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Device list" } }
+      }
+    },
+    "/v4/devices/{id}": {
+      "delete": {
+        "summary": "Revoke a paired device",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Revoked" } }
       }
     },
     "/v4/access-requests/{id}/approve": {

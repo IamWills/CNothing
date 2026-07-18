@@ -22,16 +22,24 @@ export async function handleV4Request(request: Request): Promise<Response> {
   const path = url.pathname;
   const segments = path.split("/").filter(Boolean);
 
-  // Browser approval page lives in the Console at /approve-proxy/{id}, not under
-  // /v4/. Agents sometimes guess /v4/approve/{id}; redirect to the real page.
-  if (
+  // Browser approval page lives in the Console at /approve-proxy/{id}.
+  // Agents often paste API paths into the browser instead of approval_url:
+  //   GET /v4/approve/{id}
+  //   GET /v4/access-requests/{id}/approve   (POST-only API; not a webpage)
+  // Redirect both to the Console page.
+  const isLegacyApprovePath =
     request.method === "GET" &&
-    segments.length === 3 &&
-    segments[1] === "approve"
-  ) {
+    ((segments.length === 3 && segments[1] === "approve") ||
+      (segments.length === 4 &&
+        segments[1] === "access-requests" &&
+        segments[3] === "approve"));
+  if (isLegacyApprovePath) {
     const accessRequestId = decodeURIComponent(segments[2] ?? "");
     const consoleBase = (config.consoleUrl ?? inferBaseUrl(request)).replace(/\/+$/, "");
-    return Response.redirect(`${consoleBase}/approve-proxy/${encodeURIComponent(accessRequestId)}`, 302);
+    return Response.redirect(
+      `${consoleBase}/approve-proxy/${encodeURIComponent(accessRequestId)}`,
+      302,
+    );
   }
 
   // --- Sandbox (agent self-test without human approval) ---

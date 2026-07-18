@@ -123,7 +123,10 @@ export class ProxyService {
       status: request.status,
       provider: provider.slug,
       requested_hosts: request.requested_hosts,
+      // Browser page in Console — NOT an API path. Do not rewrite this URL.
       approval_url: `${approvalBase}/approve-proxy/${request.id}`,
+      human_instruction:
+        "Give the human this exact approval_url. Do not invent /v4/approve/... or /v4/access-requests/.../approve — those are not browser pages.",
       expires_at: request.expires_at,
     };
   }

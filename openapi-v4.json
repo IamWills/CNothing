@@ -107,7 +107,8 @@
     },
     "/v4/access-requests/{id}/approve": {
       "post": {
-        "summary": "User approves the access request with one of their OAuth connections",
+        "summary": "Console/API only: user session POSTs approval (not a browser page)",
+        "description": "This is a JSON API used by the Console after the user opens approval_url (/approve-proxy/{id}). Do NOT send humans to this path in a browser. Humans must open the approval_url returned by POST /v4/access-requests.",
         "security": [{ "userSession": [] }],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": {

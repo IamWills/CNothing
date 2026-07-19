@@ -365,11 +365,13 @@ export type V4Device = {
 };
 
 export async function createV4DevicePairingCode(connection: ConsoleConnection) {
-  return requestJson<{ ok: true; pairing_code: string; expires_at: string; instructions: string }>(
-    connection,
-    "/v4/devices/pairing-codes",
-    { method: "POST", body: JSON.stringify({}) },
-  );
+  return requestJson<{
+    ok: true;
+    pairing_code: string;
+    qr_payload: string;
+    expires_at: string;
+    instructions: string;
+  }>(connection, "/v4/devices/pairing-codes", { method: "POST", body: JSON.stringify({}) });
 }
 
 export async function fetchV4Devices(connection: ConsoleConnection) {

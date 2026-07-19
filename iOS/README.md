@@ -24,7 +24,7 @@ Devices 页可随时吊销设备。
 推送需要 Apple Developer 的 APNs Auth Key（.p8）。在 keyservice 的环境变量中配置：
 
 ```bash
-KEYSERVICE_APNS_KEY_PATH=/path/to/AuthKey_XXXXXXXXXX.p8
+KEYSERVICE_APNS_KEY_PATH=/apns/AuthKey_LLGD9J5428.p8
 KEYSERVICE_APNS_KEY_ID=XXXXXXXXXX        # Key ID
 KEYSERVICE_APNS_TEAM_ID=Q84M2C43RT      # Apple Team ID
 KEYSERVICE_APNS_BUNDLE_ID=com.molobaya.app.cnothing

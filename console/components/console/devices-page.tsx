@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Smartphone, XCircle } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
@@ -25,6 +26,7 @@ export function DevicesPage() {
   const { isLoggedIn } = useUserSession();
   const [devices, setDevices] = React.useState<V4Device[]>([]);
   const [pairingCode, setPairingCode] = React.useState("");
+  const [qrPayload, setQrPayload] = React.useState("");
   const [pairingExpiresAt, setPairingExpiresAt] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -53,6 +55,7 @@ export function DevicesPage() {
     try {
       const result = await createV4DevicePairingCode(connection);
       setPairingCode(result.pairing_code);
+      setQrPayload(result.qr_payload);
       setPairingExpiresAt(result.expires_at);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create pairing code.");
@@ -110,18 +113,27 @@ export function DevicesPage() {
           <h2 className="text-lg font-semibold">Pair a new device</h2>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          Generate a pairing code, then enter it in the CNothing iOS app within 10 minutes.
+          Generate a code, then scan the QR with the CNothing iOS app (or type the code manually)
+          within 10 minutes.
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
+        <div className="mt-4 flex flex-wrap items-center gap-6">
           <Button onClick={() => void handleGenerateCode()} disabled={!isLoggedIn}>
             Generate pairing code
           </Button>
           {pairingCode ? (
-            <div>
-              <p className="font-mono text-2xl font-bold tracking-widest text-slate-900">
-                {pairingCode}
-              </p>
-              <p className="text-xs text-slate-500">Expires {formatDate(pairingExpiresAt)}</p>
+            <div className="flex items-center gap-6">
+              {qrPayload ? (
+                <div className="rounded-lg border border-[color:var(--border)] bg-white p-3">
+                  <QRCodeSVG value={qrPayload} size={160} marginSize={1} />
+                </div>
+              ) : null}
+              <div>
+                <p className="text-xs text-slate-500">Manual code</p>
+                <p className="font-mono text-2xl font-bold tracking-widest text-slate-900">
+                  {pairingCode}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">Expires {formatDate(pairingExpiresAt)}</p>
+              </div>
             </div>
           ) : null}
         </div>

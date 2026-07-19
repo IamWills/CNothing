@@ -42,12 +42,16 @@ export class DeviceService {
       code_hash: hashPairingCode(code),
       ttl_seconds: PAIRING_CODE_TTL_SECONDS,
     });
+    // Scanned by the iOS app camera; carries the server origin so the app
+    // works against any deployment without manual server entry.
+    const qrPayload = `cnothing://pair?code=${encodeURIComponent(code)}&server=${encodeURIComponent(config.publicBaseUrl)}`;
     return {
       ok: true as const,
       pairing_code: code,
+      qr_payload: qrPayload,
       expires_at: record.expires_at,
       instructions:
-        "在 CNothing iOS App 中输入此配对码（10 分钟内有效），即可将手机绑定为审批设备。",
+        "用 CNothing iOS App 扫描二维码，或手动输入此配对码（10 分钟内有效），即可将手机绑定为审批设备。",
     };
   }
 

@@ -262,7 +262,7 @@ async function handleMessage(rpc: JsonRpcRequest): Promise<void> {
           serverInfo: { name: "cnothing-mcp", version: "0.1.0" },
           capabilities: { tools: { listChanged: false } },
           instructions:
-            "CNothing v4 tools: list_providers -> request_access (show approval_url to the human) -> get_access_status (poll for grant_id) -> proxy_request (call any https API on granted hosts). The agent never sees OAuth tokens.",
+            "CNothing v4 tools: list_providers -> request_access (show approval_url to the human) -> get_access_status (poll for grant_id) -> proxy_request (call any https API on granted hosts). The agent never sees OAuth tokens. Human onboarding: they sign in at https://cnothing.com/login (GitHub/OIDC creates the account), connect a provider at /connect, and can enable Okta Verify-style phone approvals at /devices (generate QR, scan with the CNothing iOS app). If the human paired a phone, pass user_id in request_access so the approval is pushed to it; pass callback_url to be notified of the decision without polling.",
         });
         return;
 

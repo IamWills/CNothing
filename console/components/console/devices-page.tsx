@@ -162,6 +162,11 @@ export function DevicesPage() {
                     ) : (
                       <Badge variant="outline">polling only</Badge>
                     )}
+                    {device.key_registered ? (
+                      <Badge variant="outline">device-bound key</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-amber-600">no key — re-pair</Badge>
+                    )}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
                     Paired {formatDate(device.created_at)}

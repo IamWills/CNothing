@@ -22,10 +22,23 @@ const sections: Array<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   {
+    href: "/login",
+    title: "Sign in",
+    description: "Sign in with GitHub or OIDC — everything below needs a user session.",
+    icon: KeyRound,
+  },
+  {
     href: "/connect",
     title: "Connect",
     description: "Connect your OAuth providers once — tokens are stored encrypted, server-side.",
     icon: Link2,
+  },
+  {
+    href: "/devices",
+    title: "Mobile approvals",
+    description:
+      "Pair your iPhone with a QR code and approve agent requests from a push notification, like Okta Verify.",
+    icon: Fingerprint,
   },
   {
     href: "/agents",

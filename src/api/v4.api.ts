@@ -68,6 +68,7 @@ export async function handleV4Request(request: Request): Promise<Response> {
       pairingCode: readRequiredString(body, "pairing_code"),
       deviceName: typeof body.device_name === "string" ? body.device_name : "",
       platform: typeof body.platform === "string" ? body.platform : undefined,
+      publicKeyJwk: body.public_key_jwk,
     });
     return Response.json(result, { status: 201 });
   }
@@ -157,6 +158,30 @@ export async function handleV4Request(request: Request): Promise<Response> {
     return Response.json(result);
   }
 
+  // Device approval challenge (Okta Verify-style proof of possession):
+  // the phone requests a one-time nonce, signs it with its Secure Enclave key,
+  // then sends the signature alongside approve/deny.
+  if (
+    request.method === "POST" &&
+    segments.length === 4 &&
+    segments[1] === "access-requests" &&
+    segments[3] === "challenge"
+  ) {
+    const session = await requireUserSession(request);
+    const deviceId = typeof session.metadata.device_id === "string" ? session.metadata.device_id : "";
+    if (!deviceId) {
+      throw new ValidationError("Approval challenges are only issued to paired devices", {
+        error_code: "not_a_device_session",
+      });
+    }
+    const result = await deviceService.issueApprovalChallenge({
+      userId: session.user_id,
+      deviceId,
+      accessRequestId: decodeURIComponent(segments[2] ?? ""),
+    });
+    return Response.json(result, { status: 201 });
+  }
+
   if (
     request.method === "POST" &&
     segments.length === 4 &&
@@ -165,14 +190,29 @@ export async function handleV4Request(request: Request): Promise<Response> {
   ) {
     const session = await requireUserSession(request);
     const id = decodeURIComponent(segments[2] ?? "");
-    if (segments[3] === "deny") {
+    const verdict = segments[3] === "deny" ? ("denied" as const) : ("approved" as const);
+    const body = await parseJsonBody(request);
+
+    // Sessions minted by device pairing must prove key possession on every verdict.
+    const deviceId = typeof session.metadata.device_id === "string" ? session.metadata.device_id : "";
+    if (deviceId) {
+      await deviceService.verifyDeviceApproval({
+        userId: session.user_id,
+        deviceId,
+        accessRequestId: id,
+        verdict,
+        challengeId: typeof body.challenge_id === "string" ? body.challenge_id : "",
+        signature: typeof body.signature === "string" ? body.signature : "",
+      });
+    }
+
+    if (verdict === "denied") {
       const result = await proxyService.denyAccess({
         accessRequestId: id,
         userId: session.user_id,
       });
       return Response.json(result);
     }
-    const body = await parseJsonBody(request);
     const result = await proxyService.approveAccess({
       accessRequestId: id,
       userId: session.user_id,

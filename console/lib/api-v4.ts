@@ -360,6 +360,7 @@ export type V4Device = {
   device_name: string;
   status: "active" | "revoked";
   has_push_token: boolean;
+  key_registered: boolean;
   last_seen_at: string | null;
   created_at: string;
 };

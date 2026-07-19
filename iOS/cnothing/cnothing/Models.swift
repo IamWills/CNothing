@@ -68,6 +68,13 @@ struct SimpleOkResponse: Decodable {
     let ok: Bool
 }
 
+struct ApprovalChallengeResponse: Decodable {
+    let ok: Bool
+    let challenge_id: String
+    let nonce: String
+    let expires_at: String
+}
+
 struct APIErrorEnvelope: Decodable {
     struct Inner: Decodable {
         let type: String?

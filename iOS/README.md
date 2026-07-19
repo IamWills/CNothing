@@ -13,11 +13,24 @@
 ## 配对（首次使用）
 
 1. 在网页 Console（cnothing.com）登录后打开 **Devices** 页，点 "Generate pairing code"。
-2. 在 iPhone 上打开本 App，输入配对码（10 分钟内有效）。
+2. 在 iPhone 上打开本 App，扫描页面上的二维码（或手动输入配对码，10 分钟内有效）。
 3. 配对成功后 App 自动申请通知权限并上报 APNs push token。
 
 配对会为设备发放一个 90 天的设备会话令牌（存于 Keychain）。在 Console 的
 Devices 页可随时吊销设备。
+
+## 设备绑定审批（Okta Verify 模型）
+
+配对时 App 在 Secure Enclave 生成 P-256 密钥对并把公钥注册到服务端
+（私钥永不离开手机）。之后每次批准/拒绝都要：
+
+1. `POST /v4/access-requests/{id}/challenge` 获取一次性 challenge（5 分钟有效，单次使用）；
+2. 对 `cnothing-approval.v1.{challenge_id}.{nonce}.{access_request_id}.{verdict}`
+   做 ECDSA P-256 / SHA-256 签名（DER，base64url）；
+3. 在 approve/deny 请求体中携带 `challenge_id` + `signature`，服务端用注册的公钥验签。
+
+因此即使设备会话令牌泄露，没有手机上的私钥也无法完成任何审批。网页 Console
+的审批（浏览器会话）不受影响，仍按原有方式进行。
 
 ## 服务端 APNs 配置
 

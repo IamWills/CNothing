@@ -299,16 +299,24 @@ async function main() {
       afterRevoke.text,
     );
 
-    console.log("v4 E2E: device pairing (iOS authenticator flow)");
-    const pairingCodeResponse = await request<{ ok: true; pairing_code: string }>(
+    console.log("v4 E2E: device pairing (iOS authenticator flow, key enrollment)");
+    const { generateKeyPairSync, createSign } = await import("node:crypto");
+    const deviceKeyPair = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const devicePublicJwk = deviceKeyPair.publicKey.export({ format: "jwk" });
+
+    const pairingCodeResponse = await request<{ ok: true; pairing_code: string; qr_payload: string }>(
       "/v4/devices/pairing-codes",
       { admin: false, userSessionToken, method: "POST", body: JSON.stringify({}) },
     );
     assert(pairingCodeResponse.status === 201, pairingCodeResponse.text);
+    assert(
+      pairingCodeResponse.data.qr_payload.startsWith("cnothing://pair?code="),
+      "expected qr_payload",
+    );
 
     const pair = await request<{
       ok: true;
-      device: { id: string; user_id: string };
+      device: { id: string; user_id: string; key_registered: boolean };
       session_token: string;
     }>("/v4/devices/pair", {
       admin: false,
@@ -317,12 +325,22 @@ async function main() {
         pairing_code: pairingCodeResponse.data.pairing_code,
         device_name: "e2e-iphone",
         platform: "ios",
+        public_key_jwk: devicePublicJwk,
       }),
     });
     assert(pair.status === 201, pair.text);
     assert(pair.data.device.user_id === testUserId, "device bound to wrong user");
+    assert(pair.data.device.key_registered === true, "expected key_registered");
     const deviceSessionToken = pair.data.session_token;
     const deviceId = pair.data.device.id;
+
+    const signApproval = (challengeId: string, nonce: string, accessRequestId: string, verdict: string) => {
+      const signer = createSign("SHA256");
+      signer.update(`cnothing-approval.v1.${challengeId}.${nonce}.${accessRequestId}.${verdict}`);
+      return signer
+        .sign({ key: deviceKeyPair.privateKey, dsaEncoding: "der" })
+        .toString("base64url");
+    };
 
     const reusedCode = await request("/v4/devices/pair", {
       admin: false,
@@ -386,14 +404,60 @@ async function main() {
       "device must see the targeted pending request",
     );
 
-    console.log("v4 E2E: approve from the device, agent gets the callback");
+    console.log("v4 E2E: device approval without signature is rejected");
+    const unsignedApprove = await request(`/v4/access-requests/${targetedId}/approve`, {
+      admin: false,
+      userSessionToken: deviceSessionToken,
+      method: "POST",
+      body: JSON.stringify({ connection_id: connectionId }),
+    });
+    assert(
+      unsignedApprove.status === 400 || unsignedApprove.status === 401,
+      `unsigned device approval must fail: ${unsignedApprove.status} ${unsignedApprove.text}`,
+    );
+
+    console.log("v4 E2E: signed device approval (Okta Verify-style challenge)");
+    const challenge = await request<{ ok: true; challenge_id: string; nonce: string }>(
+      `/v4/access-requests/${targetedId}/challenge`,
+      { admin: false, userSessionToken: deviceSessionToken, method: "POST", body: JSON.stringify({}) },
+    );
+    assert(challenge.status === 201, challenge.text);
+
+    const badSignature = await request(`/v4/access-requests/${targetedId}/approve`, {
+      admin: false,
+      userSessionToken: deviceSessionToken,
+      method: "POST",
+      body: JSON.stringify({
+        connection_id: connectionId,
+        challenge_id: challenge.data.challenge_id,
+        signature: Buffer.from("forged").toString("base64url"),
+      }),
+    });
+    assert(badSignature.status === 401, `forged signature must fail: ${badSignature.text}`);
+
+    // The forged attempt consumed the challenge — request a fresh one.
+    const challenge2 = await request<{ ok: true; challenge_id: string; nonce: string }>(
+      `/v4/access-requests/${targetedId}/challenge`,
+      { admin: false, userSessionToken: deviceSessionToken, method: "POST", body: JSON.stringify({}) },
+    );
+    assert(challenge2.status === 201, challenge2.text);
+
     const deviceApprove = await request<{ ok: true; grant: { id: string } }>(
       `/v4/access-requests/${targetedId}/approve`,
       {
         admin: false,
         userSessionToken: deviceSessionToken,
         method: "POST",
-        body: JSON.stringify({ connection_id: connectionId }),
+        body: JSON.stringify({
+          connection_id: connectionId,
+          challenge_id: challenge2.data.challenge_id,
+          signature: signApproval(
+            challenge2.data.challenge_id,
+            challenge2.data.nonce,
+            targetedId,
+            "approved",
+          ),
+        }),
       },
     );
     assert(deviceApprove.status === 201, deviceApprove.text);

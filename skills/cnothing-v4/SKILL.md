@@ -73,12 +73,27 @@ curl -X POST https://cnothing.com/v4/access-requests \
 Optional fields:
 
 - `user_id` — the human's CNothing user id, if you know it. CNothing then pushes
-  the approval straight to the user's paired iOS authenticator devices (like a
-  Microsoft Authenticator prompt), so they may approve on their phone without
-  you sending them a link at all. The response includes `pushed_to_devices`.
+  the approval straight to the user's paired iOS authenticator devices (like an
+  Okta Verify prompt), so they may approve on their phone without you sending
+  them a link at all. The response includes `pushed_to_devices`; when it is 0
+  the response also includes `human_onboarding` with setup steps to relay.
 - `callback_url` — an https endpoint you control. On approve/deny CNothing POSTs
   `{ "event": "access_request.decided", "access_request_id", "status", "grant_id", "provider", "agent_id" }`
   to it, so you don't need to poll `get_access_status`.
+
+### Onboarding your human (registration + phone approvals)
+
+When the human is new to CNothing, relay these steps:
+
+1. Sign in at `https://cnothing.com/login` with GitHub or OIDC — signing in
+   creates the account; there is no separate registration form.
+2. Connect the needed OAuth provider once at `https://cnothing.com/connect`.
+3. Optional, recommended: enable mobile approvals at `https://cnothing.com/devices` —
+   generate the pairing QR, install the CNothing iOS app, scan the QR. The phone
+   enrolls a Secure Enclave key; every approval signs a one-time challenge
+   (Okta Verify-style proof of possession).
+4. Ask the human for their CNothing user id and pass it as `user_id` in
+   `request_access`; approvals then arrive as push notifications on their phone.
 
 Response contains `access_request_id` and `approval_url` (always
 `https://cnothing.com/approve-proxy/{uuid}`). **Do not** construct or rewrite

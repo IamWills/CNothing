@@ -130,6 +130,7 @@
     "/v4/devices/pair": {
       "post": {
         "summary": "iOS app redeems a pairing code and receives a device session token",
+        "description": "Okta Verify-style enrollment: the app should include the device's P-256 public key (public_key_jwk). The private key stays in the Secure Enclave; approve/deny later requires signing a one-time challenge with it.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -139,13 +140,26 @@
                 "properties": {
                   "pairing_code": { "type": "string" },
                   "device_name": { "type": "string" },
-                  "platform": { "type": "string", "default": "ios" }
+                  "platform": { "type": "string", "default": "ios" },
+                  "public_key_jwk": {
+                    "type": "object",
+                    "description": "EC P-256 JWK { kty, crv, x, y } for device-bound approvals"
+                  }
                 }
               }
             }
           }
         },
         "responses": { "201": { "description": "device + long-lived session_token" } }
+      }
+    },
+    "/v4/access-requests/{id}/challenge": {
+      "post": {
+        "summary": "Device-only: issue a one-time approval challenge to sign",
+        "description": "Requires a device session (from /v4/devices/pair). Returns { challenge_id, nonce }. The device signs 'cnothing-approval.v1.{challenge_id}.{nonce}.{access_request_id}.{verdict}' with its enrolled P-256 key (ECDSA/SHA-256, DER, base64url) and sends challenge_id + signature in the approve/deny body.",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "201": { "description": "challenge_id, nonce, expires_at" } }
       }
     },
     "/v4/devices/{id}/push-token": {

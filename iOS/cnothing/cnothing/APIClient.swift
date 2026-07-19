@@ -49,14 +49,19 @@ final class APIClient: ObservableObject {
     // MARK: - Pairing
 
     func pair(code: String, deviceName: String) async throws {
+        var body: [String: Any] = [
+            "pairing_code": code,
+            "device_name": deviceName,
+            "platform": "ios",
+        ]
+        // Enroll the Secure Enclave public key (Okta Verify-style device binding).
+        if let jwk = DeviceKey.publicKeyJwk() {
+            body["public_key_jwk"] = jwk
+        }
         let response: PairDeviceResponse = try await request(
             method: "POST",
             path: "/v4/devices/pair",
-            body: [
-                "pairing_code": code,
-                "device_name": deviceName,
-                "platform": "ios",
-            ],
+            body: body,
             authenticated: false
         )
         KeychainStore.save(response.session_token, forKey: "device.sessionToken")
@@ -121,19 +126,46 @@ final class APIClient: ObservableObject {
     }
 
     func approve(requestId: String, connectionId: String) async throws -> ApproveResponse {
-        try await request(
+        let proof = try await signedChallenge(requestId: requestId, verdict: "approved")
+        return try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/approve",
-            body: ["connection_id": connectionId]
+            body: [
+                "connection_id": connectionId,
+                "challenge_id": proof.challengeId,
+                "signature": proof.signature,
+            ]
         )
     }
 
     func deny(requestId: String) async throws {
+        let proof = try await signedChallenge(requestId: requestId, verdict: "denied")
         let _: SimpleOkResponse = try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/deny",
+            body: [
+                "challenge_id": proof.challengeId,
+                "signature": proof.signature,
+            ]
+        )
+    }
+
+    /// Okta Verify-style proof of possession: fetch a one-time challenge and
+    /// sign it with the Secure Enclave key.
+    private func signedChallenge(
+        requestId: String,
+        verdict: String
+    ) async throws -> (challengeId: String, signature: String) {
+        let challenge: ApprovalChallengeResponse = try await request(
+            method: "POST",
+            path: "/v4/access-requests/\(requestId)/challenge",
             body: [:]
         )
+        let payload = "cnothing-approval.v1.\(challenge.challenge_id).\(challenge.nonce).\(requestId).\(verdict)"
+        guard let signature = DeviceKey.sign(payload) else {
+            throw APIError.http(status: 0, message: "设备签名失败，请重新配对以注册设备密钥。")
+        }
+        return (challenge.challenge_id, signature)
     }
 
     // MARK: - Transport

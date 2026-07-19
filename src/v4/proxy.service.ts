@@ -153,6 +153,14 @@ export class ProxyService {
 
     const approvalBase = config.consoleUrl?.replace(/\/+$/, "") ?? input.apiBaseUrl.replace(/\/+$/, "");
     const userQuery = userHint ? `?user=${encodeURIComponent(userHint)}` : "";
+
+    // Agent-facing guidance: how the human can enable phone approvals when the
+    // request could not be pushed to any paired device.
+    const humanOnboarding =
+      userHint && pushedToDevices === 0
+        ? `No paired phone found for user "${userHint}". Tell the human: 1) sign in at ${approvalBase}/login (GitHub/OIDC — signing in creates the account); 2) open ${approvalBase}/devices, generate the pairing QR, install the CNothing iOS app and scan it. Future approvals will then arrive as push notifications. For now, use approval_url in a browser.`
+        : undefined;
+
     return {
       ok: true as const,
       access_request_id: request.id,
@@ -165,6 +173,7 @@ export class ProxyService {
         "Give the human this exact approval_url. Do not invent /v4/approve/... or /v4/access-requests/.../approve — those are not browser pages.",
       pushed_to_devices: pushedToDevices,
       callback_registered: Boolean(callbackUrl),
+      ...(humanOnboarding ? { human_onboarding: humanOnboarding } : {}),
       expires_at: request.expires_at,
     };
   }

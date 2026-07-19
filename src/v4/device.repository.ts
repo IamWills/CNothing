@@ -9,6 +9,7 @@ export type UserDeviceRecord = {
   device_name: string;
   push_token: string | null;
   push_environment: string;
+  public_key_jwk: JsonObject | null;
   status: "active" | "revoked";
   last_seen_at: string | null;
   metadata: JsonObject;
@@ -27,6 +28,10 @@ function mapDeviceRow(row: Record<string, unknown>): UserDeviceRecord {
     device_name: String(row.device_name ?? ""),
     push_token: row.push_token ? String(row.push_token) : null,
     push_environment: String(row.push_environment ?? "production"),
+    public_key_jwk:
+      row.public_key_jwk && typeof row.public_key_jwk === "object" && !Array.isArray(row.public_key_jwk)
+        ? (row.public_key_jwk as JsonObject)
+        : null,
     status: String(row.status) as UserDeviceRecord["status"],
     last_seen_at: row.last_seen_at ? asIso(row.last_seen_at) : null,
     metadata:
@@ -76,17 +81,31 @@ export async function createUserDevice(input: {
   user_id: string;
   platform: string;
   device_name: string;
+  public_key_jwk?: JsonObject | null;
   metadata?: JsonObject;
 }): Promise<UserDeviceRecord> {
   const result = await pool.query(
     `
-      INSERT INTO user_devices (id, user_id, platform, device_name, metadata)
-      VALUES ($1, $2, $3, $4, $5::jsonb)
+      INSERT INTO user_devices (id, user_id, platform, device_name, public_key_jwk, metadata)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
       RETURNING *
     `,
-    [input.id, input.user_id, input.platform, input.device_name, JSON.stringify(input.metadata ?? {})],
+    [
+      input.id,
+      input.user_id,
+      input.platform,
+      input.device_name,
+      input.public_key_jwk ? JSON.stringify(input.public_key_jwk) : null,
+      JSON.stringify(input.metadata ?? {}),
+    ],
   );
   return mapDeviceRow(result.rows[0]);
+}
+
+export async function findUserDeviceById(deviceId: string): Promise<UserDeviceRecord | null> {
+  const result = await pool.query(`SELECT * FROM user_devices WHERE id = $1`, [deviceId]);
+  const row = result.rows[0];
+  return row ? mapDeviceRow(row) : null;
 }
 
 export async function updateDevicePushToken(input: {
@@ -132,6 +151,45 @@ export async function listActivePushDevices(userId: string): Promise<UserDeviceR
     [userId],
   );
   return result.rows.map(mapDeviceRow);
+}
+
+export async function createApprovalChallenge(input: {
+  id: string;
+  access_request_id: string;
+  device_id: string;
+  user_id: string;
+  nonce: string;
+  ttl_seconds: number;
+}): Promise<{ id: string; nonce: string; expires_at: string }> {
+  const result = await pool.query(
+    `
+      INSERT INTO device_approval_challenges (id, access_request_id, device_id, user_id, nonce, expires_at)
+      VALUES ($1, $2, $3, $4, $5, NOW() + ($6 || ' seconds')::interval)
+      RETURNING id, nonce, expires_at
+    `,
+    [input.id, input.access_request_id, input.device_id, input.user_id, input.nonce, String(input.ttl_seconds)],
+  );
+  const row = result.rows[0];
+  return { id: String(row.id), nonce: String(row.nonce), expires_at: asIso(row.expires_at) };
+}
+
+export async function consumeApprovalChallenge(input: {
+  id: string;
+  device_id: string;
+  access_request_id: string;
+}): Promise<{ nonce: string; user_id: string } | null> {
+  const result = await pool.query(
+    `
+      UPDATE device_approval_challenges
+      SET consumed_at = NOW()
+      WHERE id = $1 AND device_id = $2 AND access_request_id = $3
+        AND consumed_at IS NULL AND expires_at > NOW()
+      RETURNING nonce, user_id
+    `,
+    [input.id, input.device_id, input.access_request_id],
+  );
+  const row = result.rows[0];
+  return row ? { nonce: String(row.nonce), user_id: String(row.user_id) } : null;
 }
 
 export async function revokeUserDevice(input: {

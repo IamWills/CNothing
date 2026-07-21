@@ -48,14 +48,17 @@ export async function sendApprovalPush(input: {
     return { sent: 0, failed: 0, skipped: true };
   }
 
+  // loc-keys are resolved by the iOS app's Localizable.xcstrings, so the
+  // notification follows each device's language (en / zh-Hans).
   const payload = JSON.stringify({
     aps: {
       alert: {
-        title: "CNothing 授权请求",
+        "title-loc-key": "PUSH_APPROVAL_TITLE",
         subtitle: input.provider,
-        body: input.reason
-          ? `${input.agentName}: ${input.reason}`
-          : `${input.agentName} 请求访问 ${input.provider}`,
+        "loc-key": input.reason ? "PUSH_APPROVAL_BODY_REASON" : "PUSH_APPROVAL_BODY",
+        "loc-args": input.reason
+          ? [input.agentName, input.reason]
+          : [input.agentName, input.provider],
       },
       sound: "default",
       category: "CNOTHING_APPROVAL",

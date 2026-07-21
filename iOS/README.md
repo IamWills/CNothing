@@ -57,6 +57,17 @@ Release/TestFlight 构建注册为 `production`。
   在 Target → Info → URL Types 中添加 URL Scheme `cnothing`。
 - 推送通知的 payload 携带 `access_request_id`，点按通知即可导航，无需 URL Scheme。
 
+## 国际化
+
+App 支持英文（默认）与简体中文，采用 Xcode String Catalog：
+
+- `Localizable.xcstrings` — 全部界面文案（代码中以英文为键，目录内提供 zh-Hans 翻译）；
+- `InfoPlist.xcstrings` — 相机权限描述等系统权限文案；
+- 推送通知使用 APNs `loc-key`/`loc-args`（`PUSH_APPROVAL_TITLE` / `PUSH_APPROVAL_BODY` /
+  `PUSH_APPROVAL_BODY_REASON`），由收到通知的设备按自身语言渲染，服务端不需要关心用户语言。
+
+新增语言时只需在 Xcode 的 String Catalog 中添加语言列并翻译即可。
+
 ## 文件结构
 
 | 文件 | 作用 |

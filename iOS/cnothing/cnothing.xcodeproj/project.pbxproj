@@ -104,6 +104,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = 58197DE7300B44CE00640E51;
 			minimizedProjectReferenceProxies = 1;
@@ -274,7 +275,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = cnothing/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = CNothing;
-				INFOPLIST_KEY_NSCameraUsageDescription = "扫描 CNothing 配对二维码以绑定审批设备";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan the CNothing pairing QR code to bind this device for approvals.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -312,7 +313,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = cnothing/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = CNothing;
-				INFOPLIST_KEY_NSCameraUsageDescription = "扫描 CNothing 配对二维码以绑定审批设备";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan the CNothing pairing QR code to bind this device for approvals.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

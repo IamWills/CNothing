@@ -10,7 +10,7 @@ enum APIError: LocalizedError {
         case let .http(status, message):
             return "HTTP \(status): \(message)"
         case .notPaired:
-            return "设备尚未配对"
+            return String(localized: "Device is not paired yet")
         }
     }
 }
@@ -163,7 +163,10 @@ final class APIClient: ObservableObject {
         )
         let payload = "cnothing-approval.v1.\(challenge.challenge_id).\(challenge.nonce).\(requestId).\(verdict)"
         guard let signature = DeviceKey.sign(payload) else {
-            throw APIError.http(status: 0, message: "设备签名失败，请重新配对以注册设备密钥。")
+            throw APIError.http(
+                status: 0,
+                message: String(localized: "Device signing failed. Re-pair this device to enroll its signing key.")
+            )
         }
         return (challenge.challenge_id, signature)
     }

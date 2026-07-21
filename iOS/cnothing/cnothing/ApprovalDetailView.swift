@@ -23,14 +23,14 @@ struct ApprovalDetailView: View {
     var body: some View {
         Form {
             if let detail {
-                Section("授权请求") {
+                Section("Authorization Request") {
                     LabeledContent("Provider", value: detail.provider)
-                    LabeledContent("状态", value: detail.status)
+                    LabeledContent("Status", value: detail.status)
                     if let reason = detail.reason, !reason.isEmpty {
-                        LabeledContent("理由", value: reason)
+                        LabeledContent("Reason", value: reason)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("允许访问的主机").font(.subheadline)
+                        Text("Allowed hosts").font(.subheadline)
                         ForEach(detail.requested_hosts, id: \.self) { host in
                             Text(host)
                                 .font(.system(.footnote, design: .monospaced))
@@ -40,13 +40,13 @@ struct ApprovalDetailView: View {
                 }
 
                 if detail.status == "pending" {
-                    Section("使用的 OAuth 连接") {
+                    Section("OAuth Connection") {
                         if matchingConnections.isEmpty {
-                            Text("没有可用的 \(detail.provider) 连接。请先在网页 Console 的 Connect 页完成一次 OAuth 连接。")
+                            Text("No available \(detail.provider) connection. Connect one first on the CNothing Console Connect page.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Picker("连接", selection: $selectedConnectionId) {
+                            Picker("Connection", selection: $selectedConnectionId) {
                                 ForEach(matchingConnections) { connection in
                                     Text(connection.display_name ?? connection.provider_slug)
                                         .tag(connection.id)
@@ -59,7 +59,7 @@ struct ApprovalDetailView: View {
                         Button {
                             Task { await decide(approve: true) }
                         } label: {
-                            Label("批准", systemImage: "checkmark.circle.fill")
+                            Label("Approve", systemImage: "checkmark.circle.fill")
                                 .frame(maxWidth: .infinity)
                                 .fontWeight(.semibold)
                         }
@@ -68,14 +68,14 @@ struct ApprovalDetailView: View {
                         Button(role: .destructive) {
                             Task { await decide(approve: false) }
                         } label: {
-                            Label("拒绝", systemImage: "xmark.circle")
+                            Label("Deny", systemImage: "xmark.circle")
                                 .frame(maxWidth: .infinity)
                         }
                         .disabled(isWorking)
                     }
                 }
             } else if errorMessage.isEmpty {
-                ProgressView("加载中…")
+                ProgressView("Loading…")
             }
 
             if !resultMessage.isEmpty {
@@ -85,7 +85,7 @@ struct ApprovalDetailView: View {
                 Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
             }
         }
-        .navigationTitle("审批")
+        .navigationTitle("Approval")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
@@ -112,10 +112,11 @@ struct ApprovalDetailView: View {
                     requestId: requestId,
                     connectionId: selectedConnectionId
                 )
-                resultMessage = "已批准，grant \(result.grant.id.prefix(8))… 已生效。"
+                let grantPrefix = String(result.grant.id.prefix(8))
+                resultMessage = String(localized: "Approved. Grant \(grantPrefix)… is now active.")
             } else {
                 try await api.deny(requestId: requestId)
-                resultMessage = "已拒绝。"
+                resultMessage = String(localized: "Denied.")
             }
             onDecided?()
             try? await Task.sleep(for: .seconds(1))

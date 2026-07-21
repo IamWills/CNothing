@@ -13,14 +13,19 @@ struct PendingRequestsView: View {
             List {
                 if let userId = api.userId {
                     Section {
-                        LabeledContent("账户", value: userId)
-                        LabeledContent("推送", value: PushRegistrar.shared.isRegistered ? "已开启" : "使用轮询")
+                        LabeledContent("Account", value: userId)
+                        LabeledContent(
+                            "Push",
+                            value: PushRegistrar.shared.isRegistered
+                                ? String(localized: "Enabled")
+                                : String(localized: "Polling")
+                        )
                     }
                 }
 
-                Section("待审批请求") {
+                Section("Pending Requests") {
                     if requests.isEmpty && !isLoading {
-                        Text("暂无待审批的授权请求。Agent 调用 request_access 并携带你的 user_id 后，请求会出现在这里并推送到手机。")
+                        Text("No pending authorization requests. When an agent calls request_access with your user_id, requests appear here and are pushed to this phone.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -50,12 +55,12 @@ struct PendingRequestsView: View {
                 }
 
                 Section {
-                    Button("解除配对", role: .destructive) {
+                    Button("Unpair", role: .destructive) {
                         api.unpair()
                     }
                 }
             }
-            .navigationTitle("CNothing 审批")
+            .navigationTitle("CNothing Approvals")
             .navigationDestination(for: String.self) { requestId in
                 ApprovalDetailView(requestId: requestId) {
                     Task { await refresh() }

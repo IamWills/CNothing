@@ -1,0 +1,13 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Scan the CNothing pairing QR code to bind this device for approvals." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "扫描 CNothing 配对二维码以绑定审批设备。" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

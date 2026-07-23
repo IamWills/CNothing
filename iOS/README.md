@@ -25,6 +25,17 @@
 3. 在 iPhone 上打开本 App，扫描二维码（或手动输入配对码，10 分钟内有效）。
 4. 配对成功后 App 自动申请通知权限并上报 APNs push token。
 
+## 多账号
+
+同一台 iPhone 可配对多个 CNothing 账号并分别审批：
+
+1. 主界面点右上角 **+**（或打开 Accounts → Add Account），扫描另一用户 Devices 页的配对码。
+2. 点顶部 **Account** 行打开账户列表并切换当前审批身份。
+3. 推送若带 `user_id`，会自动切到对应账号再打开审批。
+4. 账户列表左滑或菜单 **Remove** 可解除单个账号；不影响其他账号。
+
+旧版单账号安装会在首次启动时自动迁移到多账号存储。
+
 配对会为设备发放一个 90 天的设备会话令牌（存于 Keychain）。在 Console 的
 Devices 页可随时吊销设备。
 
@@ -84,9 +95,12 @@ App 支持英文（默认）与简体中文，采用 Xcode String Catalog：
 
 | 文件 | 作用 |
 | --- | --- |
-| `APIClient.swift` | v4 API 客户端（配对、push token、待审批、批准/拒绝） |
+| `AccountStore.swift` | 多账号仓库（Keychain token + 活跃账号） |
+| `APIClient.swift` | v4 API 客户端（按活跃账号鉴权、配对、审批） |
 | `KeychainStore.swift` | 设备会话令牌的 Keychain 存取 |
+| `DeviceKey.swift` | 每账号独立的 Secure Enclave 签名密钥 |
 | `PushRegistrar.swift` | APNs 注册、通知代理、审批导航路由 |
-| `PairingView.swift` | 输入配对码绑定设备 |
-| `PendingRequestsView.swift` | 待审批列表（推送 + 15s 轮询兜底） |
-| `ApprovalDetailView.swift` | 审批详情页：选择连接、批准/拒绝 |
+| `PairingView.swift` | 首次配对 / 添加账号 |
+| `AccountsView.swift` | 账号列表、切换、移除 |
+| `PendingRequestsView.swift` | 当前账号待审批列表 |
+| `ApprovalDetailView.swift` | 审批详情页 |

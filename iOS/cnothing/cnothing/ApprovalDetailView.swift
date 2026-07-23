@@ -25,6 +25,9 @@ struct ApprovalDetailView: View {
         Form {
             if let detail {
                 Section("Authorization Request") {
+                    if let userId = api.userId {
+                        LabeledContent("Account", value: userId)
+                    }
                     LabeledContent("Provider", value: detail.provider)
                     LabeledContent("Status", value: detail.status)
                     if let reason = detail.reason, !reason.isEmpty {

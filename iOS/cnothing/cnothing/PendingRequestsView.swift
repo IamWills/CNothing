@@ -7,21 +7,43 @@ struct PendingRequestsView: View {
     @State private var requests: [AccessRequest] = []
     @State private var errorMessage = ""
     @State private var isLoading = false
-    @State private var showUnpairConfirmation = false
+    @State private var showAccounts = false
+    @State private var showAddAccount = false
+    @State private var showRemoveConfirmation = false
 
     var body: some View {
         NavigationStack(path: $router.path) {
             List {
-                if let userId = api.userId {
-                    Section {
-                        LabeledContent("Account", value: userId)
-                        LabeledContent(
-                            "Push",
-                            value: PushRegistrar.shared.isRegistered
-                                ? String(localized: "Enabled")
-                                : String(localized: "Polling")
-                        )
+                Section {
+                    Button {
+                        showAccounts = true
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Account")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(api.userId ?? "—")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                            }
+                            Spacer()
+                            if api.accounts.count > 1 {
+                                Text("\(api.accounts.count)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
+                    LabeledContent(
+                        "Push",
+                        value: PushRegistrar.shared.isRegistered
+                            ? String(localized: "Enabled")
+                            : String(localized: "Polling")
+                    )
                 }
 
                 if !errorMessage.isEmpty {
@@ -39,7 +61,7 @@ struct PendingRequestsView: View {
                     if isLoading && requests.isEmpty && errorMessage.isEmpty {
                         ProgressView("Loading…")
                     } else if requests.isEmpty && !isLoading {
-                        Text("No pending authorization requests. When an agent calls request_access with your user_id, requests appear here and are pushed to this phone.")
+                        Text("No pending authorization requests for this account. Switch accounts above, or ask the agent to pass your user_id / open approval_url.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -81,38 +103,59 @@ struct PendingRequestsView: View {
                     .accessibilityLabel(Text("Refresh"))
                     .disabled(isLoading)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Unpair", role: .destructive) {
-                        showUnpairConfirmation = true
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showAddAccount = true
+                    } label: {
+                        Image(systemName: "person.badge.plus")
                     }
-                    .font(.system(size: 15, weight: .medium))
+                    .accessibilityLabel(Text("Add Account"))
+
+                    Menu {
+                        Button {
+                            showAccounts = true
+                        } label: {
+                            Label("Manage Accounts", systemImage: "person.2")
+                        }
+                        Button("Remove Account", role: .destructive) {
+                            showRemoveConfirmation = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
             .confirmationDialog(
-                "Unpair this device?",
-                isPresented: $showUnpairConfirmation,
+                "Remove this account?",
+                isPresented: $showRemoveConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Unpair", role: .destructive) {
+                Button("Remove", role: .destructive) {
                     api.unpair()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("You will stop receiving approval requests on this phone until you pair again.")
+                Text("You will stop receiving approval requests for \(api.userId ?? "this account") on this phone.")
             }
             .navigationDestination(for: String.self) { requestId in
                 ApprovalDetailView(requestId: requestId) {
                     Task { await refresh() }
                 }
             }
+            .sheet(isPresented: $showAccounts) {
+                AccountsView()
+            }
+            .sheet(isPresented: $showAddAccount) {
+                PairingView(isAddingAccount: true) {
+                    showAddAccount = false
+                    Task { await refresh() }
+                }
+            }
             .refreshable { await refresh(resetSession: true) }
-            .task {
+            .task(id: api.activeAccount?.deviceId) {
                 await refresh()
-                // Poll as a fallback for missed / unconfigured push.
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15))
-                    // Silent poll: don't reset the session every 15s, and don't
-                    // clear a visible error until a manual refresh succeeds.
                     await refresh(silent: true)
                 }
             }

@@ -41,6 +41,7 @@ export async function sendApprovalPush(input: {
   provider: string;
   agentName: string;
   reason?: string | null;
+  userId?: string | null;
 }): Promise<PushResult> {
   const apns = config.apns;
   const targets = input.devices.filter((device) => device.push_token);
@@ -66,6 +67,7 @@ export async function sendApprovalPush(input: {
     },
     access_request_id: input.accessRequestId,
     provider: input.provider,
+    ...(input.userId ? { user_id: input.userId } : {}),
   });
 
   const jwt = buildProviderJwt(apns);

@@ -43,27 +43,39 @@ struct cnothingApp: App {
         WindowGroup {
             ContentView()
                 .onOpenURL { url in
-                    if let id = Self.accessRequestId(from: url) {
-                        ApprovalRouter.shared.openApproval(requestId: id)
+                    if let target = Self.approvalTarget(from: url) {
+                        ApprovalRouter.shared.openApproval(
+                            requestId: target.requestId,
+                            userId: target.userId
+                        )
                     }
                 }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     guard let url = activity.webpageURL,
-                          let id = Self.accessRequestId(from: url)
+                          let target = Self.approvalTarget(from: url)
                     else { return }
-                    ApprovalRouter.shared.openApproval(requestId: id)
+                    ApprovalRouter.shared.openApproval(
+                        requestId: target.requestId,
+                        userId: target.userId
+                    )
                 }
         }
     }
 
     /// Supports:
-    /// - cnothing://approve/{id}
-    /// - cnothing://pair?... (handled elsewhere / ignored here)
-    /// - https://cnothing.com/approve-proxy/{id} (Universal Link)
-    static func accessRequestId(from url: URL) -> String? {
+    /// - cnothing://approve/{id}?user=github:alice
+    /// - https://cnothing.com/approve-proxy/{id}?user=github:alice
+    static func approvalTarget(from url: URL) -> (requestId: String, userId: String?)? {
+        let userId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "user" })?
+            .value
+
         if url.scheme == "cnothing" {
             if url.host == "approve" {
-                return url.pathComponents.count > 1 ? url.pathComponents[1] : nil
+                let id = url.pathComponents.count > 1 ? url.pathComponents[1] : nil
+                guard let id, !id.isEmpty else { return nil }
+                return (id, userId)
             }
             return nil
         }
@@ -74,11 +86,10 @@ struct cnothingApp: App {
             return nil
         }
 
-        // /approve-proxy/{uuid}
         let parts = url.path.split(separator: "/").map(String.init)
         if parts.count >= 2, parts[0] == "approve-proxy" {
             let id = parts[1]
-            return id.isEmpty ? nil : id
+            return id.isEmpty ? nil : (id, userId)
         }
         return nil
     }

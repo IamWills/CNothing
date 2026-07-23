@@ -2,7 +2,13 @@ import SwiftUI
 import UIKit
 
 struct PairingView: View {
+    /// When true, shown as a sheet to add another account while already paired.
+    var isAddingAccount: Bool = false
+    var onFinished: (() -> Void)?
+
     @ObservedObject var api = APIClient.shared
+    @Environment(\.dismiss) private var dismiss
+
     @State private var pairingCode = ""
     @State private var serverURL = APIClient.shared.baseURL.absoluteString
     @State private var isWorking = false
@@ -14,14 +20,18 @@ struct PairingView: View {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Image(systemName: "iphone.and.arrow.forward")
+                        Image(systemName: isAddingAccount ? "person.badge.plus" : "iphone.and.arrow.forward")
                             .font(.largeTitle)
                             .foregroundStyle(.tint)
-                        Text("Pair as Approval Device")
+                        Text(isAddingAccount ? "Add Another Account" : "Pair as Approval Device")
                             .font(.headline)
-                        Text("Sign in to the CNothing Console on the web, open the Devices page to generate a pairing QR code, then scan it here. You'll receive and approve agent authorization requests on this phone, just like Microsoft Authenticator.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            isAddingAccount
+                                ? "Generate a pairing QR on the CNothing Console Devices page for the account you want to add, then scan it here."
+                                : "Sign in to the CNothing Console on the web, open the Devices page to generate a pairing QR code, then scan it here. You'll receive and approve agent authorization requests on this phone, just like Microsoft Authenticator."
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
                 }
@@ -71,7 +81,7 @@ struct PairingView: View {
                         if isWorking {
                             ProgressView()
                         } else {
-                            Text("Pair")
+                            Text(isAddingAccount ? "Add Account" : "Pair")
                                 .frame(maxWidth: .infinity)
                                 .fontWeight(.semibold)
                         }
@@ -79,7 +89,15 @@ struct PairingView: View {
                     .disabled(pairingCode.trimmingCharacters(in: .whitespaces).isEmpty || isWorking)
                 }
             }
-            .navigationTitle("CNothing")
+            .navigationTitle(isAddingAccount ? "Add Account" : "CNothing")
+            .navigationBarTitleDisplayMode(isAddingAccount ? .inline : .large)
+            .toolbar {
+                if isAddingAccount {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                }
+            }
             .sheet(isPresented: $isShowingScanner) {
                 NavigationStack {
                     QRScannerView { payload in
@@ -122,15 +140,25 @@ struct PairingView: View {
         if resetSession {
             api.resetNetworkSession()
         }
-        if let url = URL(string: serverURL.trimmingCharacters(in: .whitespaces)), url.scheme != nil {
-            api.baseURL = url
-        }
+        let override =
+            URL(string: serverURL.trimmingCharacters(in: .whitespaces)).flatMap { url in
+                url.scheme != nil ? url : nil
+            }
         do {
             try await api.pair(
                 code: pairingCode.trimmingCharacters(in: .whitespaces),
-                deviceName: UIDevice.current.name
+                deviceName: UIDevice.current.name,
+                baseURLOverride: override
             )
             await PushRegistrar.shared.requestAuthorizationAndRegister()
+            // Re-register last known push token for all accounts (including the new one).
+            if let token = UserDefaults.standard.string(forKey: "cnothing.lastPushToken") {
+                await api.registerPushToken(token)
+            }
+            onFinished?()
+            if isAddingAccount {
+                dismiss()
+            }
         } catch {
             api.resetNetworkSession()
             errorMessage = error.localizedDescription

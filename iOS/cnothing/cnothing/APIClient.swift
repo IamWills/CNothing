@@ -18,16 +18,22 @@ enum APIError: LocalizedError {
     }
 }
 
-/// Talks to the CNothing v4 API with the device session token.
+/// Talks to the CNothing v4 API using the **active** paired account.
 final class APIClient: ObservableObject {
     static let shared = APIClient()
 
-    @Published var isPaired: Bool
-    @Published var deviceId: String?
-    @Published var userId: String?
+    @Published private(set) var accounts: [PairedAccount] = []
+    @Published private(set) var activeAccount: PairedAccount?
+
+    var isPaired: Bool { activeAccount != nil }
+    var deviceId: String? { activeAccount?.deviceId }
+    var userId: String? { activeAccount?.userId }
 
     var baseURL: URL {
         get {
+            if let raw = activeAccount?.baseURL, let url = URL(string: raw) {
+                return url
+            }
             if let raw = UserDefaults.standard.string(forKey: "cnothing.baseURL"),
                let url = URL(string: raw) {
                 return url
@@ -40,18 +46,27 @@ final class APIClient: ObservableObject {
     }
 
     private var sessionToken: String? {
-        KeychainStore.read(forKey: "device.sessionToken")
+        guard let deviceId = activeAccount?.deviceId else { return nil }
+        return AccountStore.shared.sessionToken(for: deviceId)
     }
 
-    /// Dedicated session so TLS / connection failures can drop stale sockets
-    /// without restarting the whole app.
     private var urlSession: URLSession = APIClient.makeSession()
     private let sessionLock = NSLock()
+    private var storeCancellable: AnyCancellable?
 
     private init() {
-        isPaired = KeychainStore.read(forKey: "device.sessionToken") != nil
-        deviceId = UserDefaults.standard.string(forKey: "cnothing.deviceId")
-        userId = UserDefaults.standard.string(forKey: "cnothing.userId")
+        syncFromStore()
+        storeCancellable = AccountStore.shared.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.syncFromStore()
+            }
+        }
+    }
+
+    private func syncFromStore() {
+        accounts = AccountStore.shared.accounts
+        activeAccount = AccountStore.shared.activeAccount
+        objectWillChange.send()
     }
 
     private static func makeSession() -> URLSession {
@@ -63,8 +78,6 @@ final class APIClient: ObservableObject {
         return URLSession(configuration: config)
     }
 
-    /// Drop cached TLS / TCP state and open a fresh session. Call this before a
-    /// user-initiated retry after a secure-connection failure.
     func resetNetworkSession() {
         sessionLock.lock()
         defer { sessionLock.unlock() }
@@ -72,61 +85,88 @@ final class APIClient: ObservableObject {
         urlSession = APIClient.makeSession()
     }
 
+    func switchAccount(deviceId: String) {
+        guard !deviceId.isEmpty else { return }
+        AccountStore.shared.switchTo(deviceId: deviceId)
+        syncFromStore()
+    }
+
     // MARK: - Pairing
 
-    func pair(code: String, deviceName: String) async throws {
+    /// Pair an additional (or first) account. Activates the new account on success.
+    func pair(code: String, deviceName: String, baseURLOverride: URL? = nil) async throws {
+        let keyTag = UUID().uuidString
         var body: [String: Any] = [
             "pairing_code": code,
             "device_name": deviceName,
             "platform": "ios",
         ]
-        // Enroll the Secure Enclave public key (Okta Verify-style device binding).
-        if let jwk = DeviceKey.publicKeyJwk() {
+        if let jwk = DeviceKey.publicKeyJwk(keyTag: keyTag) {
             body["public_key_jwk"] = jwk
         }
+
+        let pairBase = baseURLOverride ?? baseURL
+        if let baseURLOverride {
+            self.baseURL = baseURLOverride
+        }
+
         let response: PairDeviceResponse = try await request(
             method: "POST",
             path: "/v4/devices/pair",
             body: body,
-            authenticated: false
+            authenticated: false,
+            baseURLOverride: pairBase,
+            sessionTokenOverride: nil
         )
-        KeychainStore.save(response.session_token, forKey: "device.sessionToken")
-        UserDefaults.standard.set(response.device.id, forKey: "cnothing.deviceId")
-        UserDefaults.standard.set(response.device.user_id, forKey: "cnothing.userId")
+
+        _ = AccountStore.shared.upsertAccount(
+            deviceId: response.device.id,
+            userId: response.device.user_id,
+            keyTag: keyTag,
+            deviceName: response.device.device_name.isEmpty ? deviceName : response.device.device_name,
+            baseURL: pairBase.absoluteString,
+            sessionToken: response.session_token,
+            activate: true
+        )
         await MainActor.run {
-            self.isPaired = true
-            self.deviceId = response.device.id
-            self.userId = response.device.user_id
+            self.syncFromStore()
         }
     }
 
-    func unpair() {
-        KeychainStore.delete(forKey: "device.sessionToken")
-        UserDefaults.standard.removeObject(forKey: "cnothing.deviceId")
-        UserDefaults.standard.removeObject(forKey: "cnothing.userId")
-        isPaired = false
-        deviceId = nil
-        userId = nil
+    /// Remove the active account (or a specific device). If none remain, returns to pairing.
+    func unpair(deviceId: String? = nil) {
+        let target = deviceId ?? activeAccount?.deviceId
+        guard let target else { return }
+        AccountStore.shared.removeAccount(deviceId: target)
+        syncFromStore()
     }
 
     // MARK: - Push token
 
     func registerPushToken(_ token: String) async {
-        guard let deviceId else { return }
+        let snapshot = AccountStore.shared.accounts
         #if DEBUG
         let environment = "sandbox"
         #else
         let environment = "production"
         #endif
-        do {
-            let _: SimpleOkResponse = try await request(
-                method: "POST",
-                path: "/v4/devices/\(deviceId)/push-token",
-                body: ["push_token": token, "push_environment": environment]
-            )
-        } catch {
-            print("push token registration failed: \(error)")
+        for account in snapshot {
+            guard let session = AccountStore.shared.sessionToken(for: account.deviceId),
+                  let base = URL(string: account.baseURL)
+            else { continue }
+            do {
+                let _: SimpleOkResponse = try await request(
+                    method: "POST",
+                    path: "/v4/devices/\(account.deviceId)/push-token",
+                    body: ["push_token": token, "push_environment": environment],
+                    baseURLOverride: base,
+                    sessionTokenOverride: session
+                )
+            } catch {
+                print("push token registration failed for \(account.userId): \(error)")
+            }
         }
+        UserDefaults.standard.set(token, forKey: "cnothing.lastPushToken")
     }
 
     // MARK: - Approvals
@@ -137,6 +177,28 @@ final class APIClient: ObservableObject {
             path: "/v4/access-requests/pending"
         )
         return response.items
+    }
+
+    /// Fetch pending for every paired account (for inbox aggregation / routing).
+    func pendingRequestsAllAccounts() async -> [(account: PairedAccount, items: [AccessRequest])] {
+        var results: [(PairedAccount, [AccessRequest])] = []
+        for account in AccountStore.shared.accounts {
+            guard let token = AccountStore.shared.sessionToken(for: account.deviceId),
+                  let base = URL(string: account.baseURL)
+            else { continue }
+            do {
+                let response: PendingRequestsResponse = try await request(
+                    method: "GET",
+                    path: "/v4/access-requests/pending",
+                    baseURLOverride: base,
+                    sessionTokenOverride: token
+                )
+                results.append((account, response.items))
+            } catch {
+                continue
+            }
+        }
+        return results
     }
 
     func accessRequest(id: String) async throws -> AccessRequestDetail {
@@ -176,19 +238,59 @@ final class APIClient: ObservableObject {
         )
     }
 
-    /// Okta Verify-style proof of possession: fetch a one-time challenge and
-    /// sign it with the Secure Enclave key.
+    /// Switch to the account that owns this access request (by user_id hint or by probing).
+    @discardableResult
+    func activateAccountForAccessRequest(
+        requestId: String,
+        preferredUserId: String? = nil
+    ) async -> Bool {
+        if let preferredUserId, AccountStore.shared.switchToUserId(preferredUserId) {
+            await MainActor.run { syncFromStore() }
+            return true
+        }
+        let all = await pendingRequestsAllAccounts()
+        if let match = all.first(where: { pair in
+            pair.items.contains(where: { $0.access_request_id == requestId })
+        }) {
+            AccountStore.shared.switchTo(deviceId: match.account.deviceId)
+            await MainActor.run { syncFromStore() }
+            return true
+        }
+        // Last resort: try loading the request with each account session.
+        for account in AccountStore.shared.accounts {
+            guard let token = AccountStore.shared.sessionToken(for: account.deviceId),
+                  let base = URL(string: account.baseURL)
+            else { continue }
+            do {
+                let _: AccessRequestDetail = try await request(
+                    method: "GET",
+                    path: "/v4/access-requests/\(requestId)",
+                    baseURLOverride: base,
+                    sessionTokenOverride: token
+                )
+                AccountStore.shared.switchTo(deviceId: account.deviceId)
+                await MainActor.run { syncFromStore() }
+                return true
+            } catch {
+                continue
+            }
+        }
+        return false
+    }
+
     private func signedChallenge(
         requestId: String,
         verdict: String
     ) async throws -> (challengeId: String, signature: String) {
+        guard let account = activeAccount else { throw APIError.notPaired }
         let challenge: ApprovalChallengeResponse = try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/challenge",
             body: [:]
         )
-        let payload = "cnothing-approval.v1.\(challenge.challenge_id).\(challenge.nonce).\(requestId).\(verdict)"
-        guard let signature = DeviceKey.sign(payload) else {
+        let payload =
+            "cnothing-approval.v1.\(challenge.challenge_id).\(challenge.nonce).\(requestId).\(verdict)"
+        guard let signature = DeviceKey.sign(payload, keyTag: account.keyTag) else {
             throw APIError.http(
                 status: 0,
                 message: String(localized: "Device signing failed. Re-pair this device to enroll its signing key.")
@@ -209,15 +311,22 @@ final class APIClient: ObservableObject {
         method: String,
         path: String,
         body: [String: Any]? = nil,
-        authenticated: Bool = true
+        authenticated: Bool = true,
+        baseURLOverride: URL? = nil,
+        sessionTokenOverride: String? = nil
     ) async throws -> T {
         let normalizedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent(normalizedPath))
+        let root = baseURLOverride ?? baseURL
+        guard let url = URL(string: normalizedPath, relativeTo: root)?.absoluteURL else {
+            throw APIError.network(String(localized: "Invalid request URL."))
+        }
+        var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
         urlRequest.timeoutInterval = 20
 
         if authenticated {
-            guard let token = sessionToken else { throw APIError.notPaired }
+            let token = sessionTokenOverride ?? sessionToken
+            guard let token else { throw APIError.notPaired }
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         if let body {

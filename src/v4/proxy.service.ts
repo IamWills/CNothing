@@ -145,6 +145,7 @@ export class ProxyService {
           provider: provider.slug,
           agentName: input.agent.name,
           reason: input.reason ?? null,
+          userId: userHint,
         });
         pushedToDevices = result.sent;
       } catch (error) {
@@ -251,6 +252,7 @@ export class ProxyService {
             provider: request.provider_slug,
             agentName: request.agent_id,
             reason: request.reason,
+            userId: viewerUserId,
           });
         } catch (error) {
           console.warn(

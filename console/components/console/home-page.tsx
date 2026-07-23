@@ -59,10 +59,11 @@ const sections: Array<{
     icon: FileText,
   },
   {
-    href: "/standards/authentication/1.0",
-    title: "Authentication",
-    description: "Browse the published CNothing Authentication Standard 1.0.",
-    icon: KeyRound,
+    href: "/skill.md",
+    title: "Agent skill (v4)",
+    description:
+      "Required reading for agents: register → approval_url → proxy. Do not use AuthAI or /v2./v3.",
+    icon: BookKey,
   },
 ];
 
@@ -260,11 +261,17 @@ export function HomePage() {
           <h2 className="text-lg font-semibold">For AI Agents</h2>
         </div>
         <p className="max-w-3xl text-sm text-slate-600">
-          Agents can integrate over plain HTTP (see the OpenAPI spec) or install the CNothing MCP
-          server as their callable tool — hosted at <code className="text-xs">/mcp</code> or locally
-          via the <code className="text-xs">cnothing-mcp</code> package.
+          Only v4. Read <code className="text-xs">/skill.md</code> first: register → request_access →
+          human opens exact <code className="text-xs">approval_url</code> → proxy. Do not use AuthAI,
+          KV, <code className="text-xs">/authorize</code>, <code className="text-xs">/v2</code>, or{" "}
+          <code className="text-xs">/v3</code>.
         </p>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <DiscoveryLink
+            href="/skill.md"
+            title="Primary Skill (required)"
+            description="Agent prerequisites and full GitHub/OAuth flow via v4 proxy."
+          />
           <DiscoveryLink
             href="/.well-known/mcp"
             title="MCP Discovery"
@@ -281,19 +288,14 @@ export function HomePage() {
             description="Universal credential-injecting proxy API — access requests, grants, proxy."
           />
           <DiscoveryLink
-            href="/skill.md"
-            title="Primary Skill"
-            description="The v4 quick-start skill for AI agents (plain markdown)."
+            href="/getting-started.md"
+            title="Getting started"
+            description="Same content as /skill.md — quick-start markdown for agents."
           />
           <DiscoveryLink
             href="/skills/index.json"
             title="Skills JSON"
-            description="Public JSON index of all bundled skills and markdown URLs."
-          />
-          <DiscoveryLink
-            href="/openapi.json"
-            title="OpenAPI v1 (legacy)"
-            description="Legacy AuthAI + Encrypted KV API — kept for the published v1 standard."
+            description="Public JSON index of bundled v4 skills."
           />
         </div>
       </Card>

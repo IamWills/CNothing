@@ -1,7 +1,7 @@
 import config from "../config";
 
-export const V1_SUCCESSOR_PATH = "/openapi-v2.json";
-export const V1_MIGRATION_GUIDE = "/v2/platform/migration";
+export const V1_SUCCESSOR_PATH = "/openapi-v4.json";
+export const V1_MIGRATION_GUIDE = "/skill.md";
 
 export function getV1SunsetDate(): string {
   return config.v1SunsetDate;
@@ -19,10 +19,11 @@ export function v1DeprecationMeta(baseUrl?: string) {
   return {
     deprecated: true,
     sunset_at: getV1SunsetDate(),
-    successor_version: "v2",
+    successor_version: "v4",
     successor_openapi: baseUrl ? `${baseUrl}${V1_SUCCESSOR_PATH}` : V1_SUCCESSOR_PATH,
     migration_guide: baseUrl ? `${baseUrl}${V1_MIGRATION_GUIDE}` : V1_MIGRATION_GUIDE,
-    replacement: "Use POST /v2/capabilities/invoke instead of v1 AuthAI/KV envelope APIs.",
+    replacement:
+      "Use CNothing v4: POST /v4/agents/register → POST /v4/access-requests → human opens approval_url → POST /v4/proxy. See /skill.md. Do not use AuthAI/KV for GitHub or OAuth provider access.",
   };
 }
 

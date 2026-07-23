@@ -4,14 +4,20 @@ export async function GET() {
   const skills = await listPublicSkills();
 
   const lines = [
-    "# CNothing Skills Directory",
+    "# CNothing Skills Directory (v4 only)",
+    "",
+    "Primary skill for all agents:",
+    "- https://cnothing.com/skill.md",
+    "- https://cnothing.com/getting-started.md",
     "",
     "Discovery endpoints:",
     "- /.well-known/mcp",
+    "- /mcp",
+    "- /mcp/manifest",
     "- /skills/index.json",
-    "- /getting-started.md",
-    "- /skill.md",
-    "- /standards",
+    "- /openapi-v4.json",
+    "",
+    "Do NOT use AuthAI, KV envelopes, /authorize/{id}, /v2/*, or /v3/*.",
     "",
     "Bundled skills:",
     ...skills.flatMap((skill) => [

@@ -1,110 +1,138 @@
-# MCP Integration
+# MCP 集成（CNothing v4）
 
-`CNothing` 提供公开 MCP 入口：
+**仅支持 v4。** 不要使用 AuthAI、KV envelope、`request_authorization`、
+`invoke_capability`、`/authorize/{id}`、`/v2/*`、`/v3/*`。那些路径已下线或废弃。
 
-- `GET /mcp`
-- `POST /mcp`
-- `GET /.well-known/mcp`
-- `GET /mcp/sse`
-- `POST /mcp/message`
+面向 agent 的权威说明：[`skills/cnothing-v4/SKILL.md`](../skills/cnothing-v4/SKILL.md)
+（在线：`https://cnothing.com/skill.md`）。
 
-连接 MCP 后，`initialize` 响应中的 **instructions** 以及 MCP 资源 **`resource://cnothing/v2-user-authorization`** 说明完整授权流程。**Agent 必读。**
+## 入口
+
+| 入口 | 地址 |
+| --- | --- |
+| Hosted MCP | `https://cnothing.com/mcp` |
+| Discovery | `https://cnothing.com/.well-known/mcp` |
+| Manifest | `https://cnothing.com/mcp/manifest` |
+| OpenAPI | `https://cnothing.com/openapi-v4.json` |
+| Skill | `https://cnothing.com/skill.md` |
+| Local stdio | [`packages/cnothing-mcp`](../packages/cnothing-mcp) |
+
+连接后请阅读 `initialize.instructions` 与资源 `resource://cnothing/v4-workflow`。
 
 ---
 
-## 最重要：MCP 不能用来给用户登录 GitHub
+## 角色分工（最重要）
 
 | 角色 | 做什么 | 在哪里 |
 | --- | --- | --- |
-| **Agent** | `request_authorization` → 把 `approval_url` 发给用户 → 轮询状态 → `invoke_capability` | `POST /mcp`（使用 **agent access token**） |
-| **用户（人类）** | 在浏览器打开 `approval_url` → 点 **Sign in with GitHub** → 点 **Allow** | **https://cnothing.com/authorize/{id}** |
+| **Agent** | `register_agent` → `request_access` → 把 **精确的** `approval_url` 发给用户 → 轮询拿 `grant_id` → `proxy_request` | MCP 或 `POST /v4/*` |
+| **用户（人类）** | 登录 CNothing、连接 GitHub、打开 `approval_url` 点 Approve | 浏览器 |
 
-**MCP 没有任何工具可以让 Agent 替用户登录 GitHub。**  
-GitHub OAuth 只发生在用户的浏览器里，不在 Agent 对话里。
+**Agent 不能替用户登录 GitHub。** OAuth 只发生在用户浏览器里。
 
-**Agent 绝不应向用户索要：** `session_token`、`login_token`、`user_id`、GitHub token。
+**Agent 绝不应向用户索要：** 密码、GitHub PAT、`session_token`、cookie、login token。
 
 ---
 
-## v2 工具（推荐）
+## 前提条件
+
+真实调用 GitHub 前，下列全部满足：
+
+1. Agent 已有 `agent_access_token`（`register_agent` / `POST /v4/agents/register`）
+2. 用户已在 `https://cnothing.com/login` 登录（登录即注册）
+3. 用户已在 `https://cnothing.com/connect` 连接过 GitHub
+4. 用户已打开返回的 `approval_url`（形如 `https://cnothing.com/approve-proxy/{uuid}`）并批准
+5. Agent 已拿到 `grant_id`
+
+---
+
+## v4 工具
 
 | 工具 | 用途 |
 | --- | --- |
-| `request_authorization` | 申请能力授权，返回 `approval_url` 给用户在浏览器打开 |
-| `invoke_capability` | 用户批准后调用能力（如 `github.list_repositories`） |
-| `list_capabilities` | 发现已注册能力 |
-
-### 完整流程（GitHub 为例）
-
-**1. Agent 申请授权（不要传 `user_id`）**
-
-```json
-{
-  "name": "request_authorization",
-  "arguments": {
-    "agent_access_token": "agent_...",
-    "capabilities": ["github.list_repositories", "search.query"],
-    "reason": "代表您访问 GitHub 仓库并搜索文档"
-  }
-}
-```
-
-**2. Agent 只发一个链接给用户**
-
-> 请在浏览器中打开此链接，按提示用 GitHub 登录并点击 Allow：  
-> `https://cnothing.com/authorize/{id}`
-
-**3. 用户在浏览器中**
-
-1. 打开上面的链接  
-2. 若未登录 → 在同一页点击 **Sign in with GitHub**（不要单独去 `/login` 复制 token）  
-3. 在 GitHub 授权 CNothing  
-4. 回到授权页，点击 **Allow selected capabilities**
-
-**4. Agent 轮询**
-
-`GET https://cnothing.com/v2/authorize/{id}`，直到 `status` 为 `approved`。
-
-**5. Agent 调用能力（通常无需 `user_id`）**
-
-```json
-{
-  "name": "invoke_capability",
-  "arguments": {
-    "agent_access_token": "agent_...",
-    "capability": "github.list_repositories",
-    "input": { "per_page": 10 }
-  }
-}
-```
-
-REST 等价：`POST /v2/capabilities/invoke`，Header `Authorization: Bearer agent_...`。
-
-完整规范见 [`/openapi-v2.json`](../openapi-v2.json)。
-
-### 常见误解
-
-| 误解 | 正确做法 |
-| --- | --- |
-| 「连上了 cnothing.com MCP 就能登录 GitHub」 | MCP 是 Agent API；用户登录在 **approval_url** 浏览器页 |
-| 让用户去 `/login` 复制 `session_token` | 已废弃；token 不得交给 Agent |
-| Agent 调用 `GET /v2/auth/github/start` | 仅供浏览器重定向，Agent 不要调用 |
-| 用 `authai_register` 做 GitHub 登录 | v1 客户端注册，与用户 GitHub OAuth 无关 |
-| 向用户要 `github:用户名` | 批准时自动绑定，无需用户提供 |
+| `register_agent` | 自助注册，拿 agent token |
+| `start_sandbox` | 无人自测（sandbox grant + echo） |
+| `list_providers` | 发现 provider slug（如 `github`） |
+| `request_access` | 申请连接级权限，返回 `approval_url` |
+| `get_access_status` | 轮询至 `approved`，得到 `grant_id` |
+| `proxy_request` | 经代理调用任意 https API（服务端注入 token） |
+| `list_grants` | 列出 grant |
+| `submit_provider_proposal` | 提议新 OAuth/OIDC provider |
+| `get_provider_proposal` | 查询 proposal |
 
 ---
 
-## v1 工具（已废弃）
+## 完整流程（GitHub）
 
-以下工具仍可用，但响应含 `_deprecation` 字段，**请勿用于新集成**：
+### 1. Agent 注册（如尚无 token）
 
-- `get_authai_public_key`
-- `authai_register` / `authai_refresh`
-- `authai_key_holder_*`
-- `kv_save` / `kv_read`
+`register_agent { "name": "my-agent" }`  
+或 `POST /v4/agents/register`。
 
-迁移指南：`GET /v2/platform/migration`  
-Console 迁移页：`/migration`
+可选：`start_sandbox` → 用返回的 `echo_url` 调 `proxy_request` 自测。
+
+### 2. 申请访问
+
+```json
+{
+  "name": "request_access",
+  "arguments": {
+    "agent_access_token": "agent_...",
+    "provider": "github",
+    "reason": "代表您访问 GitHub 仓库"
+  }
+}
+```
+
+返回 `access_request_id` 与 `approval_url`。
+
+`approval_url` **永远是** `https://cnothing.com/approve-proxy/{uuid}`。  
+**禁止**改写成 `/authorize/...`、`/v4/approve/...`、`/v4/access-requests/.../approve`。
+
+### 3. 只把链接发给用户
+
+> 请在浏览器打开此链接，登录 CNothing（如需），选择 GitHub 连接并点 Approve：  
+> `https://cnothing.com/approve-proxy/{uuid}`
+
+若用户是新人，可补充：
+
+1. `https://cnothing.com/login` 登录  
+2. `https://cnothing.com/connect` 连接 GitHub  
+3. 打开上面的 `approval_url` 批准  
+4. 可选：`https://cnothing.com/devices` 配对手机推送审批  
+
+### 4. 轮询
+
+`get_access_status` 直到 `status: "approved"`，读取 `grant_id`。
+
+### 5. 代理调用
+
+```json
+{
+  "name": "proxy_request",
+  "arguments": {
+    "agent_access_token": "agent_...",
+    "grant_id": "...",
+    "method": "GET",
+    "url": "https://api.github.com/user"
+  }
+}
+```
+
+REST 等价：`POST /v4/proxy`，Header `Authorization: Bearer agent_...`。
+
+---
+
+## 常见误解
+
+| 误解 | 正确做法 |
+| --- | --- |
+| 「连上 MCP 就能登录 GitHub」 | MCP 是 Agent API；用户登录在 `approval_url` 浏览器页 |
+| 让用户去 `/login` 复制 token 给你 | 禁止；token 不得交给 Agent |
+| Agent 调用 GitHub OAuth start | 仅供浏览器；Agent 不要调用 |
+| 用 AuthAI / KV 做 GitHub 登录 | 已废弃，与 v4 proxy 无关 |
+| 使用 `/authorize/{id}` 或 v2 工具 | 已下线；只用 `/approve-proxy/{uuid}` |
+| 自己拼 approval URL | 只用 `request_access` 返回的原文 |
 
 ---
 
@@ -112,6 +140,5 @@ Console 迁移页：`/migration`
 
 | URI | 说明 |
 | --- | --- |
-| `resource://cnothing/v2-user-authorization` | **v2 用户授权 + GitHub 登录**（Markdown，Agent 必读） |
-| `resource://keyservice/getting-started` | 快速开始 JSON |
-| `resource://keyservice/protocol` | 协议与 v2 端点摘要 |
+| `resource://cnothing/v4-workflow` | v4 流程（Markdown） |
+| `resource://cnothing/instructions` | 与 initialize.instructions 相同 |

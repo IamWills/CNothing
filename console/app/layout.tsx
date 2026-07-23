@@ -8,19 +8,18 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://cnothing.com"),
-  title: "CNothing — Execution Trust Layer for AI Agents",
+  title: "CNothing — Universal Credential-Injecting Proxy for AI Agents",
   description:
-    "Secure execution of real-world capabilities without exposing secrets to AI agents.",
+    "v4 proxy: one human approval per OAuth provider, then agents call any API without seeing tokens. Skill: /skill.md · MCP: /mcp",
   applicationName: "CNothing",
   keywords: [
     "CNothing",
-    "Execution Trust Layer",
     "AI agent",
-    "capability authorization",
-    "secret vault",
+    "OAuth proxy",
+    "credential-injecting proxy",
     "MCP",
-    "OAuth broker",
-    "AI-safe secrets",
+    "GitHub agent auth",
+    "v4",
   ],
   category: "developer tools",
   alternates: {
@@ -35,24 +34,27 @@ export const metadata: Metadata = {
     shortcut: ["/cnothing4.0.png"],
   },
   openGraph: {
-    title: "CNothing — Execution Trust Layer for AI Agents",
+    title: "CNothing — Universal Credential-Injecting Proxy for AI Agents",
     description:
-      "Secure execution of real-world capabilities without exposing secrets to AI agents.",
+      "v4 proxy: one human approval per OAuth provider, then agents call any API without seeing tokens.",
     images: [{ url: brand.logoPath, alt: "CNothing logo" }],
   },
   twitter: {
     card: "summary",
-    title: "CNothing — Execution Trust Layer for AI Agents",
+    title: "CNothing — Universal Credential-Injecting Proxy for AI Agents",
     description:
-      "Secure execution of real-world capabilities without exposing secrets to AI agents.",
+      "v4 proxy: one human approval per OAuth provider, then agents call any API without seeing tokens.",
     images: [brand.logoPath],
   },
   other: {
     "ai:product": "CNothing",
-    "ai:capabilities": "execution-trust-layer,mcp,skills,oauth-broker,secret-vault,approvals",
+    "ai:version": "v4",
+    "ai:capabilities": "universal-proxy,mcp,skills,oauth-broker,approvals",
     "ai:skills-index": "https://cnothing.com/skills/index.json",
     "ai:getting-started": "https://cnothing.com/getting-started.md",
+    "ai:primary-skill": "https://cnothing.com/skill.md",
     "ai:mcp-discovery": "https://cnothing.com/.well-known/mcp",
+    "ai:openapi": "https://cnothing.com/openapi-v4.json",
   },
 };
 
@@ -67,14 +69,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         operatingSystem: "Web",
         url: "https://cnothing.com",
         description:
-          "CNothing is the Execution Trust Layer for AI Agents: secretless capability invoke, policy, approval, vault, and audit.",
+          "CNothing v4: universal credential-injecting proxy for AI agents. One human approval per OAuth provider; agents call any HTTPS API without seeing tokens.",
         sameAs: ["https://github.com/IamWills/CNothing", "https://www.npmjs.com/package/cnothing"],
         featureList: [
-          "Secretless capability invoke via /api/v3/capabilities/{id}/invoke",
-          "Policy Engine, Approval Engine, Secret Vault, Execution Workers",
+          "POST /v4/proxy credential-injecting proxy",
+          "Self-service agent register and access requests",
           "MCP discovery via /.well-known/mcp",
-          "Public skills index via /skills/index.json",
-          "Unified Approvals and Execution lifecycle APIs",
+          "Primary skill at /skill.md",
+          "OpenAPI at /openapi-v4.json",
         ],
       },
       {

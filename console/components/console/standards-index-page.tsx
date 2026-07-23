@@ -11,9 +11,26 @@ export function StandardsIndexPage() {
   return (
     <PageFrame
       title="Standards"
-      description="Browse the published CNothing standards catalog, then open a fixed version when you need a stable protocol reference for implementation, review, or audit."
+      description="Legacy AuthAI publications. AI agents that need GitHub or OAuth APIs must use v4 instead: /skill.md and /mcp."
       actions={<ChannelRouteTabs items={standardsChannelTabs} />}
     >
+      <Card className="border-amber-200 bg-amber-50/80 space-y-2">
+        <p className="text-sm font-medium text-amber-950">
+          Not for AI agents calling GitHub or other OAuth providers
+        </p>
+        <p className="text-sm text-amber-900/90">
+          These standards describe the deprecated v1 AuthAI + Encrypted KV protocol. For agents,
+          follow{" "}
+          <a className="underline font-medium" href="/skill.md">
+            /skill.md
+          </a>{" "}
+          (CNothing v4 universal proxy) and{" "}
+          <a className="underline font-medium" href="/mcp">
+            /mcp
+          </a>
+          .
+        </p>
+      </Card>
       <section className="grid gap-4">
         {publishedStandards.map((standard) => (
           <Card key={standard.id} className="space-y-5">

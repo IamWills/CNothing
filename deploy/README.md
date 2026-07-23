@@ -86,20 +86,18 @@ cd /var/www/keyservice
 sudo -u keyservice /usr/local/bin/bun run migrate
 ```
 
-v2 requires migrations `005`–`008` (capability platform, authorization, user sessions, OIDC).
-
 ## Verify after deploy
 
 ```bash
 curl -sS https://cnothing.com/health
-curl -sS https://cnothing.com/v2/platform/status | jq .
-curl -sS https://cnothing.com/openapi-v2.json | head
-curl -sS https://cnothing.com/v2/jwks | jq .
+curl -sS https://cnothing.com/openapi-v4.json | head
+curl -sS https://cnothing.com/skill.md | head
+curl -sS https://cnothing.com/.well-known/mcp | head
 ```
 
 ### Nginx (API + Console split)
 
-Production uses API on `3021` and Console on `3022`. Ensure `/v2/` and `/openapi-v2.json` proxy to the API:
+Production uses API on `3021` and Console on `3022`. Ensure `/v4/`, `/mcp`, `/openapi-v4.json`, and `/skill.md` proxy to the API:
 
 ```bash
 sudo cp /var/www/keyservice/deploy/nginx-cnothing-split.conf /etc/nginx/sites-available/cnothing.com
@@ -111,7 +109,8 @@ Template: [nginx-cnothing-split.conf](./nginx-cnothing-split.conf)
 Local on server:
 
 ```bash
-curl -sS http://127.0.0.1:3021/v2/platform/status
+curl -sS http://127.0.0.1:3021/health
+curl -sS http://127.0.0.1:3021/openapi-v4.json | head
 systemctl status keyservice.service keyservice-console.service
 journalctl -u keyservice.service -n 30 --no-pager
 ```
@@ -123,7 +122,7 @@ GitHub Actions workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml
 - `bun run typecheck`
 - `bun run build`
 - PostgreSQL + `bun run migrate`
-- `bun run e2e:v2` against a live local API
+- `bun run e2e:v4` against a live local API
 
 ## Low-memory servers
 

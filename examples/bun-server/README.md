@@ -1,10 +1,14 @@
-# Bun Example
+# Bun Example (legacy AuthAI / KV)
 
-This example shows a minimal Bun backend using the published `cnothing` package in blind mode.
+This example uses the published `cnothing` package for the **deprecated v1 AuthAI + Encrypted KV** flow.
 
-Formal standard:
+**AI agents that need GitHub or other OAuth APIs must use v4 instead:**
 
-- [https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
+- Skill: https://cnothing.com/skill.md
+- MCP: https://cnothing.com/mcp
+- OpenAPI: https://cnothing.com/openapi-v4.json
+
+Do not use this example to “log into GitHub.”
 
 ## Install
 

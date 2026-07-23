@@ -1,26 +1,44 @@
 # CNothing
 
-For Chinese documentation, see [README.CN.MD](./README.CN.MD).
+中文说明：[README.CN.MD](./README.CN.MD)
 
-`CNothing` is a production-oriented `AuthAI + Encrypted KV` service for AI automation systems that need to use secrets without exposing plaintext to the model.
+**CNothing v4** is a universal credential-injecting proxy for AI agents.
+After one human approval per OAuth provider, an agent can call **any HTTPS API** of that
+provider. The agent never sees access tokens, refresh tokens, or client secrets.
 
-It is designed for a specific problem: an AI agent needs to help orchestrate work, choose tools, and route requests, but the sensitive values used by that workflow must stay inside a trusted backend boundary. CNothing gives you a way to let the AI participate in the flow while keeping private keys and decrypted secrets out of the model.
+Production: [https://cnothing.com](https://cnothing.com)
 
-## v4: Universal Credential-Injecting Proxy (Latest, Recommended)
+## Agent documentation (start here)
 
-v4 is a strategic simplification. Earlier versions required every third-party operation to be pre-registered as a *capability* (built-in handlers or OpenAPI/MCP imports) before an agent could call it. v4 removes that layer entirely: after one user approval, an agent can call **any API of an OAuth 2.0 provider** as plain HTTP, while CNothing injects the token server-side. The agent never sees access tokens, refresh tokens, or client secrets.
+| Resource | URL / path |
+| --- | --- |
+| **Primary skill (required reading)** | [`skills/cnothing-v4/SKILL.md`](./skills/cnothing-v4/SKILL.md) → `https://cnothing.com/skill.md` |
+| MCP guide | [`docs/mcp.md`](./docs/mcp.md) |
+| OpenAPI | [`openapi-v4.json`](./openapi-v4.json) → `https://cnothing.com/openapi-v4.json` |
+| Hosted MCP | `https://cnothing.com/mcp` |
+| Local MCP | [`packages/cnothing-mcp`](./packages/cnothing-mcp) |
+
+**Only v4 is supported for agents.** Ignore AuthAI envelopes, KV save/read,
+`request_authorization`, `invoke_capability`, `/authorize/{id}`, `/v2/*`, and `/v3/*`.
+
+## What agents and humans each do
+
+| Role | Does | Does not |
+| --- | --- | --- |
+| **Agent** | Register → `request_access` → show exact `approval_url` → poll for `grant_id` → `POST /v4/proxy` | Log into GitHub; hold tokens; invent approval URLs |
+| **Human** | Sign in at `/login`, connect provider at `/connect`, open `approval_url` and Approve | Paste passwords/PATs/session tokens to the agent |
 
 ```text
-0. Agent self-registers (no admin needed)    →  POST /v4/agents/register { name }
-1. User connects a provider once             →  /connect (tokens stored encrypted)
-2. Agent requests connection-level access    →  POST /v4/access-requests { provider, hosts?, reason? }
-3. User approves once                        →  approval_url (/approve-proxy/{id} in Console)
-4. Agent calls any API through the proxy     →  POST /v4/proxy { grant_id, method, url, headers?, body? }
+0. Agent self-registers          →  POST /v4/agents/register { name }
+1. Human connects provider once  →  https://cnothing.com/connect
+2. Agent requests access         →  POST /v4/access-requests { provider, reason? }
+3. Human approves once           →  exact approval_url (/approve-proxy/{uuid})
+4. Agent calls any API           →  POST /v4/proxy { grant_id, method, url, body? }
 ```
 
-Agents can also verify the whole mechanics without any human in the loop: `POST /v4/sandbox/start` provisions an auto-approved sandbox grant whose only reachable upstream is CNothing's own echo endpoint — the agent then calls `POST /v4/proxy` against the returned `echo_url` and observes the injected token as `[REDACTED]`.
+Optional self-test without a human: `POST /v4/sandbox/start` then proxy the returned `echo_url`.
 
-Example agent call (no capability registration, no import, no per-endpoint grant):
+### Example (after grant)
 
 ```bash
 curl -X POST https://cnothing.com/v4/proxy \
@@ -28,486 +46,59 @@ curl -X POST https://cnothing.com/v4/proxy \
   -H "content-type: application/json" \
   -d '{
     "grant_id": "…",
-    "method": "POST",
-    "url": "https://api.github.com/repos/me/repo/issues",
-    "body": { "title": "Created via CNothing v4 proxy" }
+    "method": "GET",
+    "url": "https://api.github.com/user"
   }'
 ```
 
-Security boundary (enforced server-side):
+Security (server-enforced): injected `Authorization`; agent auth/cookie headers stripped;
+HTTPS + SSRF checks + host allowlist; token refresh; response redaction; audited grants.
 
-- `Authorization` is injected from the encrypted connection; agent-supplied `authorization` / `cookie` / transport headers are stripped
-- URLs must be https, pass SSRF checks (private IP / DNS-rebinding blocked), and match the grant's host allowlist (`api.github.com`, `*.googleapis.com`)
-- Tokens are auto-refreshed; responses are redacted (any token occurrence becomes `[REDACTED]`) and secret-shaped JSON fields are masked
-- Grants are user-revocable at any time (`POST /v4/grants/{id}/revoke`); every proxied request is audited
+## MCP for agents
 
-Endpoints: `POST /v4/access-requests`, `GET /v4/access-requests/{id}`, `POST /v4/access-requests/{id}/approve|deny`, `POST /v4/proxy`, `GET /v4/grants`, `POST /v4/grants/{id}/revoke`, `GET /v4/providers`, `GET /v4/connections`. Full spec: [`openapi-v4.json`](./openapi-v4.json). E2E: `bun run e2e:v4`.
+- **Hosted:** `https://cnothing.com/mcp` — tools: `register_agent`, `start_sandbox`,
+  `list_providers`, `request_access`, `get_access_status`, `proxy_request`, …
+- **Local stdio:** configure `CNOTHING_BASE_URL` + `CNOTHING_AGENT_TOKEN` in
+  [`packages/cnothing-mcp`](./packages/cnothing-mcp).
 
-Known protocol limits (inherent to OAuth 2.0, not solvable by any broker): the user must click through the provider consent screen once per connection, and providers without RFC 7591 Dynamic Client Registration need a one-time operator-configured `client_id`/`client_secret` (DCR is supported via `POST /v4/providers/proposals` when the provider offers a `registration_endpoint`).
+## Human console
 
-### MCP for agents (two options)
+- Login: `https://cnothing.com/login`
+- Connect providers: `https://cnothing.com/connect`
+- Approve agent requests: `https://cnothing.com/approve-proxy/{uuid}` (from API only)
+- Phone approvals (optional): `https://cnothing.com/devices` + iOS app — see [`iOS/README.md`](./iOS/README.md)
 
-If an agent cannot make raw HTTP calls, it can use CNothing through MCP:
+## Older API versions
 
-- **Hosted MCP** — point any MCP-over-HTTP client at `https://cnothing.com/mcp` (JSON-RPC 2.0, tools: `list_providers`, `request_access`, `get_access_status`, `proxy_request`, `list_grants`, `submit_provider_proposal`, `get_provider_proposal`). Pass the agent token as `Authorization: Bearer …`.
-- **Local stdio MCP** — install [`packages/cnothing-mcp`](./packages/cnothing-mcp) in the agent's own environment and configure `CNOTHING_BASE_URL` + `CNOTHING_AGENT_TOKEN`. See its [README](./packages/cnothing-mcp/README.md).
+| Version | Status |
+| --- | --- |
+| **v4** | Current — use this |
+| **v2 / v3** | Removed — `410 Gone` (legacy OAuth callback paths still aliased) |
+| **v1 AuthAI + KV** | Deprecated compatibility only — **not** for GitHub/agent OAuth |
 
-Agent-readable skill: [`skills/cnothing-v4/SKILL.md`](./skills/cnothing-v4/SKILL.md) (served at `/skill.md`).
-
-## v2–v3: Decommissioned
-
-The capability-registration architecture (v2, v2.5, v2.6, v3) has been removed. All `/v2/*`, `/v2.6/*`, `/v3/*` API paths now return `410 Gone` pointing to the v4 equivalents. Existing OAuth app registrations keep working: legacy callback paths (`/v2/oauth/callback/*`, `/v3/oauth/callback/*`, etc.) remain as aliases to the v4 callback handler.
-
-**v1 AuthAI + Encrypted KV** remains available during a compatibility period but is **deprecated** (see `Deprecation` / `Sunset` headers and `_deprecation` in JSON responses).
-
-## Why CNothing
-
-CNothing is valuable when you want all of the following at the same time:
-
-- The AI can coordinate a workflow that depends on secrets
-- The AI never sees secret plaintext
-- The client backend remains the trust boundary because it holds the private key
-- Secret reads and writes can still be standardized through HTTP, MCP, and Skill interfaces
-- Stored data remains encrypted at rest with per-record envelope encryption
-
-In practice, CNothing sits between an AI-facing orchestration layer and a backend that is allowed to handle cryptographic material. The model can discover available capabilities, forward ciphertext envelopes, and work with non-sensitive routing metadata, while the backend performs decryption and signing-sensitive operations.
-
-GitHub repository:
-
-- [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
-
-Formal public standards:
-
-- Standards index: [https://cnothing.com/standards](https://cnothing.com/standards)
-- Authentication Standard 1.0: [https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
-- Markdown export: [https://cnothing.com/standards/authentication/1.0/markdown](https://cnothing.com/standards/authentication/1.0/markdown)
-- HTML export: [https://cnothing.com/standards/authentication/1.0/html](https://cnothing.com/standards/authentication/1.0/html)
-
-## When To Use It
-
-CNothing is a strong fit when:
-
-- You are building AI agents or copilots that need to trigger authenticated integrations
-- You want AI to drive flow control, but not directly hold API tokens, access tokens, or user secrets
-- You need a reusable secret-access protocol instead of one custom backend adapter per tool
-- You want both human operators and AI systems to browse capabilities through a shared control plane
-
-CNothing is probably not the right primary abstraction when:
-
-- AI is not involved in the workflow at all
-- Your backend can talk directly to upstream systems without any AI-facing layer
-- A standard secrets manager alone already solves your problem because you do not need challenge-based client authentication or encrypted envelope forwarding
-
-## Core Model
-
-CNothing is built around a few simple roles:
-
-- `CNothing`
-  - Holds the AuthAI private key, validates challenge usage, and stores encrypted KV records
-- `Client backend`
-  - Holds the client private key and acts as the trusted cryptographic boundary
-- `AI`
-  - Orchestrates the workflow, calls HTTP or MCP APIs, and forwards ciphertext envelopes without decrypting them
-
-That split is the main value proposition: the AI is operationally useful, but cryptographically blind.
-
-## End-To-End Flow
-
-The shortest mental model for CNothing is:
-
-1. The client registers a public key with `CNothing`.
-2. `CNothing` returns a one-time challenge encrypted to that client public key.
-3. The client backend decrypts the challenge locally.
-4. The client backend creates an `auth_envelope` plus either a `data_envelope` or `query_envelope`, then encrypts them to `CNothing`.
-5. The AI forwards those ciphertext envelopes to CNothing using HTTP or MCP.
-6. CNothing validates the challenge, performs the read or write, and returns the next challenge.
-7. For reads, the server MUST encrypt the result to the `recipient_public_key` provided in the request. Callers must supply the reader's RSA public key explicitly; omitting it is rejected with `missing_recipient_public_key`.
-
-This means:
-
-- The AI never receives plaintext secrets
-- The AI never needs a private key
-- Challenge replay is limited because challenges are single-use and short-lived
-
-### Third-Party Credentials (Common Agent Mistakes)
-
-CNothing is the platform that stores sensitive credentials for third-party services. In addition to the AuthAI 7-step flow above, the business workflow has three phases:
-
-1. **Join CNothing**: After registration, the agent holds the **CNothing AuthAI public key** and registers a **client public key** for identity.
-2. **Register with a third party**: Provide the **CNothing AuthAI public key** (not the client public key) to the third party; the third party returns an API key encrypted to CNothing; store it with `kv.save` after CNothing decrypts and persists it.
-3. **Call the third-party API**: Use the **third-party identifier** and **third-party service public key** on `kv.read`; set `recipient_public_key` to the third-party public key; hand the ciphertext to the third party, which decrypts with its private key to authenticate.
-
-Do not mix up the three public keys: CNothing AuthAI (protocol envelopes and third-party credential delivery), client (AuthAI identity), and third-party service (read recipient when the third party consumes the secret). See [docs/protocol.md](./docs/protocol.md) section「第三方服务凭证：正确用法」.
-
-For deeper protocol details, see:
-
-- [docs/protocol.md](./docs/protocol.md)
-- [docs/mcp.md](./docs/mcp.md)
-
-For the fixed, public, versioned protocol publication that third-party systems can cite in implementation reviews and audits, see:
-
-- [CNothing Authentication Standard 1.0](https://cnothing.com/standards/authentication/1.0)
-
-## Main Endpoints
-
-- Recommended key-holder verification flow for new integrations: **signature challenge**.
-- Ciphertext compare (`A/B + S1/S2`) remains available as a compatibility flow.
-
-- `GET /v1/authai/public-key`
-  - Return the CNothing AuthAI public key metadata
-- `POST /v1/authai/register`
-  - Register or reuse a client public key and return an encrypted one-time challenge
-- `POST /v1/authai/refresh`
-  - Issue the next challenge using a valid auth envelope
-- `POST /v1/authai/rotate-key`
-  - Rotate the client public key while keeping the same `client_uuid`
-- `POST /v1/authai/key-holder/challenge`
-  - Compatibility flow: create challenge pair `A/B` for verifying whether the target really owns the private key behind a provided public key
-- `POST /v1/authai/key-holder/verify`
-  - Compatibility flow: submit `verification_id + S2 + B`; CNothing decrypts `B` with its private key to recover `S1` and compares `S1 === S2`
-- `POST /v1/authai/key-holder/sign-challenge`
-  - Recommended flow: create `challenge_text` that the target signs with its private key
-- `POST /v1/authai/key-holder/verify-signature`
-  - Recommended flow: submit `verification_id + challenge_text + signature + target_public_key`; CNothing verifies the signature and key fingerprint
-- `POST /v1/kv/save`
-  - Save KV items using `auth_envelope + data_envelope`
-- `POST /v1/kv/read`
-  - Read KV items using `auth_envelope + query_envelope + recipient_public_key`; the result is encrypted to the supplied reader public key (required)
-
-## Console And Browse APIs
-
-This repository also includes a standalone `CNothing Console`:
-
-- `console/`
-  - A Next.js console for browsing MCP tools and resources, skills, clients, namespaces, key names, and decrypted values through backend APIs
-
-Browsable APIs:
-
-- `GET /v1/catalog/mcp`
-  - List MCP tools and resources
-- `GET /v1/catalog/skills`
-  - List bundled skills in the repository
-
-Admin APIs:
-
-- `GET /v1/admin/clients`
-  - List registered clients
-- `POST /v1/admin/clients/register`
-  - Manually register a client by pasting a public key
-- `GET /v1/admin/clients/:client_uuid/namespaces`
-  - List namespaces under a client
-- `GET /v1/admin/clients/:client_uuid/kv?namespace=...`
-  - List key names under a namespace
-- `GET /v1/admin/clients/:client_uuid/kv/value?namespace=...&key=...`
-  - View a decrypted value
-- `POST /v1/admin/clients/:client_uuid/kv/save`
-  - Manually write JSON values through the admin API
-
-Notes:
-
-- The `catalog` APIs are public by default and are suitable for discovery
-- The `admin` APIs reuse `KEYSERVICE_BEARER_TOKEN` for Bearer authentication
-- If `KEYSERVICE_BEARER_TOKEN` is unset, the console and admin APIs do not add extra blocking
-
-## Third-Party Server SDK
-
-This repository now also includes a reusable Node.js and Bun SDK so third-party backends can integrate with `https://cnothing.com` without reimplementing the protocol by hand.
-
-Before building against the SDK in production, review the fixed public standard:
-
-- [CNothing Authentication Standard 1.0](https://cnothing.com/standards/authentication/1.0)
-- [Markdown export](https://cnothing.com/standards/authentication/1.0/markdown)
-
-Install it from npm:
+## Local development
 
 ```bash
-npm install cnothing
-```
-
-or:
-
-```bash
-bun add cnothing
-```
-
-The SDK is designed for backend use. A third-party service can:
-
-- Generate or load its own client key pair
-- Register its public key with `CNothing`
-- Keep its private key local
-- Save and read encrypted KV values through `https://cnothing.com`
-- Let AI use the CNothing protocol without ever seeing plaintext secrets
-
-For third-party production use against `https://cnothing.com`, the most privacy-preserving path is to use the structure-protected methods:
-
-- `saveBlindJson()`
-- `readBlindJson()`
-
-These methods protect `namespace`, `key`, `metadata`, and `value` on the third-party backend before anything is sent to CNothing.
-
-If you only need to hide the value plaintext but are comfortable exposing namespace and key names to the service, you can use:
-
-- `savePrivateJson()`
-- `readPrivateJson()`
-
-Those methods only add a second encryption layer for the value itself.
-
-Minimal example:
-
-```ts
-import { CNothingClient, generateClientKeyPair } from "cnothing";
-
-const { privateKeyPem, publicKeyPem } = generateClientKeyPair();
-
-const client = new CNothingClient({
-  baseUrl: "https://cnothing.com",
-  clientPrivateKeyPem: privateKeyPem,
-  clientPublicKeyPem: publicKeyPem,
-  clientLabel: "third-party-service",
-  privacyKey: process.env.CNOTHING_PRIVACY_KEY!,
-});
-
-await client.register();
-
-await client.saveBlindJson({
-  namespace: "thirdparty.example.production",
-  items: [
-    {
-      key: "provider/openai/api-key",
-      value: { apiKey: "sk-..." },
-      metadata: { provider: "openai" },
-    },
-  ],
-});
-
-const readResult = await client.readBlindJson({
-  namespace: "thirdparty.example.production",
-  keys: ["provider/openai/api-key"],
-});
-
-console.log(readResult.items["provider/openai/api-key"]);
-```
-
-The SDK exports:
-
-- `CNothingClient`
-  - High-level register / refresh / save / read workflow client
-- `generateClientKeyPair()`
-  - Generate a local RSA key pair for development or first-time setup
-- `rotateKey()`
-  - Rotate to a new client key pair while preserving the same CNothing client identity
-- Envelope helpers
-  - For teams that want lower-level control over how requests are built
-
-Reference examples:
-
-- [examples/node-server](./examples/node-server)
-- [examples/bun-server](./examples/bun-server)
-
-## Why Third-Party Users Do Not Need To Fear AI Leaking Their Secrets
-
-When a third-party backend uses `https://cnothing.com` correctly, the AI still does not gain access to the third-party's sensitive plaintext values.
-
-That is because:
-
-- The third-party backend keeps the client private key locally
-- `CNothing` encrypts challenges to the third-party public key
-- The backend decrypts those challenges locally and creates ciphertext envelopes for CNothing
-- In the recommended SDK flow, the backend also protects namespace and key names with a deterministic privacy mapping
-- The backend seals metadata and value plaintext before they are ever handed to CNothing
-- AI only forwards ciphertext envelopes and non-sensitive metadata
-- Read results are encrypted back to the third-party public key, and the inner value stays client-sealed, so only that backend can decrypt it
-
-In other words, the AI may participate in orchestration, but it does not become the holder of third-party plaintext secrets. In the recommended blind mode, the CNothing service operator also does not receive the third-party plaintext value, plaintext metadata, or original namespace and key names.
-
-The operator can still observe high-level access patterns such as request timing, client identity, and the existence of stable protected identifiers. This is operator-blind for payload and structure content, not an attempt at traffic-analysis resistance.
-
-## Key Rotation
-
-CNothing now supports rotating a client public key without changing the `client_uuid`.
-
-The intended flow is:
-
-1. The client authenticates with the current key using a valid `auth_envelope`.
-2. The client submits a new public key to `POST /v1/authai/rotate-key`.
-3. CNothing updates the existing client record in place.
-4. Existing active challenges for that client are invalidated.
-5. CNothing returns the next challenge encrypted to the new public key.
-6. The client continues using the same `client_uuid`, namespaces, and stored records.
-
-From the SDK, the high-level method is:
-
-```ts
-const nextKeys = generateClientKeyPair();
-
-await client.rotateKey({
-  newClientPrivateKeyPem: nextKeys.privateKeyPem,
-  newClientPublicKeyPem: nextKeys.publicKeyPem,
-  newClientKeyId: "rotation-2026-04",
-});
-```
-
-The normative public specification for this flow is:
-
-- [https://cnothing.com/standards/authentication/1.0](https://cnothing.com/standards/authentication/1.0)
-
-## Security Properties
-
-- Clients only submit public keys during registration
-- `challenge_for_client` is always encrypted to the client public key
-- Key-holder verification challenge pairs are generated server-side and single-use with TTL
-- Signature-based key-holder verification is the preferred production method
-- `challenge_for_target` (A) and `challenge_for_authai` (B) carry the same secret S1 but are encrypted to different recipients
-- `auth_envelope` and `data/query_envelope` are always encrypted to `CNothing`
-- Challenges are single-use and short-lived
-- Server-side records use per-record random DEKs wrapped by the master key
-
-Important constraints:
-
-- AI should never request private keys
-- AI should never decrypt envelopes
-- AI should only forward ciphertext envelopes and non-sensitive metadata
-- If key names are sensitive, the caller backend should add a mapping or hashing layer
-
-## Quick Start
-
-### 1. Prepare infrastructure
-
-You need:
-
-- Bun
-- PostgreSQL
-- A `.env` file with the required CNothing settings
-
-Required environment variables:
-
-- `DATABASE_URL`
-- `KEYSERVICE_MASTER_KEY`
-- `KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH`
-- `KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH` (optional if derived from the private key)
-
-Optional but commonly useful:
-
-- `PORT`
-- `KEYSERVICE_CHALLENGE_TTL_SECONDS`
-- `KEYSERVICE_BEARER_TOKEN`
-- `KEYSERVICE_CONSOLE_URL`
-
-### 2. Generate local secrets for development
-
-```bash
-cd CNothing
+cp .env.example .env
+# set DATABASE_URL, KEYSERVICE_GITHUB_OAUTH_CLIENT_ID/SECRET, etc.
 bun install
-bun run generate-secrets
-```
-
-This creates:
-
-- `.local-keys/authai-private-key.pem`
-- `.local-keys/authai-public-key.pem`
-- `.local-keys/generated.env`
-
-That explicit initialization step is intentional: service identity does not silently change on restart, and key rotation remains operationally visible.
-
-If you are integrating from a separate third-party backend instead of deploying CNothing itself, install the SDK there and point it at `https://cnothing.com`:
-
-```ts
-import { CNothingClient } from "cnothing";
-
-const client = new CNothingClient({
-  baseUrl: "https://cnothing.com",
-  clientPrivateKeyPem: process.env.CNOTHING_CLIENT_PRIVATE_KEY_PEM!,
-  clientPublicKeyPem: process.env.CNOTHING_CLIENT_PUBLIC_KEY_PEM!,
-  clientLabel: "my-service",
-  privacyKey: process.env.CNOTHING_PRIVACY_KEY!,
-});
-
-await client.register();
-await client.saveBlindJson({
-  namespace: "my.service.production",
-  items: [{ key: "secret/example", value: { token: "..." }, metadata: { kind: "token" } }],
-});
-```
-
-### 3. Configure the environment
-
-Create a `.env` file and set at least:
-
-```env
-DATABASE_URL=postgresql://user:password@127.0.0.1:5432/cnothing
-KEYSERVICE_MASTER_KEY=...
-KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH=./.local-keys/authai-private-key.pem
-KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH=./.local-keys/authai-public-key.pem
-PORT=3021
-```
-
-### 4. Run migrations and start the API
-
-```bash
-cd CNothing
 bun run migrate
-bun run dev
+bun run dev          # API :3021
+bun run console:dev  # Console :3022
 ```
 
-### 5. Start the console
-
-```bash
-cd CNothing/console
-bun install
-bun run dev
-```
-
-Or from the repository root:
-
-```bash
-cd CNothing
-bun run console:dev
-```
-
-### 6. Verify the deployment
-
-Once the service is running, verify:
-
-- `GET /health`
-- `GET /v1/authai/public-key`
-- `GET /mcp`
-- `GET /skill.md`
-
-On a default local setup, that usually means:
+Verify:
 
 ```bash
 curl http://127.0.0.1:3021/health
-curl http://127.0.0.1:3021/v1/authai/public-key
+curl http://127.0.0.1:3021/openapi-v4.json | head
+curl http://127.0.0.1:3021/skill.md | head
 curl http://127.0.0.1:3021/mcp
 ```
 
-## Deployment Notes
+E2E: `bun run e2e:v4`. Deploy: [`deploy/README.md`](./deploy/README.md).
+CI on `main`: typecheck, build, migrate, tests, `e2e:v4`.
 
-`CNothing` works well as an independently published and deployed repository. For a public repository:
+## Repository
 
-- Keep `.env.example`
-- Do not commit `.env`
-- Do not commit `.local-keys/`
-- Provide production secrets through environment variables or a separate secrets directory
-- Keep production private keys outside paths that may be overwritten by code sync
-
-This repository already includes deployment helpers under [deploy/](./deploy).
-
-See [deploy/README.md](./deploy/README.md) for production pull/migrate/restart and verification steps.
-
-### CI
-
-Every push to `main` runs GitHub Actions: typecheck, build, PostgreSQL migrate, unit tests, and `bun run e2e:v4`. See [.github/workflows/ci.yml](./.github/workflows/ci.yml).
-
-## File Guide
-
-- [src/core/key-service.ts](./src/core/key-service.ts)
-  - Core protocol orchestration
-- [src/core/key-service.repository.ts](./src/core/key-service.repository.ts)
-  - PostgreSQL repository layer
-- [src/crypto/hybrid-envelope.ts](./src/crypto/hybrid-envelope.ts)
-  - `RSA-OAEP-256 + AES-256-GCM` hybrid encryption
-- [migrations/002_authai_kv.sql](./migrations/002_authai_kv.sql)
-  - `clients/challenges/kv/audit` schema
-- [skills/keyservice-authai/SKILL.md](./skills/keyservice-authai/SKILL.md)
-  - AI usage conventions
+- [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)

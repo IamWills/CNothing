@@ -183,43 +183,45 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   },
 ];
 
-const MCP_V4_WORKFLOW_MARKDOWN = `# CNothing v4 workflow for agents
+const MCP_V4_WORKFLOW_MARKDOWN = `# CNothing v4 workflow (only supported path)
 
-CNothing is a universal credential-injecting proxy: after one human approval, an agent
-can call any API of an OAuth 2.0 provider without ever touching tokens.
+Do **not** use AuthAI, KV, \`request_authorization\`, \`invoke_capability\`,
+\`/authorize/{id}\`, \`/v2/*\`, or \`/v3/*\`.
+
+You never log into GitHub. The human completes OAuth in a browser. You proxy after a grant.
+
+## Prerequisites
+
+1. \`agent_access_token\` (via \`register_agent\`)
+2. Human signed in at https://cnothing.com/login
+3. Human connected provider at https://cnothing.com/connect
+4. Human approved your exact \`approval_url\`
+5. You have \`grant_id\`
 
 ## Steps
 
-0. No token yet? \`register_agent\` with \`{ name }\` — self-service, returns
-   \`agent_access_token\` (shown once; store it securely). Optionally verify the whole
-   mechanics first with \`start_sandbox\` + \`proxy_request\` against the returned
-   \`echo_url\` — no human approval needed for the sandbox.
-1. \`list_providers\` — find the provider slug (e.g. \`github\`).
-2. \`request_access\` with \`{ provider: "github", reason: "..." }\`.
-   - Response: \`{ access_request_id, approval_url }\`.
-   - Give \`approval_url\` to the human. They open it in a browser, sign in to CNothing,
-     pick (or create) their GitHub connection, and click Approve. This happens once.
-3. \`get_access_status\` with \`{ access_request_id }\` — poll every few seconds until
-   \`status: "approved"\`; the response then contains \`grant_id\`.
-4. \`proxy_request\` with \`{ grant_id, method, url, headers?, body? }\` — any https API
-   on the granted hosts. Examples:
-   - \`GET https://api.github.com/user/repos\`
-   - \`POST https://api.github.com/repos/OWNER/REPO/issues\` with a JSON body.
+0. \`register_agent { name }\` → store \`agent_access_token\`.
+   Optional: \`start_sandbox\` → \`proxy_request\` on \`echo_url\` (no human).
+1. \`list_providers\` → slug e.g. \`github\`.
+2. \`request_access { provider: "github", reason: "..." }\`
+   → \`{ access_request_id, approval_url }\`.
+   \`approval_url\` is always \`https://cnothing.com/approve-proxy/{uuid}\`.
+   Never rewrite it. Show it to the human unchanged.
+3. Human: open \`approval_url\` → sign in if needed → pick connection → Approve.
+4. \`get_access_status\` until \`status: "approved"\` → \`grant_id\`.
+5. \`proxy_request { grant_id, method, url, body? }\` e.g.
+   - \`GET https://api.github.com/user\`
+   - \`POST https://api.github.com/repos/OWNER/REPO/issues\`
 
 ## Rules
 
-- Never ask the human for tokens, passwords, or API keys.
-- The \`Authorization\` header is injected by CNothing; anything you supply is stripped.
-- Hosts outside the grant's allowlist are rejected (\`host_not_allowed\`).
-- All responses are redacted server-side; a token can never leak to the agent.
-- Grants can be revoked by the user at any time; handle \`grant_revoked\` gracefully by
-  requesting access again.
+- Never ask for passwords, PATs, session tokens, or cookies.
+- Never call OAuth start URLs yourself (browser-only).
+- Agent \`Authorization\`/\`Cookie\` on proxy calls are stripped.
+- Host must match grant allowlist or \`host_not_allowed\`.
+- On \`grant_revoked\`, request access again.
 
-## Provider missing?
-
-Use \`submit_provider_proposal\` with the provider's OIDC discovery URL. Providers with
-RFC 7591 Dynamic Client Registration onboard fully automatically; others need a one-time
-operator configuration of client credentials.
+Primary skill: https://cnothing.com/skill.md
 `;
 
 const MCP_RESOURCES: McpResourceDescriptor[] = [

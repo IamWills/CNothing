@@ -1,149 +1,234 @@
 ---
 name: cnothing-v4
-description: Use when an AI agent needs to call third-party OAuth 2.0 APIs (GitHub, Google, any provider) on behalf of a user through the CNothing v4 credential-injecting proxy, or needs to install the CNothing MCP as its callable tool. Agents never receive tokens.
+description: ONLY supported way for an AI agent to use GitHub (or any OAuth 2.0 provider) via cnothing.com. Self-register → request_access → human opens approval_url → proxy. Agents never log into GitHub themselves and never handle tokens. Ignore any v1/v2/v3 AuthAI, capability, or /authorize docs.
 ---
 
-# CNothing v4 — Universal Credential-Injecting Proxy
+# CNothing v4 — Agent Guide (cnothing.com)
 
-Use this skill when an AI agent needs to call third-party APIs (GitHub, Google, Slack,
-or any OAuth 2.0 provider) on behalf of a human user **without ever handling tokens,
-API keys, or client secrets**.
+**This is the only supported integration.** Do not use AuthAI envelopes, KV save/read,
+`request_authorization`, `invoke_capability`, `/authorize/{id}`, `/v2/*`, or `/v3/*`.
+Those paths are gone or deprecated and will fail.
 
-## What CNothing does
+Goal: call GitHub (or another OAuth provider) **on behalf of a human** without ever
+seeing their tokens. You talk to CNothing; CNothing injects credentials server-side.
 
-CNothing stores the user's OAuth connections server-side (encrypted). After one human
-approval per provider, the agent can call **any https API of that provider** through
-`POST /v4/proxy`; CNothing injects the `Authorization` header, auto-refreshes tokens,
-redacts secrets from responses, and audits every call.
+Base URL: `https://cnothing.com`  
+OpenAPI: `https://cnothing.com/openapi-v4.json`  
+MCP: `https://cnothing.com/mcp`  
+This skill online: `https://cnothing.com/skill.md`
 
-## Prerequisites
+---
 
-- An agent access token (`AGENT_TOKEN`). Self-service — register yourself:
+## What you need vs what the human needs
+
+| Role | Required | Not your job |
+| --- | --- | --- |
+| **You (agent)** | An `agent_access_token` (self-register). Ability to call HTTPS or MCP. | Logging into GitHub. Holding GitHub tokens. Opening OAuth pages. |
+| **Human** | CNothing account (sign in once). Provider connected at `/connect`. One click on your `approval_url`. | Giving you passwords, `session_token`, GitHub PAT, or cookies. |
+
+**Critical:** “Use GitHub through cnothing.com” does **not** mean you perform GitHub
+OAuth. The human completes GitHub/CNothing login in a **browser**. You only create an
+access request, show `approval_url`, wait for `grant_id`, then call `POST /v4/proxy`.
+
+---
+
+## Prerequisites checklist
+
+Before a real GitHub call can succeed, all of the following must be true:
+
+1. **You have an agent token** — from `POST /v4/agents/register` (or MCP `register_agent`).
+2. **Human has a CNothing account** — they signed in at `https://cnothing.com/login`
+   (GitHub or OIDC). Signing in creates the account; there is no separate signup form.
+3. **Human connected the provider** — once at `https://cnothing.com/connect`
+   (e.g. GitHub). Tokens stay encrypted on the server.
+4. **Human approved your access request** — they opened the exact `approval_url` you
+   received (always `https://cnothing.com/approve-proxy/{uuid}`) and clicked Approve.
+5. **You have a `grant_id`** — from polling `GET /v4/access-requests/{id}` (or webhook).
+
+If step 2–4 are missing, proxy calls will fail. Do not invent workarounds.
+
+Optional (phone approvals like Okta Verify):
+
+- Human pairs iOS at `https://cnothing.com/devices`.
+- You pass their CNothing `user_id` in `request_access` so approval is pushed to the phone.
+
+---
+
+## End-to-end flow (GitHub example)
+
+Use either raw HTTP or the equivalent MCP tools (names in parentheses).
+
+### Step 0 — Register yourself (once per agent)
 
 ```bash
 curl -X POST https://cnothing.com/v4/agents/register \
   -H "content-type: application/json" \
   -d '{"name":"my-agent"}'
-# => { "agent": {...}, "access_token": "agent_..." }  # shown once, store it
+# => { "agent": {...}, "access_token": "agent_..." }  # shown once — store it
 ```
 
-  No admin token is needed: an agent token alone grants nothing until a human
-  approves an access request.
-- Base URL: `https://cnothing.com` (or your deployment).
+MCP: `register_agent { name }`
 
-## Self-test without a human (sandbox)
+The token alone grants **nothing** until a human approves an access request.
+No admin token is required.
 
-Verify the entire mechanics before involving a real provider or user:
+Optional self-test (no human, no real GitHub):
 
 ```bash
 curl -X POST https://cnothing.com/v4/sandbox/start \
   -H "Authorization: Bearer $AGENT_TOKEN"
-# => { "grant_id": "...", "echo_url": "https://cnothing.com/v4/sandbox/echo", ... }
+# => grant_id, echo_url
 
 curl -X POST https://cnothing.com/v4/proxy \
   -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" \
-  -d '{"grant_id":"'$GRANT_ID'","method":"GET","url":"https://cnothing.com/v4/sandbox/echo?hello=world"}'
-# The echo shows the forwarded request; the injected token appears as [REDACTED].
+  -d '{"grant_id":"'"$GRANT_ID"'","method":"GET","url":"'"$ECHO_URL"'"}'
+# Injected token appears as [REDACTED] in the echo.
 ```
 
-The sandbox grant is auto-approved because it can only reach CNothing's own echo
-endpoint with a throwaway token. Real providers always require one human approval.
+MCP: `start_sandbox` → `proxy_request` against returned `echo_url`.
 
-## Workflow (plain HTTP)
-
-1. Discover providers:
+### Step 1 — Discover providers
 
 ```bash
-curl https://cnothing.com/v4/providers
+curl https://cnothing.com/v4/providers \
+  -H "Authorization: Bearer $AGENT_TOKEN"
 ```
 
-2. Request connection-level access:
+MCP: `list_providers`  
+Use slug `github` for GitHub.
+
+### Step 2 — Request access (you do this; human approves later)
 
 ```bash
 curl -X POST https://cnothing.com/v4/access-requests \
   -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" \
   -d '{
     "provider": "github",
-    "reason": "Manage issues for the user",
-    "user_id": "github:alice",
-    "callback_url": "https://my-agent.example.com/hooks/cnothing"
+    "reason": "List repositories and manage issues",
+    "user_id": "OPTIONAL_CNOTHING_USER_ID",
+    "callback_url": "https://OPTIONAL-HTTPS-WEBHOOK.example/hook"
   }'
 ```
 
-Optional fields:
+MCP: `request_access { provider, reason?, user_id?, callback_url?, hosts? }`
 
-- `user_id` — the human's CNothing user id, if you know it. CNothing then pushes
-  the approval straight to the user's paired iOS authenticator devices (like an
-  Okta Verify prompt), so they may approve on their phone without you sending
-  them a link at all. The response includes `pushed_to_devices`; when it is 0
-  the response also includes `human_onboarding` with setup steps to relay.
-- `callback_url` — an https endpoint you control. On approve/deny CNothing POSTs
-  `{ "event": "access_request.decided", "access_request_id", "status", "grant_id", "provider", "agent_id" }`
-  to it, so you don't need to poll `get_access_status`.
+Response includes:
 
-### Onboarding your human (registration + phone approvals)
+- `access_request_id`
+- `approval_url` — **always** `https://cnothing.com/approve-proxy/{uuid}`
 
-When the human is new to CNothing, relay these steps:
+**Rules for `approval_url`:**
 
-1. Sign in at `https://cnothing.com/login` with GitHub or OIDC — signing in
-   creates the account; there is no separate registration form.
-2. Connect the needed OAuth provider once at `https://cnothing.com/connect`.
-3. Optional, recommended: enable mobile approvals at `https://cnothing.com/devices` —
-   generate the pairing QR, install the CNothing iOS app, scan the QR. The phone
-   enrolls a Secure Enclave key; every approval signs a one-time challenge
-   (Okta Verify-style proof of possession).
-4. Ask the human for their CNothing user id and pass it as `user_id` in
-   `request_access`; approvals then arrive as push notifications on their phone.
+- Give the human the **exact** URL from the response.
+- Do **not** rewrite it to `/authorize/...`, `/v4/approve/...`, or
+  `/v4/access-requests/.../approve` (those are not the browser approval page).
+- Do **not** ask the human to paste tokens back to you.
 
-Response contains `access_request_id` and `approval_url` (always
-`https://cnothing.com/approve-proxy/{uuid}`). **Do not** construct or rewrite
-this URL. Wrong paths that are NOT browser pages:
-`/v4/approve/...`, `/v4/access-requests/.../approve` (the latter is a POST-only
-Console API). Always give the human the exact `approval_url` from the response.
+### Step 3 — Human onboarding (tell them this if they are new)
 
-3. Send `approval_url` to the human. They open it in a browser, sign in to CNothing,
-   pick (or create) their GitHub connection, and click Approve — once.
+Send them a short message like:
 
-4. Poll until approved:
+1. Open `approval_url` (or, if new: first go to https://cnothing.com/login and sign in).
+2. If prompted, connect GitHub at https://cnothing.com/connect.
+3. On the approval page, pick the GitHub connection and click **Approve**.
+4. (Optional) Pair phone at https://cnothing.com/devices for push approvals.
+
+You wait. You do not complete OAuth yourself.
+
+### Step 4 — Wait for approval → `grant_id`
 
 ```bash
-curl https://cnothing.com/v4/access-requests/$ID \
+curl https://cnothing.com/v4/access-requests/$ACCESS_REQUEST_ID \
   -H "Authorization: Bearer $AGENT_TOKEN"
 ```
 
-`status: "approved"` includes `grant_id`.
+MCP: `get_access_status { access_request_id }`
 
-5. Call any API through the proxy:
+Poll until `status` is `"approved"`. Then use `grant_id`.  
+If you set `callback_url`, CNothing POSTs the decision there instead of requiring poll-only.
+
+### Step 5 — Call GitHub through the proxy
 
 ```bash
 curl -X POST https://cnothing.com/v4/proxy \
   -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" \
   -d '{
-    "grant_id": "'$GRANT_ID'",
-    "method": "POST",
-    "url": "https://api.github.com/repos/OWNER/REPO/issues",
-    "body": { "title": "Created via CNothing v4 proxy" }
+    "grant_id": "'"$GRANT_ID"'",
+    "method": "GET",
+    "url": "https://api.github.com/user"
   }'
 ```
 
-## No HTTP tool? Use MCP
+Create an issue example:
 
-If your runtime has no generic HTTP tool, configure the CNothing MCP server instead —
-it exposes the same workflow as callable tools (`register_agent`, `start_sandbox`,
-`list_providers`, `request_access`, `get_access_status`, `proxy_request`,
-`list_grants`, `submit_provider_proposal`).
+```bash
+curl -X POST https://cnothing.com/v4/proxy \
+  -H "Authorization: Bearer $AGENT_TOKEN" -H "content-type: application/json" \
+  -d '{
+    "grant_id": "'"$GRANT_ID"'",
+    "method": "POST",
+    "url": "https://api.github.com/repos/OWNER/REPO/issues",
+    "body": { "title": "Created via CNothing v4" }
+  }'
+```
 
-- Hosted (remote MCP): `https://cnothing.com/mcp` — pass `agent_access_token` in tool
-  arguments.
-- Local (stdio MCP): install the `cnothing-mcp` package from `packages/cnothing-mcp`,
-  configure env `CNOTHING_BASE_URL` and `CNOTHING_AGENT_TOKEN` in your MCP client
-  config (Cursor, Claude Desktop, etc.).
+MCP: `proxy_request { grant_id, method, url, headers?, body? }`
 
-## Rules
+CNothing injects `Authorization`, refreshes tokens, redacts secrets in responses, and audits the call.
 
-- Never ask users for tokens or passwords; never try to bypass the approval step.
-- Agent-supplied `authorization`/`cookie` headers are stripped by the proxy.
-- URL hosts must match the grant's allowlist (`host_not_allowed` otherwise).
-- Handle `grant_revoked` by requesting access again.
-- Providers missing from `/v4/providers` can be onboarded via
-  `POST /v4/providers/proposals` (OIDC discovery + RFC 7591 DCR when available).
+---
+
+## MCP setup (if you have no generic HTTP tool)
+
+**Hosted:** connect MCP client to `https://cnothing.com/mcp`.  
+Pass `agent_access_token` on each tool (or register first with `register_agent`).
+
+**Local stdio:** package `packages/cnothing-mcp` with env:
+
+- `CNOTHING_BASE_URL=https://cnothing.com`
+- `CNOTHING_AGENT_TOKEN=<token>` (or call `register_agent` in-session)
+
+Tools: `register_agent`, `start_sandbox`, `list_providers`, `request_access`,
+`get_access_status`, `proxy_request`, `list_grants`, `submit_provider_proposal`,
+`get_provider_proposal`.
+
+Read MCP resource `resource://cnothing/v4-workflow` after connect.
+
+---
+
+## Hard rules (do not violate)
+
+1. Never ask the human for GitHub passwords, PATs, `session_token`, cookies, or
+   CNothing login tokens.
+2. Never call GitHub OAuth start URLs yourself (`/v4/auth/github/start`, provider
+   authorize URLs). Those are for browsers only.
+3. Never use v1 AuthAI / KV tools or skills for “log into GitHub”.
+4. Never use v2/v3 tools: `request_authorization`, `invoke_capability`,
+   `list_capabilities`, `/authorize/{id}`, `/v2/*`, `/v3/*` → expect `410 Gone`.
+5. Never invent approval URLs. Use only `approval_url` from `request_access`.
+6. Agent-supplied `Authorization` / `Cookie` headers on proxy calls are stripped.
+7. Proxy URL host must match the grant allowlist (e.g. `api.github.com`) or you get
+   `host_not_allowed`.
+8. On `grant_revoked`, create a new access request — do not reuse the old grant.
+
+---
+
+## Common failures
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Trying AuthAI / envelopes / KV | Following obsolete docs | Use only this v4 skill |
+| Calling `/authorize/{id}` or `/v2/...` | Old capability flow | Use `/approve-proxy/{uuid}` from API |
+| “I need to log into GitHub” | Role confusion | Human logs in; you proxy after grant |
+| `approval_url` rewritten | Agent guessed path | Use exact response URL |
+| Proxy `host_not_allowed` | Wrong host | Use `api.github.com` (or grant hosts) |
+| Access stays pending | Human never approved / not connected | Remind human: login → connect → open approval_url |
+| No providers listed | Operator config | Provider may be missing; or `submit_provider_proposal` |
+
+---
+
+## Missing provider?
+
+`POST /v4/providers/proposals` (MCP: `submit_provider_proposal`) with OIDC discovery URL.
+RFC 7591 DCR providers can onboard automatically; others need a one-time operator
+`client_id` / `client_secret`.

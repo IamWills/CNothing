@@ -7,7 +7,7 @@ export function SkillsPage({ skills }: { skills: PublicSkillEntry[] }) {
   return (
     <PageFrame
       title="Skills"
-      description="Public CNothing skill discovery for AI agents and integrators, including markdown URLs, a JSON index, and a quick-start guide."
+      description="Public CNothing v4 skill discovery for AI agents. Primary document: /skill.md. Do not use AuthAI or v2/v3 flows."
     >
       <section className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <Card className="min-w-0 space-y-4">

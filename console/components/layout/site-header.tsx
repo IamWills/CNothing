@@ -48,7 +48,7 @@ const navigation: Array<{
   },
   {
     href: "/standards",
-    label: "Standards",
+    label: "Legacy standards",
     icon: ShieldCheck,
     matches: ["/standards", "/standard"],
   },

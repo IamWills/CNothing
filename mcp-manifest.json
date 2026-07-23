@@ -3,10 +3,10 @@
   "name_for_human": "CNothing v4",
   "name_for_model": "cnothing_v4_universal_proxy",
   "description_for_human": "Universal credential-injecting proxy: one user approval per OAuth provider, then agents call any API of that provider without ever seeing tokens.",
-  "description_for_model": "CNothing v4 MCP. Agent NEVER receives OAuth tokens, API keys, or client secrets. Flow: list_providers -> request_access (returns approval_url) -> human approves once in browser -> get_access_status (returns grant_id) -> proxy_request for any https API on the granted hosts. Authorization headers are injected server-side; responses are redacted.",
+  "description_for_model": "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. Agent NEVER logs into GitHub and NEVER receives tokens. Flow: register_agent → list_providers → request_access (exact approval_url at /approve-proxy/{uuid} for the human) → get_access_status → proxy_request. Human must sign in at /login and connect provider at /connect before approving. Primary skill: https://cnothing.com/skill.md",
   "auth": {
     "type": "none",
-    "instructions": "Every tool call requires agent_access_token (issued by the platform operator via POST /v4/agents/register). Human OAuth consent happens in the browser at approval_url only."
+    "instructions": "Call register_agent (self-service) to obtain agent_access_token, or pass an existing token. The token alone grants nothing until a human opens approval_url and approves. Human OAuth happens only in the browser."
   },
   "api": {
     "type": "openapi",
@@ -21,13 +21,16 @@
     "homepage": "https://cnothing.com",
     "openapi_v4": "https://cnothing.com/openapi-v4.json",
     "v4_workflow": "resource://cnothing/v4-workflow",
-    "primary_skill": "https://cnothing.com/skill.md"
+    "primary_skill": "https://cnothing.com/skill.md",
+    "getting_started": "https://cnothing.com/getting-started.md"
   },
   "tool_groups": [
     {
       "name": "agent_v4",
       "description": "CNothing v4 universal proxy tools",
       "tools": [
+        "register_agent",
+        "start_sandbox",
         "list_providers",
         "request_access",
         "get_access_status",

@@ -26,12 +26,12 @@ export const authStandard: StandardPublication = {
   family: "Authentication",
   title: "CNothing Authentication Standard 1.0",
   shortTitle: "Auth Standard",
-  status: "Public Implementation Profile",
+  status: "Deprecated for AI agents — use v4 /skill.md",
   version: "1.0",
   publishedAt: "2026-04-05",
   canonicalPath: "/standards/authentication/1.0",
   intro:
-    "This standard defines the authentication and operation-authorization rules used by CNothing for challenge-based client identity, envelope submission, replay prevention, and key rotation.",
+    "LEGACY. This standard describes the deprecated v1 AuthAI + Encrypted KV protocol. AI agents that need GitHub or other OAuth provider APIs MUST NOT follow this document — use https://cnothing.com/skill.md (CNothing v4) and https://cnothing.com/mcp instead. This profile remains only for existing AuthAI/KV backend integrations.",
   sections: [
     {
       id: "scope",
@@ -381,12 +381,12 @@ export const registrationHubStandard: StandardPublication = {
   family: "AI Registration Hub",
   title: "CNothing AI Registration Hub Standard 1.0",
   shortTitle: "Registration Hub",
-  status: "Public Architecture Standard",
+  status: "Deprecated for AI agents — use v4 /skill.md",
   version: "1.0",
   publishedAt: "2026-04-06",
   canonicalPath: "/standards/registration-hub",
   intro:
-    "This standard defines how CNothing is used as the authentication, credential-protection, and recovery center of an AI-operated website registration system in which agents can orchestrate signup flows without learning user secrets.",
+    "LEGACY. AI agents that need GitHub or other OAuth provider APIs MUST NOT follow this document — use https://cnothing.com/skill.md and https://cnothing.com/mcp (CNothing v4). This registration-hub profile is archived architecture for AuthAI-era flows only.",
   sections: [
     {
       id: "registration-hub-scope",

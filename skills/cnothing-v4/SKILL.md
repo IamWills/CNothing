@@ -49,8 +49,27 @@ If step 2–4 are missing, proxy calls will fail. Do not invent workarounds.
 
 Optional (phone approvals like Okta Verify):
 
-- Human pairs iOS at `https://cnothing.com/devices`.
-- You pass their CNothing `user_id` in `request_access` so approval is pushed to the phone.
+- Human pairs iOS at `https://cnothing.com/devices` and copies their **agent ID**
+  (e.g. `github:alice`) or generates a **short code** (`u_XXXXXX`).
+- Pass that value as `user_id` in `request_access` → APNs push to their phone.
+- **Do not block** if you do not have their ID: create the request, send
+  `approval_url`, and ask them to open it on their phone (Universal Link opens the
+  app). Remember `resolved_user_id` from the response for next time.
+
+---
+
+## Phone push — do not stall asking for user_id
+
+1. If the human already gave you an agent ID (`github:…`) or short code (`u_…`),
+   pass it as `user_id`.
+2. Otherwise **immediately** `request_access` without `user_id`, send them the exact
+   `approval_url`, and say: open this on your phone to approve (or copy your ID from
+   https://cnothing.com/devices for push next time).
+3. After approval, store `resolved_user_id` from the access-request response / status
+   when present, and reuse it on later `request_access` calls.
+
+`user_id` accepts: full CNothing id, share code `u_XXXXXX`, or a known GitHub login
+(resolved to `github:{login}` only if that account already exists on CNothing).
 
 ---
 
@@ -116,22 +135,25 @@ Response includes:
 
 - `access_request_id`
 - `approval_url` — **always** `https://cnothing.com/approve-proxy/{uuid}`
+- `resolved_user_id` — canonical id when `user_id`/short code resolved (remember it)
+- `pushed_to_devices` — APNs send count (0 means use the link / pair phone)
 
 **Rules for `approval_url`:**
 
-- Give the human the **exact** URL from the response.
+- Give the human the **exact** URL from the response (prefer they open it on phone).
 - Do **not** rewrite it to `/authorize/...`, `/v4/approve/...`, or
   `/v4/access-requests/.../approve` (those are not the browser approval page).
 - Do **not** ask the human to paste tokens back to you.
+- Do **not** refuse to create the request until they give you a user_id.
 
 ### Step 3 — Human onboarding (tell them this if they are new)
 
 Send them a short message like:
 
-1. Open `approval_url` (or, if new: first go to https://cnothing.com/login and sign in).
+1. Open `approval_url` on your phone (or desktop): if new, sign in at https://cnothing.com/login first.
 2. If prompted, connect GitHub at https://cnothing.com/connect.
 3. On the approval page, pick the GitHub connection and click **Approve**.
-4. (Optional) Pair phone at https://cnothing.com/devices for push approvals.
+4. (Optional) Pair phone at https://cnothing.com/devices; copy agent ID / short code for push next time.
 
 You wait. You do not complete OAuth yourself.
 
@@ -210,10 +232,9 @@ Read MCP resource `resource://cnothing/v4-workflow` after connect.
 7. Proxy URL host must match the grant allowlist (e.g. `api.github.com`) or you get
    `host_not_allowed`.
 8. On `grant_revoked`, create a new access request — do not reuse the old grant.
-9. **Phone push only works if you pass `user_id`** (the human's CNothing id, e.g.
-   `github:alice`) in `request_access`. Without it, the human must open
-   `approval_url` in a browser. After they open it while signed in, the request is
-   claimed for their account so the iOS app can then list it.
+9. **Phone push:** pass `user_id` (agent ID or `u_` short code) when you have it.
+   If you do not, still create the request and send `approval_url` — never block the
+   conversation waiting for user_id. Prefer the human open the link on their phone.
 
 ---
 

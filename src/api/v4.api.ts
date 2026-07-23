@@ -7,6 +7,7 @@ import { oauthConnectionService } from "../v2/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
 import { sandboxService } from "../v4/sandbox.service";
 import { deviceService } from "../v4/device.service";
+import { shareCodeService } from "../v4/share-code.service";
 import config from "../config";
 
 function inferBaseUrl(request: Request): string {
@@ -105,17 +106,44 @@ export async function handleV4Request(request: Request): Promise<Response> {
     return Response.json(result);
   }
 
+  // --- Share codes (agent-facing short aliases for user_id) ---
+
+  if (request.method === "POST" && path === "/v4/users/share-codes") {
+    const session = await requireUserSession(request);
+    return Response.json(await shareCodeService.issueShareCode(session.user_id), { status: 201 });
+  }
+
+  if (request.method === "GET" && path === "/v4/users/me/agent-id") {
+    const session = await requireUserSession(request);
+    const status = await shareCodeService.getShareCodeStatus(session.user_id);
+    return Response.json({
+      ok: true,
+      user_id: session.user_id,
+      has_active_share_code: status.has_active_code,
+      share_code_expires_at: status.expires_at,
+      share_with_agent: `My CNothing agent ID is ${session.user_id}. Paste this as user_id in request_access (or generate a short code on /devices).`,
+    });
+  }
+
   // --- Agent-facing ---
 
   if (request.method === "POST" && path === "/v4/access-requests") {
     const agent = await requireAgentFromRequest(request);
     const body = await parseJsonBody(request);
+    const userHintRaw =
+      typeof body.user_id === "string"
+        ? body.user_id
+        : typeof body.user === "string"
+          ? body.user
+          : typeof body.share_code === "string"
+            ? body.share_code
+            : undefined;
     const result = await proxyService.requestAccess({
       agent,
       provider: readRequiredString(body, "provider"),
       hosts: body.hosts,
       ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
-      ...(typeof body.user_id === "string" ? { userId: body.user_id } : {}),
+      ...(userHintRaw ? { userId: userHintRaw } : {}),
       ...(typeof body.callback_url === "string" ? { callbackUrl: body.callback_url } : {}),
       apiBaseUrl: inferBaseUrl(request),
     });

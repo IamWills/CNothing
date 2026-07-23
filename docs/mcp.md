@@ -127,12 +127,13 @@ REST 等价：`POST /v4/proxy`，Header `Authorization: Bearer agent_...`。
 
 | 误解 | 正确做法 |
 | --- | --- |
-| 「连上 MCP 就能登录 GitHub」 | MCP 是 Agent API；用户登录在 `approval_url` 浏览器页 |
+| 「连上 MCP 就能登录 GitHub」 | MCP 是 Agent API；用户登录在 `approval_url` 浏览器/手机页 |
 | 让用户去 `/login` 复制 token 给你 | 禁止；token 不得交给 Agent |
 | Agent 调用 GitHub OAuth start | 仅供浏览器；Agent 不要调用 |
 | 用 AuthAI / KV 做 GitHub 登录 | 已废弃，与 v4 proxy 无关 |
 | 使用 `/authorize/{id}` 或 v2 工具 | 已下线；只用 `/approve-proxy/{uuid}` |
 | 自己拼 approval URL | 只用 `request_access` 返回的原文 |
+| 没有 user_id 就卡住不发请求 | 立刻创建请求并发送 `approval_url`；短码/ID 仅用于下次推送 |
 
 ---
 

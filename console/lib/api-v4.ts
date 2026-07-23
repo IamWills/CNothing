@@ -387,3 +387,23 @@ export async function revokeV4Device(connection: ConsoleConnection, deviceId: st
     { method: "DELETE" },
   );
 }
+
+export async function fetchV4AgentId(connection: ConsoleConnection) {
+  return requestJson<{
+    ok: true;
+    user_id: string;
+    has_active_share_code: boolean;
+    share_code_expires_at: string | null;
+    share_with_agent: string;
+  }>(connection, "/v4/users/me/agent-id");
+}
+
+export async function createV4ShareCode(connection: ConsoleConnection) {
+  return requestJson<{
+    ok: true;
+    user_id: string;
+    share_code: string;
+    expires_at: string;
+    share_with_agent: string;
+  }>(connection, "/v4/users/share-codes", { method: "POST", body: JSON.stringify({}) });
+}

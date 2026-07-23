@@ -51,7 +51,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "request_access",
     description:
-      "Request connection-level access to one OAuth provider. Returns access_request_id and approval_url (Console page at /approve-proxy/{id} — NOT /v4/approve/...). Always pass the exact approval_url from this response to the human; never guess or construct the URL yourself.",
+      "Request connection-level access to one OAuth provider. Returns access_request_id, approval_url (always /approve-proxy/{id}), resolved_user_id, and pushed_to_devices. Pass exact approval_url to the human; if user_id is unknown, still call this and send the link — do not block.",
     inputSchema: {
       type: "object",
       properties: {
@@ -71,7 +71,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
         user_id: {
           type: "string",
           description:
-            "Optional CNothing user id of the human. When set, the approval is pushed to the user's paired iOS authenticator devices and the approval_url carries the user context.",
+            "Optional. CNothing agent ID (github:alice), short code (u_XXXXXX), or known GitHub login. Enables phone push. If unknown, omit and send approval_url — do not block.",
         },
         callback_url: {
           type: "string",
@@ -203,11 +203,13 @@ You never log into GitHub. The human completes OAuth in a browser. You proxy aft
 0. \`register_agent { name }\` → store \`agent_access_token\`.
    Optional: \`start_sandbox\` → \`proxy_request\` on \`echo_url\` (no human).
 1. \`list_providers\` → slug e.g. \`github\`.
-2. \`request_access { provider: "github", reason: "..." }\`
-   → \`{ access_request_id, approval_url }\`.
+2. \`request_access { provider: "github", reason: "..." }\` (+ optional \`user_id\` /
+   short code for phone push).
+   → \`{ access_request_id, approval_url, resolved_user_id, pushed_to_devices }\`.
    \`approval_url\` is always \`https://cnothing.com/approve-proxy/{uuid}\`.
-   Never rewrite it. Show it to the human unchanged.
-3. Human: open \`approval_url\` → sign in if needed → pick connection → Approve.
+   Never rewrite it. Always show it to the human (phone preferred).
+   If you lack user_id, still call this and send the link — do not block.
+3. Human: open \`approval_url\` (or push notification) → Approve.
 4. \`get_access_status\` until \`status: "approved"\` → \`grant_id\`.
 5. \`proxy_request { grant_id, method, url, body? }\` e.g.
    - \`GET https://api.github.com/user\`
@@ -217,6 +219,7 @@ You never log into GitHub. The human completes OAuth in a browser. You proxy aft
 
 - Never ask for passwords, PATs, session tokens, or cookies.
 - Never call OAuth start URLs yourself (browser-only).
+- Never block waiting for user_id — send approval_url instead.
 - Agent \`Authorization\`/\`Cookie\` on proxy calls are stripped.
 - Host must match grant allowlist or \`host_not_allowed\`.
 - On \`grant_revoked\`, request access again.

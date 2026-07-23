@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Smartphone, XCircle } from "lucide-react";
+import { Copy, Smartphone, XCircle } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { PageFrame } from "@/components/layout/page-frame";
@@ -14,6 +14,9 @@ import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
   createV4DevicePairingCode,
+  createV4ShareCode,
+  fetchV4AgentId,
+  fetchV4AuthMe,
   fetchV4Devices,
   revokeV4Device,
   type V4Device,
@@ -23,8 +26,12 @@ import { formatDate } from "@/lib/console-utils";
 
 export function DevicesPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const { isLoggedIn } = useUserSession();
+  const { isLoggedIn, session, syncSessionFromServer } = useUserSession();
   const [devices, setDevices] = React.useState<V4Device[]>([]);
+  const [agentId, setAgentId] = React.useState("");
+  const [shareCode, setShareCode] = React.useState("");
+  const [shareExpiresAt, setShareExpiresAt] = React.useState("");
+  const [shareWithAgent, setShareWithAgent] = React.useState("");
   const [pairingCode, setPairingCode] = React.useState("");
   const [qrPayload, setQrPayload] = React.useState("");
   const [pairingExpiresAt, setPairingExpiresAt] = React.useState("");
@@ -36,14 +43,27 @@ export function DevicesPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetchV4Devices(connection);
-      setDevices(response.items);
+      try {
+        const me = await fetchV4AuthMe(connection);
+        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at });
+      } catch {
+        // not signed in
+      }
+      const [devicesResponse, agentResponse] = await Promise.all([
+        fetchV4Devices(connection).catch(() => ({ ok: true as const, items: [] as V4Device[] })),
+        fetchV4AgentId(connection).catch(() => null),
+      ]);
+      setDevices(devicesResponse.items);
+      if (agentResponse) {
+        setAgentId(agentResponse.user_id);
+        setShareWithAgent(agentResponse.share_with_agent);
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load devices.");
     } finally {
       setLoading(false);
     }
-  }, [connection]);
+  }, [connection, syncSessionFromServer]);
 
   React.useEffect(() => {
     void refresh();
@@ -62,6 +82,30 @@ export function DevicesPage() {
     }
   }
 
+  async function handleGenerateShareCode() {
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const result = await createV4ShareCode(connection);
+      setAgentId(result.user_id);
+      setShareCode(result.share_code);
+      setShareExpiresAt(result.expires_at);
+      setShareWithAgent(result.share_with_agent);
+      setStatusMessage("Share code ready — copy and paste it to your agent.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to create share code.");
+    }
+  }
+
+  async function copyText(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatusMessage(`Copied ${label}.`);
+    } catch {
+      setErrorMessage("Clipboard unavailable — select and copy manually.");
+    }
+  }
+
   async function handleRevoke(deviceId: string) {
     setErrorMessage("");
     setStatusMessage("");
@@ -74,10 +118,12 @@ export function DevicesPage() {
     }
   }
 
+  const displayUserId = agentId || session?.userId || "";
+
   return (
     <PageFrame
       title="Devices"
-      description="Pair your phone as an authenticator. Agent access requests targeted at your account are pushed to paired devices — approve them like a Microsoft Authenticator prompt, without opening a browser."
+      description="Pair your phone as an authenticator. Share your agent ID or short code so agents can push approval requests to your phone."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -94,7 +140,7 @@ export function DevicesPage() {
         errorMessage={errorMessage}
       />
 
-      {!isLoggedIn ? (
+      {!isLoggedIn && !displayUserId ? (
         <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           Sign in first (Login page) to pair devices with your account.
         </Card>
@@ -107,6 +153,68 @@ export function DevicesPage() {
         <Card className="border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{statusMessage}</Card>
       ) : null}
 
+      {displayUserId ? (
+        <Card className="space-y-4 p-6">
+          <div>
+            <h2 className="text-lg font-semibold">Your agent ID</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Give this to your AI agent (as <code className="text-xs">user_id</code>) so approval
+              requests push to your paired phone. Or generate a short code.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <code className="rounded-md bg-slate-100 px-3 py-2 font-mono text-sm text-slate-900">
+              {displayUserId}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void copyText("agent ID", displayUserId)}
+            >
+              <Copy className="mr-1 h-4 w-4" />
+              Copy ID
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => void handleGenerateShareCode()}>Generate short code</Button>
+            {shareCode ? (
+              <>
+                <code className="rounded-md bg-slate-100 px-3 py-2 font-mono text-lg font-semibold tracking-wider text-slate-900">
+                  {shareCode}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void copyText("share code", shareCode)}
+                >
+                  <Copy className="mr-1 h-4 w-4" />
+                  Copy code
+                </Button>
+                {shareExpiresAt ? (
+                  <span className="text-xs text-slate-500">Expires {formatDate(shareExpiresAt)}</span>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          {shareWithAgent ? (
+            <div className="space-y-2 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)]/60 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Share with agent
+              </p>
+              <p className="text-sm text-slate-800">{shareWithAgent}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void copyText("message", shareWithAgent)}
+              >
+                <Copy className="mr-1 h-4 w-4" />
+                Copy message
+              </Button>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card className="p-6">
         <div className="flex items-center gap-2">
           <Smartphone className="h-5 w-5 text-[color:var(--brand)]" />
@@ -117,7 +225,7 @@ export function DevicesPage() {
           within 10 minutes.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-6">
-          <Button onClick={() => void handleGenerateCode()} disabled={!isLoggedIn}>
+          <Button onClick={() => void handleGenerateCode()} disabled={!isLoggedIn && !displayUserId}>
             Generate pairing code
           </Button>
           {pairingCode ? (
@@ -165,7 +273,9 @@ export function DevicesPage() {
                     {device.key_registered ? (
                       <Badge variant="outline">device-bound key</Badge>
                     ) : (
-                      <Badge variant="outline" className="text-amber-600">no key — re-pair</Badge>
+                      <Badge variant="outline" className="text-amber-600">
+                        no key — re-pair
+                      </Badge>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">

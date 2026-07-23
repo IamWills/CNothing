@@ -2,19 +2,28 @@
 
 像 Microsoft Authenticator 一样，在手机上批准 AI agent 的授权请求。
 
-## 流程
+## 流程（两条路）
 
-1. Agent 调用 `POST /v4/access-requests` 时携带 `user_id`（你的 CNothing 用户 ID）。
-2. CNothing 立即通过 APNs 把审批请求推送到你已配对的 iPhone。
-3. 手机顶部弹出通知，点击后直接进入审批页，选择 OAuth 连接后批准/拒绝。
-4. 若 agent 还提供了 `callback_url`，审批结果会自动 POST 回 agent，无需轮询。
-5. 未配置推送时 App 每 15 秒轮询 `GET /v4/access-requests/pending`，流程同样可用。
+**推送（推荐）**
+
+1. 你在 [Devices](https://cnothing.com/devices) 复制 **agent ID**（如 `github:Ciamme`）或生成 **短码**（如 `u_7K2M9P`），发给 agent。
+2. Agent 在 `POST /v4/access-requests` 里带上 `user_id`（完整 ID 或短码均可）。
+3. CNothing 通过 APNs 推送到已配对的 iPhone；点通知进入审批页。
+
+**深链兜底（agent 不知道你的 ID 时）**
+
+1. Agent 只发 `approval_url`（`https://cnothing.com/approve-proxy/{id}`）。
+2. 你在**手机**上打开该链接：Universal Link 会打开本 App（已配对时直达审批）；未装 App 则走 Safari 网页审批。
+3. 网页打开并登录后会自动认领请求，之后 App 轮询也能看到。
+
+若 agent 还提供了 `callback_url`，审批结果会 POST 回 agent，无需轮询。
 
 ## 配对（首次使用）
 
-1. 在网页 Console（cnothing.com）登录后打开 **Devices** 页，点 "Generate pairing code"。
-2. 在 iPhone 上打开本 App，扫描页面上的二维码（或手动输入配对码，10 分钟内有效）。
-3. 配对成功后 App 自动申请通知权限并上报 APNs push token。
+1. 在网页 Console（cnothing.com）登录后打开 **Devices** 页。
+2. 先复制你的 agent ID（可随时发给 agent）；再点 "Generate pairing code"。
+3. 在 iPhone 上打开本 App，扫描二维码（或手动输入配对码，10 分钟内有效）。
+4. 配对成功后 App 自动申请通知权限并上报 APNs push token。
 
 配对会为设备发放一个 90 天的设备会话令牌（存于 Keychain）。在 Console 的
 Devices 页可随时吊销设备。
@@ -53,6 +62,9 @@ Release/TestFlight 构建注册为 `production`。
 - Push 需要在 Signing & Capabilities 中确认 **Push Notifications** 能力
   （工程已引用 `cnothing/cnothing.entitlements`，`aps-environment=development`；
   发布归档时 Xcode 会自动切换为 production）。
+- **Associated Domains**：entitlements 已含 `applinks:cnothing.com`；服务端提供
+  `/.well-known/apple-app-site-association`，使
+  `https://cnothing.com/approve-proxy/{id}` 可 Universal Link 打开 App。
 - 深链 `cnothing://approve/{access_request_id}` 可直达审批页。如需启用，
   在 Target → Info → URL Types 中添加 URL Scheme `cnothing`。
 - 推送通知的 payload 携带 `access_request_id`，点按通知即可导航，无需 URL Scheme。

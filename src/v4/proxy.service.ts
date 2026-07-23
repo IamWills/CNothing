@@ -30,6 +30,7 @@ import {
 import { sendApprovalPush } from "./apns.service";
 import { dispatchAccessRequestCallback, validateCallbackUrl } from "./callback.service";
 import { listActivePushDevices } from "./device.repository";
+import { resolveAgentUserHint } from "./share-code.service";
 
 import {
   DEFAULT_ALLOWED_METHODS,
@@ -115,7 +116,8 @@ export class ProxyService {
       );
     }
 
-    const userHint = input.userId?.trim() || undefined;
+    const resolved = await resolveAgentUserHint(input.userId);
+    const userHint = resolved.userId;
     const callbackUrl = input.callbackUrl?.trim()
       ? await validateCallbackUrl(input.callbackUrl)
       : undefined;
@@ -157,10 +159,14 @@ export class ProxyService {
 
     // Agent-facing guidance: how the human can enable phone approvals when the
     // request could not be pushed to any paired device.
-    const humanOnboarding =
-      userHint && pushedToDevices === 0
-        ? `No paired phone found for user "${userHint}". Tell the human: 1) sign in at ${approvalBase}/login (GitHub/OIDC — signing in creates the account); 2) open ${approvalBase}/devices, generate the pairing QR, install the CNothing iOS app and scan it. Future approvals will then arrive as push notifications. For now, use approval_url in a browser.`
-        : undefined;
+    let humanOnboarding: string | undefined;
+    if (resolved.unresolved) {
+      humanOnboarding = `Could not resolve "${resolved.unresolved}" to a CNothing user. Ask the human to open ${approvalBase}/devices, copy their agent ID or share code, and send it to you — or just give them approval_url to open on their phone. Do not block waiting for user_id.`;
+    } else if (!userHint) {
+      humanOnboarding = `No user_id provided. Send the human this exact approval_url (best opened on their phone). For push next time: they copy their agent ID or share code from ${approvalBase}/devices. Do not block the flow waiting for user_id.`;
+    } else if (pushedToDevices === 0) {
+      humanOnboarding = `No paired phone found for user "${userHint}". Tell the human: 1) sign in at ${approvalBase}/login; 2) open ${approvalBase}/devices, generate the pairing QR, install the CNothing iOS app and scan it. For now, open approval_url (on phone or desktop).`;
+    }
 
     return {
       ok: true as const,
@@ -170,9 +176,11 @@ export class ProxyService {
       requested_hosts: request.requested_hosts,
       // Browser page in Console — NOT an API path. Do not rewrite this URL.
       approval_url: `${approvalBase}/approve-proxy/${request.id}${userQuery}`,
-      human_instruction:
-        "Give the human this exact approval_url. Do not invent /v4/approve/... or /v4/access-requests/.../approve — those are not browser pages.",
+      human_instruction: userHint
+        ? "If pushed_to_devices > 0, tell the human to check their phone notification. Always also share approval_url as a fallback (phone Universal Link or browser)."
+        : "Give the human this exact approval_url — prefer they open it on their phone. Do not invent /v4/approve/... paths. Do not block waiting for user_id.",
       pushed_to_devices: pushedToDevices,
+      resolved_user_id: userHint ?? null,
       callback_registered: Boolean(callbackUrl),
       ...(humanOnboarding ? { human_onboarding: humanOnboarding } : {}),
       expires_at: request.expires_at,

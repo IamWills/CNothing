@@ -43,18 +43,43 @@ struct cnothingApp: App {
         WindowGroup {
             ContentView()
                 .onOpenURL { url in
-                    // Deep link: cnothing://approve/{access_request_id}
-                    guard url.scheme == "cnothing" else { return }
-                    let id: String?
-                    if url.host == "approve" {
-                        id = url.pathComponents.count > 1 ? url.pathComponents[1] : nil
-                    } else {
-                        id = nil
-                    }
-                    if let id, !id.isEmpty {
+                    if let id = Self.accessRequestId(from: url) {
                         ApprovalRouter.shared.openApproval(requestId: id)
                     }
                 }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL,
+                          let id = Self.accessRequestId(from: url)
+                    else { return }
+                    ApprovalRouter.shared.openApproval(requestId: id)
+                }
         }
+    }
+
+    /// Supports:
+    /// - cnothing://approve/{id}
+    /// - cnothing://pair?... (handled elsewhere / ignored here)
+    /// - https://cnothing.com/approve-proxy/{id} (Universal Link)
+    static func accessRequestId(from url: URL) -> String? {
+        if url.scheme == "cnothing" {
+            if url.host == "approve" {
+                return url.pathComponents.count > 1 ? url.pathComponents[1] : nil
+            }
+            return nil
+        }
+
+        guard let host = url.host?.lowercased(),
+              host == "cnothing.com" || host == "www.cnothing.com" || host.hasSuffix(".cnothing.com")
+        else {
+            return nil
+        }
+
+        // /approve-proxy/{uuid}
+        let parts = url.path.split(separator: "/").map(String.init)
+        if parts.count >= 2, parts[0] == "approve-proxy" {
+            let id = parts[1]
+            return id.isEmpty ? nil : id
+        }
+        return nil
     }
 }

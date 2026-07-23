@@ -67,7 +67,7 @@ const TOOLS = [
         user_id: {
           type: "string",
           description:
-            "Optional CNothing user id. When set, the approval is pushed to the user's paired iOS authenticator devices.",
+            "Optional. CNothing agent ID, short code u_XXXXXX, or known GitHub login for phone push. If unknown, omit and send approval_url — do not block.",
         },
         callback_url: {
           type: "string",
@@ -262,7 +262,7 @@ async function handleMessage(rpc: JsonRpcRequest): Promise<void> {
           serverInfo: { name: "cnothing-mcp", version: "0.1.0" },
           capabilities: { tools: { listChanged: false } },
           instructions:
-            "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. You never log into GitHub. Flow: register_agent (if needed) -> list_providers -> request_access (give the EXACT approval_url https://cnothing.com/approve-proxy/{uuid} to the human; never rewrite it) -> get_access_status -> proxy_request. Prerequisites for real calls: human signed in at /login, connected provider at /connect, and approved. Optional: start_sandbox for self-test; pass user_id for iOS push approval; pass callback_url for webhook. Skill: https://cnothing.com/skill.md",
+            "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. You never log into GitHub. Flow: register_agent (if needed) -> list_providers -> request_access (give EXACT approval_url; pass user_id/agent ID/u_ short code for phone push when known — otherwise do NOT block, just send the link for phone Universal Link) -> get_access_status -> proxy_request. Remember resolved_user_id for later. Skill: https://cnothing.com/skill.md",
         });
         return;
 

@@ -185,6 +185,41 @@ async function router(request: Request): Promise<Response> {
     );
   }
 
+  // Universal Links for iOS: https://cnothing.com/approve-proxy/{id} → CNothing app
+  if (
+    (pathname === "/.well-known/apple-app-site-association" ||
+      pathname === "/apple-app-site-association") &&
+    request.method === "GET"
+  ) {
+    const teamId = config.apns?.teamId ?? process.env.KEYSERVICE_APNS_TEAM_ID?.trim() ?? "";
+    const bundleId =
+      config.apns?.bundleId ??
+      process.env.KEYSERVICE_APNS_BUNDLE_ID?.trim() ??
+      "com.molobaya.app.cnothing";
+    const appID = teamId ? `${teamId}.${bundleId}` : bundleId;
+    const body = {
+      applinks: {
+        apps: [],
+        details: [
+          {
+            appID,
+            paths: ["/approve-proxy/*"],
+          },
+        ],
+      },
+    };
+    return withCors(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=300",
+        },
+      }),
+      request,
+    );
+  }
+
   if (pathname === "/" && request.method === "GET") {
     if (config.consoleUrl) {
       return withCors(Response.redirect(config.consoleUrl, 302), request);

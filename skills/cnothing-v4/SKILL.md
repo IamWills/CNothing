@@ -210,6 +210,10 @@ Read MCP resource `resource://cnothing/v4-workflow` after connect.
 7. Proxy URL host must match the grant allowlist (e.g. `api.github.com`) or you get
    `host_not_allowed`.
 8. On `grant_revoked`, create a new access request — do not reuse the old grant.
+9. **Phone push only works if you pass `user_id`** (the human's CNothing id, e.g.
+   `github:alice`) in `request_access`. Without it, the human must open
+   `approval_url` in a browser. After they open it while signed in, the request is
+   claimed for their account so the iOS app can then list it.
 
 ---
 

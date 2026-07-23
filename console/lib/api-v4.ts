@@ -65,6 +65,7 @@ export type V4AccessRequest = {
   requested_hosts: string[];
   reason: string | null;
   status: "pending" | "approved" | "denied" | "expired";
+  user_hint?: string | null;
   expires_at: string;
 };
 

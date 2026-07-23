@@ -122,8 +122,11 @@ export function ConnectPage() {
     setStatusMessage("");
     setDeviceSession(null);
     try {
+      const params =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const redirectAfter =
-        typeof window !== "undefined" ? `${window.location.origin}/connections` : undefined;
+        params?.get("redirect_after")?.trim() ||
+        (typeof window !== "undefined" ? `${window.location.origin}/connections` : undefined);
       const response = await startV4OAuthConnect(connection, {
         provider_slug: provider.slug,
         ...(redirectAfter ? { redirect_after: redirectAfter } : {}),

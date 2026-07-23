@@ -139,6 +139,27 @@ export async function listPendingAccessRequestsForUser(
   return result.rows.map(mapAccessRequestRow);
 }
 
+/** Bind a pending request to a user when the agent omitted user_id (enables iOS poll/push). */
+export async function claimProxyAccessRequestUserHint(input: {
+  id: string;
+  user_hint: string;
+}): Promise<ProxyAccessRequestRecord | null> {
+  const result = await pool.query(
+    `
+      UPDATE proxy_access_requests
+      SET user_hint = $2, updated_at = NOW()
+      WHERE id = $1
+        AND status = 'pending'
+        AND expires_at > NOW()
+        AND (user_hint IS NULL OR user_hint = '' OR user_hint = $2)
+      RETURNING *
+    `,
+    [input.id, input.user_hint],
+  );
+  const row = result.rows[0];
+  return row ? mapAccessRequestRow(row) : null;
+}
+
 export async function findProxyAccessRequest(id: string): Promise<ProxyAccessRequestRecord | null> {
   const result = await pool.query(`SELECT * FROM proxy_access_requests WHERE id = $1`, [id]);
   const row = result.rows[0];

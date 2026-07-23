@@ -164,12 +164,19 @@ export function LoginPage() {
                     type="button"
                     variant="secondary"
                     onClick={() => {
-                      const redirectAfter = `${window.location.origin}/login`;
+                      const params = new URLSearchParams(window.location.search);
+                      const redirectAfter =
+                        params.get("redirect_after")?.trim() ||
+                        `${window.location.origin}/login`;
                       if (provider.type === "github") {
                         window.location.href = buildV4GitHubStartUrl(connection, redirectAfter);
                         return;
                       }
-                      window.location.href = buildV4OidcStartUrl(connection, provider.name, redirectAfter);
+                      window.location.href = buildV4OidcStartUrl(
+                        connection,
+                        provider.name,
+                        redirectAfter,
+                      );
                     }}
                   >
                     {provider.display_name}

@@ -13,6 +13,7 @@ import {
 } from "../v2/oauth.repository";
 import { oauthConnectionService } from "../v2/oauth-connection.service";
 import {
+  claimProxyAccessRequestUserHint,
   createProxyAccessRequest,
   createProxyGrant,
   decideProxyAccessRequest,
@@ -211,12 +212,48 @@ export class ProxyService {
     };
   }
 
-  /** User-facing view for the approval page (no agent token required). */
-  async getAccessRequestForApproval(id: string) {
-    const request = await findProxyAccessRequest(id);
+  /**
+   * User-facing view for the approval page (no agent token required).
+   * When the agent omitted user_id, opening this page while signed in claims the
+   * request for that user so the paired iPhone can poll/push it.
+   */
+  async getAccessRequestForApproval(id: string, viewerUserId?: string) {
+    let request = await findProxyAccessRequest(id);
     if (!request) {
       throw new NotFoundError("Access request not found");
     }
+
+    if (
+      viewerUserId &&
+      request.status === "pending" &&
+      new Date(request.expires_at).getTime() >= Date.now() &&
+      !request.user_hint
+    ) {
+      const claimed = await claimProxyAccessRequestUserHint({
+        id: request.id,
+        user_hint: viewerUserId,
+      });
+      if (claimed) {
+        request = claimed;
+        try {
+          const devices = await listActivePushDevices(viewerUserId);
+          await sendApprovalPush({
+            devices,
+            accessRequestId: request.id,
+            provider: request.provider_slug,
+            agentName: request.agent_id,
+            reason: request.reason,
+          });
+        } catch (error) {
+          console.warn(
+            `[v4-push] claim-time push failed for ${request.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+    }
+
     return request;
   }
 

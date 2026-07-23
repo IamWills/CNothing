@@ -140,8 +140,8 @@ export async function handleV4Request(request: Request): Promise<Response> {
     // Console approval page loads request details with a user session;
     // agents poll the same path with their bearer token.
     if (readUserSessionToken(request)) {
-      await requireUserSession(request);
-      const record = await proxyService.getAccessRequestForApproval(id);
+      const session = await requireUserSession(request);
+      const record = await proxyService.getAccessRequestForApproval(id, session.user_id);
       return Response.json({
         ok: true,
         access_request_id: record.id,
@@ -150,6 +150,7 @@ export async function handleV4Request(request: Request): Promise<Response> {
         requested_hosts: record.requested_hosts,
         reason: record.reason,
         status: record.status,
+        user_hint: record.user_hint,
         expires_at: record.expires_at,
       });
     }

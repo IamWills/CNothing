@@ -4,6 +4,7 @@ import Foundation
 enum APIError: LocalizedError {
     case http(status: Int, message: String)
     case notPaired
+    case network(String)
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ enum APIError: LocalizedError {
             return "HTTP \(status): \(message)"
         case .notPaired:
             return String(localized: "Device is not paired yet")
+        case let .network(message):
+            return message
         }
     }
 }
@@ -40,10 +43,33 @@ final class APIClient: ObservableObject {
         KeychainStore.read(forKey: "device.sessionToken")
     }
 
+    /// Dedicated session so TLS / connection failures can drop stale sockets
+    /// without restarting the whole app.
+    private var urlSession: URLSession = APIClient.makeSession()
+    private let sessionLock = NSLock()
+
     private init() {
         isPaired = KeychainStore.read(forKey: "device.sessionToken") != nil
         deviceId = UserDefaults.standard.string(forKey: "cnothing.deviceId")
         userId = UserDefaults.standard.string(forKey: "cnothing.userId")
+    }
+
+    private static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 40
+        config.waitsForConnectivity = true
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }
+
+    /// Drop cached TLS / TCP state and open a fresh session. Call this before a
+    /// user-initiated retry after a secure-connection failure.
+    func resetNetworkSession() {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        urlSession.invalidateAndCancel()
+        urlSession = APIClient.makeSession()
     }
 
     // MARK: - Pairing
@@ -173,13 +199,20 @@ final class APIClient: ObservableObject {
 
     // MARK: - Transport
 
+    private func currentSession() -> URLSession {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        return urlSession
+    }
+
     private func request<T: Decodable>(
         method: String,
         path: String,
         body: [String: Any]? = nil,
         authenticated: Bool = true
     ) async throws -> T {
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent(path))
+        let normalizedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent(normalizedPath))
         urlRequest.httpMethod = method
         urlRequest.timeoutInterval = 20
 
@@ -192,13 +225,58 @@ final class APIClient: ObservableObject {
             urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200 ..< 300).contains(status) else {
-            let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?
-                .error.message ?? String(data: data, encoding: .utf8) ?? "unknown error"
-            throw APIError.http(status: status, message: message)
+        do {
+            let (data, response) = try await currentSession().data(for: urlRequest)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200 ..< 300).contains(status) else {
+                let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?
+                    .error.message ?? String(data: data, encoding: .utf8) ?? "unknown error"
+                throw APIError.http(status: status, message: message)
+            }
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw mapTransportError(error)
         }
-        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func mapTransportError(_ error: Error) -> APIError {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorSecureConnectionFailed,
+                 NSURLErrorServerCertificateUntrusted,
+                 NSURLErrorServerCertificateHasBadDate,
+                 NSURLErrorServerCertificateHasUnknownRoot,
+                 NSURLErrorServerCertificateNotYetValid,
+                 NSURLErrorClientCertificateRejected,
+                 NSURLErrorClientCertificateRequired,
+                 NSURLErrorCannotLoadFromNetwork:
+                return .network(
+                    String(localized: "Secure connection failed (TLS). Tap Refresh to retry.")
+                )
+            case NSURLErrorNotConnectedToInternet,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorDataNotAllowed:
+                return .network(
+                    String(localized: "No network connection. Check Wi‑Fi or cellular, then tap Refresh.")
+                )
+            case NSURLErrorTimedOut:
+                return .network(String(localized: "Request timed out. Tap Refresh to retry."))
+            case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost, NSURLErrorDNSLookupFailed:
+                return .network(
+                    String(localized: "Cannot reach the server. Tap Refresh to retry.")
+                )
+            default:
+                break
+            }
+        }
+        return .network(
+            String(
+                format: String(localized: "Network error: %@. Tap Refresh to retry."),
+                error.localizedDescription
+            )
+        )
     }
 }

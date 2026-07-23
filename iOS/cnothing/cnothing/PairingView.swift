@@ -55,7 +55,12 @@ struct PairingView: View {
 
                 if !errorMessage.isEmpty {
                     Section {
-                        Text(errorMessage).foregroundStyle(.red).font(.footnote)
+                        NetworkErrorBanner(
+                            message: errorMessage,
+                            isWorking: isWorking
+                        ) {
+                            Task { await pair(resetSession: true) }
+                        }
                     }
                 }
 
@@ -109,11 +114,14 @@ struct PairingView: View {
         }
     }
 
-    private func pair() async {
+    private func pair(resetSession: Bool = false) async {
         errorMessage = ""
         isWorking = true
         defer { isWorking = false }
 
+        if resetSession {
+            api.resetNetworkSession()
+        }
         if let url = URL(string: serverURL.trimmingCharacters(in: .whitespaces)), url.scheme != nil {
             api.baseURL = url
         }
@@ -124,6 +132,7 @@ struct PairingView: View {
             )
             await PushRegistrar.shared.requestAuthorizationAndRegister()
         } catch {
+            api.resetNetworkSession()
             errorMessage = error.localizedDescription
         }
     }

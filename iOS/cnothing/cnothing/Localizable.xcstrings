@@ -1,197 +1,485 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Pair as Approval Device" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "绑定为审批设备" } }
-      }
-    },
-    "Sign in to the CNothing Console on the web, open the Devices page to generate a pairing QR code, then scan it here. You'll receive and approve agent authorization requests on this phone, just like Microsoft Authenticator." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在 CNothing Console（网页端登录后）打开 Devices 页生成配对二维码，扫码即可绑定。之后就能像 Microsoft Authenticator 一样在手机上接收并批准 agent 的授权请求。" } }
-      }
-    },
-    "Scan QR Code to Pair" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "扫描二维码绑定" } }
-      }
-    },
-    "This device cannot scan QR codes. Enter the pairing code manually." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此设备不支持相机扫码，请手动输入配对码。" } }
-      }
-    },
-    "Or enter the pairing code manually" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "或手动输入配对码" } }
-      }
-    },
-    "e.g. K7PQ2MXR" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "例如 K7PQ2MXR" } }
-      }
-    },
-    "Pair" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "配对" } }
-      }
-    },
-    "Scan Pairing QR Code" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "扫描配对二维码" } }
-      }
-    },
-    "Cancel" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消" } }
-      }
-    },
-    "Unrecognized QR code. Scan the pairing QR generated on the CNothing Console Devices page." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法识别的二维码，请扫描 CNothing Console Devices 页生成的配对二维码。" } }
-      }
-    },
     "Account" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "账户" } }
-      }
-    },
-    "Push" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "推送" } }
-      }
-    },
-    "Enabled" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已开启" } }
-      }
-    },
-    "Polling" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "使用轮询" } }
-      }
-    },
-    "Pending Requests" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "待审批请求" } }
-      }
-    },
-    "No pending authorization requests. When an agent calls request_access with your user_id, requests appear here and are pushed to this phone." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂无待审批的授权请求。Agent 调用 request_access 并携带你的 user_id 后，请求会出现在这里并推送到手机。" } }
-      }
-    },
-    "Unpair" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "解除配对" } }
-      }
-    },
-    "CNothing Approvals" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "CNothing 审批" } }
-      }
-    },
-    "Authorization Request" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "授权请求" } }
-      }
-    },
-    "Provider" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "提供商" } }
-      }
-    },
-    "Status" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "状态" } }
-      }
-    },
-    "Reason" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "理由" } }
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "账户"
+          }
+        }
       }
     },
     "Allowed hosts" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "允许访问的主机" } }
-      }
-    },
-    "OAuth Connection" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "使用的 OAuth 连接" } }
-      }
-    },
-    "No available %@ connection. Connect one first on the CNothing Console Connect page." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有可用的 %@ 连接。请先在网页 Console 的 Connect 页完成一次 OAuth 连接。" } }
-      }
-    },
-    "Connection" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "连接" } }
-      }
-    },
-    "Approve" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "批准" } }
-      }
-    },
-    "Deny" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "拒绝" } }
-      }
-    },
-    "Loading…" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "加载中…" } }
-      }
-    },
-    "Approved. Grant %@… is now active." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已批准，grant %@… 已生效。" } }
-      }
-    },
-    "Denied." : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已拒绝。" } }
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许访问的主机"
+          }
+        }
       }
     },
     "Approval" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "审批" } }
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审批"
+          }
+        }
+      }
+    },
+    "Approve" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准"
+          }
+        }
+      }
+    },
+    "Approved. Grant %@… is now active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已批准，grant %@… 已生效。"
+          }
+        }
+      }
+    },
+    "Authorization Request" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授权请求"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        }
+      }
+    },
+    "CNothing" : {
+      "comment" : "The title of the CNothing app.",
+      "isCommentAutoGenerated" : true
+    },
+    "CNothing Approvals" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CNothing 审批"
+          }
+        }
+      }
+    },
+    "Connection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接"
+          }
+        }
+      }
+    },
+    "Denied." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拒绝。"
+          }
+        }
+      }
+    },
+    "Deny" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝"
+          }
+        }
       }
     },
     "Device is not paired yet" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设备尚未配对" } }
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备尚未配对"
+          }
+        }
       }
     },
     "Device signing failed. Re-pair this device to enroll its signing key." : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设备签名失败，请重新配对以注册设备密钥。" } }
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备签名失败，请重新配对以注册设备密钥。"
+          }
+        }
       }
     },
-    "PUSH_APPROVAL_TITLE" : {
-      "extractionState" : "manual",
+    "e.g. K7PQ2MXR" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "CNothing Authorization Request" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "CNothing 授权请求" } }
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如 K7PQ2MXR"
+          }
+        }
+      }
+    },
+    "Enabled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已开启"
+          }
+        }
+      }
+    },
+    "https://cnothing.com" : {
+      "comment" : "A placeholder URL for the CNothing server.",
+      "isCommentAutoGenerated" : true
+    },
+    "Loading…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加载中…"
+          }
+        }
+      }
+    },
+    "No available %@ connection. Connect one first on the CNothing Console Connect page." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可用的 %@ 连接。请先在网页 Console 的 Connect 页完成一次 OAuth 连接。"
+          }
+        }
+      }
+    },
+    "No pending authorization requests. When an agent calls request_access with your user_id, requests appear here and are pushed to this phone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无待审批的授权请求。Agent 调用 request_access 并携带你的 user_id 后，请求会出现在这里并推送到手机。"
+          }
+        }
+      }
+    },
+    "OAuth Connection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用的 OAuth 连接"
+          }
+        }
+      }
+    },
+    "Or enter the pairing code manually" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "或手动输入配对码"
+          }
+        }
+      }
+    },
+    "Pair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配对"
+          }
+        }
+      }
+    },
+    "Pair as Approval Device" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "绑定为审批设备"
+          }
+        }
+      }
+    },
+    "Pending Requests" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待审批请求"
+          }
+        }
+      }
+    },
+    "Polling" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用轮询"
+          }
+        }
+      }
+    },
+    "Provider" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提供商"
+          }
+        }
+      }
+    },
+    "Push" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送"
+          }
+        }
       }
     },
     "PUSH_APPROVAL_BODY" : {
       "extractionState" : "manual",
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ requests access to %2$@" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ 请求访问 %2$@" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ requests access to %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 请求访问 %2$@"
+          }
+        }
       }
     },
     "PUSH_APPROVAL_BODY_REASON" : {
       "extractionState" : "manual",
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@: %2$@" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@：%2$@" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@：%2$@"
+          }
+        }
+      }
+    },
+    "PUSH_APPROVAL_TITLE" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CNothing Authorization Request"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CNothing 授权请求"
+          }
+        }
+      }
+    },
+    "Reason" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "理由"
+          }
+        }
+      }
+    },
+    "Scan Pairing QR Code" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扫描配对二维码"
+          }
+        }
+      }
+    },
+    "Scan QR Code to Pair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扫描二维码绑定"
+          }
+        }
+      }
+    },
+    "Sign in to the CNothing Console on the web, open the Devices page to generate a pairing QR code, then scan it here. You'll receive and approve agent authorization requests on this phone, just like Microsoft Authenticator." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 CNothing Console（网页端登录后）打开 Devices 页生成配对二维码，扫码即可绑定。之后就能像 Microsoft Authenticator 一样在手机上接收并批准 agent 的授权请求。"
+          }
+        }
+      }
+    },
+    "Status" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态"
+          }
+        }
+      }
+    },
+    "This device cannot scan QR codes. Enter the pairing code manually." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备不支持相机扫码，请手动输入配对码。"
+          }
+        }
+      }
+    },
+    "Unpair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除配对"
+          }
+        }
+      }
+    },
+    "Unpair this device?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除此设备的配对？"
+          }
+        }
+      }
+    },
+    "You will stop receiving approval requests on this phone until you pair again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除后，在重新配对之前，此手机将不再收到审批请求。"
+          }
+        }
+      }
+    },
+    "Unrecognized QR code. Scan the pairing QR generated on the CNothing Console Devices page." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法识别的二维码，请扫描 CNothing Console Devices 页生成的配对二维码。"
+          }
+        }
+      }
+    },
+    "Refresh" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新"
+          }
+        }
+      }
+    },
+    "Secure connection failed (TLS). Tap Refresh to retry." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全连接失败（TLS）。请点「刷新」重试。"
+          }
+        }
+      }
+    },
+    "No network connection. Check Wi‑Fi or cellular, then tap Refresh." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无网络连接。请检查 Wi‑Fi 或蜂窝网络后点「刷新」。"
+          }
+        }
+      }
+    },
+    "Request timed out. Tap Refresh to retry." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求超时。请点「刷新」重试。"
+          }
+        }
+      }
+    },
+    "Cannot reach the server. Tap Refresh to retry." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接服务器。请点「刷新」重试。"
+          }
+        }
+      }
+    },
+    "Network error: %@. Tap Refresh to retry." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络错误：%@。请点「刷新」重试。"
+          }
+        }
       }
     }
   },
-  "version" : "1.0"
+  "version" : "1.1"
 }

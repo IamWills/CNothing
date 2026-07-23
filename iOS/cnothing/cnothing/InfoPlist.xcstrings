@@ -1,11 +1,45 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "CNothing"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "cnothing"
+          }
+        }
+      }
+    },
     "NSCameraUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Scan the CNothing pairing QR code to bind this device for approvals." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "扫描 CNothing 配对二维码以绑定审批设备。" } }
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan the CNothing pairing QR code to bind this device for approvals."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扫描 CNothing 配对二维码以绑定审批设备。"
+          }
+        }
       }
     }
   },

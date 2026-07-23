@@ -11,6 +11,7 @@ struct ApprovalDetailView: View {
     @State private var connections: [OAuthConnection] = []
     @State private var selectedConnectionId = ""
     @State private var isWorking = false
+    @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var resultMessage = ""
 
@@ -82,15 +83,43 @@ struct ApprovalDetailView: View {
                 Section { Text(resultMessage).foregroundStyle(.green).font(.footnote) }
             }
             if !errorMessage.isEmpty {
-                Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
+                Section {
+                    NetworkErrorBanner(
+                        message: errorMessage,
+                        isWorking: isLoading || isWorking
+                    ) {
+                        Task { await load(resetSession: true) }
+                    }
+                }
             }
         }
         .navigationTitle("Approval")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await load(resetSession: true) }
+                } label: {
+                    if isLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .accessibilityLabel(Text("Refresh"))
+                .disabled(isLoading || isWorking)
+            }
+        }
         .task { await load() }
     }
 
-    private func load() async {
+    private func load(resetSession: Bool = false) async {
+        if resetSession {
+            api.resetNetworkSession()
+        }
+        errorMessage = ""
+        isLoading = true
+        defer { isLoading = false }
         do {
             detail = try await api.accessRequest(id: requestId)
             connections = try await api.connections().filter { $0.status == "active" }
@@ -122,6 +151,8 @@ struct ApprovalDetailView: View {
             try? await Task.sleep(for: .seconds(1))
             dismiss()
         } catch {
+            // Approval may fail due to TLS; reset so the next tap gets a fresh session.
+            api.resetNetworkSession()
             errorMessage = error.localizedDescription
         }
     }

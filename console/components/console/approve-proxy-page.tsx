@@ -10,12 +10,14 @@ import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
   approveV4AccessRequest,
-  buildV4GitHubStartUrl,
+  buildV4AuthProviderStartUrl,
   denyV4AccessRequest,
   fetchV4AccessRequest,
   fetchV4AuthMe,
+  fetchV4AuthProviders,
   fetchV4Connections,
   type V4AccessRequest,
+  type V4AuthProvider,
   type V4OAuthConnection,
 } from "@/lib/api-v4";
 
@@ -25,6 +27,7 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
   const [authReady, setAuthReady] = React.useState(false);
   const [request, setRequest] = React.useState<V4AccessRequest | null>(null);
   const [connections, setConnections] = React.useState<V4OAuthConnection[]>([]);
+  const [authProviders, setAuthProviders] = React.useState<V4AuthProvider[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -58,6 +61,12 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
       cancelled = true;
     };
   }, [connection, syncSessionFromServer]);
+
+  React.useEffect(() => {
+    void fetchV4AuthProviders(connection)
+      .then((response) => setAuthProviders(response.items))
+      .catch(() => setAuthProviders([]));
+  }, [connection]);
 
   React.useEffect(() => {
     if (!authReady || !isLoggedIn) {
@@ -148,14 +157,25 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
               to this page.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <a href={buildV4GitHubStartUrl(connection, returnTo)}>
-              <Button>Sign in with GitHub</Button>
-            </a>
+          {authProviders.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-amber-950">Sign in with identity provider</p>
+              <div className="flex flex-wrap gap-2">
+                {authProviders.map((provider) => (
+                  <a
+                    key={`${provider.type}:${provider.name}`}
+                    href={buildV4AuthProviderStartUrl(connection, provider, returnTo)}
+                  >
+                    <Button type="button">{provider.display_name}</Button>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : (
             <a href={`/login?redirect_after=${encodeURIComponent(returnTo)}`}>
-              <Button variant="outline">Other sign-in options</Button>
+              <Button>Sign in</Button>
             </a>
-          </div>
+          )}
         </Card>
       ) : null}
 

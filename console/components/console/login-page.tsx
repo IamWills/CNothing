@@ -11,8 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import {
-  buildV4GitHubStartUrl,
-  buildV4OidcStartUrl,
+  buildV4AuthProviderStartUrl,
   fetchV4AuthMe,
   fetchV4AuthProviders,
   issueV4LoginToken,
@@ -168,13 +167,9 @@ export function LoginPage() {
                       const redirectAfter =
                         params.get("redirect_after")?.trim() ||
                         `${window.location.origin}/login`;
-                      if (provider.type === "github") {
-                        window.location.href = buildV4GitHubStartUrl(connection, redirectAfter);
-                        return;
-                      }
-                      window.location.href = buildV4OidcStartUrl(
+                      window.location.href = buildV4AuthProviderStartUrl(
                         connection,
-                        provider.name,
+                        provider,
                         redirectAfter,
                       );
                     }}

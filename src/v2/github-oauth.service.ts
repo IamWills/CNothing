@@ -22,7 +22,8 @@ const GITHUB_USER_URL = "https://api.github.com/user";
 const GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
 
 export type AuthProviderDescriptor = {
-  type: "github" | "oidc";
+  /** github = env GitHub login; oidc = cap_oidc_providers; oauth = cap_oauth_providers login */
+  type: "github" | "oidc" | "oauth";
   name: string;
   display_name: string;
   start_path: string;

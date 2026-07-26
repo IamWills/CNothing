@@ -16,7 +16,13 @@ import {
   markConnectionReconnectRequired,
   writeOAuthAudit,
 } from "./oauth.repository";
+import { ensureOAuthIdentityProvider } from "./oauth-identity.provider";
+import { buildUserSessionCookie } from "./session-cookie";
+import { createUserSession, upsertUserIdentity } from "./v2.repository";
+import { generateUserSessionToken, hashSessionToken } from "./user-session";
 import type { OAuthProviderRecord } from "./v2.5.entity";
+
+const SANDBOX_PROVIDER_SLUG = "cnothing-sandbox";
 
 function generatePkcePair(): { verifier: string; challenge: string } {
   const verifier = encodeBase64Url(randomBytes(32));
@@ -121,6 +127,67 @@ export class OAuthConnectionService {
     };
   }
 
+  /**
+   * Console login via an active OAuth broker provider (including agent-registered ones).
+   * Reuses the connection callback URL so DCR redirect URIs keep working.
+   */
+  async startLogin(input: {
+    providerSlug: string;
+    apiBaseUrl: string;
+    redirectAfter?: string;
+  }) {
+    const provider = await findOAuthProviderBySlug(input.providerSlug);
+    if (!provider) {
+      throw new NotFoundError("OAuth provider not found");
+    }
+    if (provider.slug === SANDBOX_PROVIDER_SLUG) {
+      throw new ForbiddenError("Sandbox provider cannot be used for login");
+    }
+    if (provider.status !== "active" || !provider.client_id) {
+      throw new ForbiddenError("OAuth provider is not configured for login", {
+        error_code: "provider_unconfigured",
+        provider: provider.slug,
+      });
+    }
+    if (!provider.authorization_url || !provider.token_url) {
+      throw new ValidationError("Provider missing authorization_url or token_url");
+    }
+
+    const redirectAfter = input.redirectAfter?.trim();
+    if (redirectAfter && !isAllowedRedirect(redirectAfter)) {
+      throw new ValidationError("redirect_after is not in the allowlist", {
+        error_code: "redirect_not_allowed",
+      });
+    }
+
+    const pkce = provider.pkce_required ? generatePkcePair() : null;
+    const connectState = await createOAuthConnectState({
+      provider_id: provider.id,
+      redirect_after: redirectAfter,
+      code_verifier: pkce?.verifier,
+      purpose: "login",
+    });
+
+    const authorizationUrl = this.buildAuthorizationUrl({
+      provider,
+      state: connectState.state,
+      redirectUri: buildCallbackUrl(input.apiBaseUrl, provider.slug, "v4"),
+      scopes: provider.default_scopes,
+      codeChallenge: pkce?.challenge,
+    });
+
+    await writeOAuthAudit({
+      provider_id: provider.id,
+      action: "oauth.login.start",
+    });
+
+    return {
+      ok: true as const,
+      authorization_url: authorizationUrl,
+      state: connectState.state,
+    };
+  }
+
   private buildAuthorizationUrl(input: {
     provider: OAuthProviderRecord;
     state: string;
@@ -165,7 +232,13 @@ export class OAuthConnectionService {
     state: string;
     apiBaseUrl: string;
     oauthApiVersion?: "v2" | "v2.6" | "v3" | "v4";
-  }) {
+  }): Promise<{
+    ok: true;
+    connection_id: string;
+    redirect_url: string;
+    session_cookie?: string;
+    user_id?: string;
+  }> {
     const provider = await findOAuthProviderBySlug(input.providerSlug);
     if (!provider) {
       throw new NotFoundError("OAuth provider not found");
@@ -178,8 +251,9 @@ export class OAuthConnectionService {
       });
     }
 
-    const userId = connectState.user_id;
-    if (!userId) {
+    const isLogin = connectState.purpose === "login";
+    let userId: string | undefined = connectState.user_id ?? undefined;
+    if (!isLogin && !userId) {
       throw new ValidationError("OAuth state missing user binding", {
         error_code: "oauth_user_unbound",
       });
@@ -205,10 +279,45 @@ export class OAuthConnectionService {
     });
 
     const profile = await this.fetchProfile(provider, tokenPayload.access_token);
+
+    let sessionCookie: string | undefined;
+    if (isLogin) {
+      const subjectKey =
+        typeof profile.metadata.login === "string" && profile.metadata.login.trim()
+          ? profile.metadata.login.trim()
+          : profile.accountId;
+      userId = `${provider.slug}:${subjectKey}`;
+      const identityProviderId = await ensureOAuthIdentityProvider(provider);
+      await upsertUserIdentity({
+        user_id: userId,
+        provider_id: identityProviderId,
+        subject: profile.accountId,
+        email: typeof profile.metadata.email === "string" ? profile.metadata.email : null,
+        metadata: {
+          ...profile.metadata,
+          display_name: profile.displayName,
+        },
+      });
+      const sessionToken = generateUserSessionToken();
+      await createUserSession({
+        user_id: userId,
+        session_token_hash: hashSessionToken(sessionToken),
+        ttl_seconds: config.userSessionTtlSeconds,
+        metadata: { provider: provider.slug, oauth_login: true },
+      });
+      sessionCookie = buildUserSessionCookie(sessionToken);
+    }
+
     const tenantId =
       typeof connectState.metadata?.tenant_id === "string"
         ? connectState.metadata.tenant_id
         : "default";
+    if (!userId) {
+      throw new ValidationError("OAuth login failed to resolve user id", {
+        error_code: "oauth_user_unbound",
+      });
+    }
+
     const connection = await createOAuthConnection({
       user_id: userId,
       tenant_id: tenantId,
@@ -227,7 +336,7 @@ export class OAuthConnectionService {
       user_id: userId,
       provider_id: provider.id,
       connection_id: connection.id,
-      action: "oauth.connect.completed",
+      action: isLogin ? "oauth.login.completed" : "oauth.connect.completed",
     });
 
     void emitPlatformWebhook({
@@ -240,14 +349,20 @@ export class OAuthConnectionService {
       },
     });
 
-    const redirectUrl =
-      connectState.redirect_after?.trim() ||
-      (config.consoleUrl ? `${config.consoleUrl}/connections` : `${config.publicBaseUrl}/connections`);
+    const redirectUrl = isLogin
+      ? connectState.redirect_after?.trim() ||
+        config.consoleUrl ||
+        `${config.publicBaseUrl.replace(/\/+$/, "")}/login`
+      : connectState.redirect_after?.trim() ||
+        (config.consoleUrl
+          ? `${config.consoleUrl}/connections`
+          : `${config.publicBaseUrl}/connections`);
 
     return {
       ok: true as const,
       connection_id: connection.id,
       redirect_url: redirectUrl,
+      ...(sessionCookie ? { session_cookie: sessionCookie, user_id: userId } : {}),
     };
   }
 

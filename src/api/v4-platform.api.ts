@@ -75,6 +75,12 @@ export async function handleOAuthCallbackRequest(request: Request): Promise<Resp
       apiBaseUrl,
       oauthApiVersion: apiVersion,
     });
+    if (result.session_cookie) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: result.redirect_url, "Set-Cookie": result.session_cookie },
+      });
+    }
     return Response.redirect(result.redirect_url, 302);
   }
 
@@ -180,6 +186,21 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     const redirectAfter = url.searchParams.get("redirect_after")?.trim() || undefined;
     const result = await oidcService.startAuthorization({
       providerName,
+      apiBaseUrl,
+      redirectAfter,
+    });
+    return Response.redirect(result.authorization_url, 302);
+  }
+
+  if (
+    request.method === "GET" &&
+    path.startsWith("/v4/auth/oauth/") &&
+    path.endsWith("/start")
+  ) {
+    const providerSlug = decodeURIComponent(segments[3] ?? "");
+    const redirectAfter = url.searchParams.get("redirect_after")?.trim() || undefined;
+    const result = await oauthConnectionService.startLogin({
+      providerSlug,
       apiBaseUrl,
       redirectAfter,
     });

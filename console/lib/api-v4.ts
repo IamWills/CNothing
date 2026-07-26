@@ -41,7 +41,7 @@ export type V4OAuthConnection = {
 };
 
 export type V4AuthProvider = {
-  type: "github" | "oidc";
+  type: "github" | "oidc" | "oauth";
   name: string;
   display_name: string;
   start_path: string;
@@ -173,6 +173,29 @@ export function buildV4OidcStartUrl(
 ) {
   const params = new URLSearchParams({ redirect_after: redirectAfter });
   return `${normalizeBaseUrl(connection.baseUrl)}/v4/auth/oidc/${encodeURIComponent(providerName)}/start?${params.toString()}`;
+}
+
+export function buildV4OAuthLoginStartUrl(
+  connection: ConsoleConnection,
+  providerSlug: string,
+  redirectAfter: string,
+) {
+  const params = new URLSearchParams({ redirect_after: redirectAfter });
+  return `${normalizeBaseUrl(connection.baseUrl)}/v4/auth/oauth/${encodeURIComponent(providerSlug)}/start?${params.toString()}`;
+}
+
+export function buildV4AuthProviderStartUrl(
+  connection: ConsoleConnection,
+  provider: V4AuthProvider,
+  redirectAfter: string,
+) {
+  if (provider.type === "github") {
+    return buildV4GitHubStartUrl(connection, redirectAfter);
+  }
+  if (provider.type === "oauth") {
+    return buildV4OAuthLoginStartUrl(connection, provider.name, redirectAfter);
+  }
+  return buildV4OidcStartUrl(connection, provider.name, redirectAfter);
 }
 
 // --- Providers ---

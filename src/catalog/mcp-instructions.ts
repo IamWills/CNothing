@@ -48,7 +48,7 @@ Hard rules:
 - Host must match grant allowlist or host_not_allowed.
 - On grant_revoked, request_access again.
 
-Missing provider: submit_provider_proposal with OIDC discovery URL (RFC 7591 DCR when available).
+Missing or unconfigured provider: submit_provider_proposal with OIDC discovery URL (RFC 7591 DCR when available). If you get provider_exists with connectable=true, use that slug with request_access — do not re-propose.
 
 Auth: every tool except register_agent requires agent_access_token.
 Primary skill: https://cnothing.com/skill.md

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { ConflictError, NotFoundError, ValidationError } from "../utils/errors";
 import { discoverOAuthProvider } from "../v2/oidc-provider-discovery.service";
-import { findOAuthProviderBySlug } from "../v2/oauth.repository";
+import { findOAuthProviderBySlug, isOAuthProviderAvailable } from "../v2/oauth.repository";
 import { oauthProviderService } from "../v2/oauth-connection.service";
+import type { OAuthProviderRecord } from "../v2/v2.5.entity";
 import type { AgentRecord } from "../v2/v2.entity";
 import type { ProviderProposalInput, ProviderProposalPublicView } from "./v3.entity";
 import {
@@ -114,13 +115,22 @@ export class ProviderProposalService {
 
     const proposedSlug = slugifyProviderName(input.body.slug?.trim() || providerName);
     const existingProvider = await findOAuthProviderBySlug(proposedSlug);
-    if (existingProvider) {
-      throw new ConflictError("Provider already exists", {
-        error_code: "provider_exists",
-        provider_id: existingProvider.id,
-        slug: proposedSlug,
-      });
+    // Only block when the slug is already usable. Unconfigured/disabled builtins
+    // (e.g. google without env credentials) may be adopted by the agent proposal.
+    if (existingProvider && isOAuthProviderAvailable(existingProvider)) {
+      throw new ConflictError(
+        "Provider already exists and is available — use this slug with request_access instead of proposing again",
+        {
+          error_code: "provider_exists",
+          provider_id: existingProvider.id,
+          slug: proposedSlug,
+          status: existingProvider.status,
+          connectable: true,
+        },
+      );
     }
+    const adoptTarget: OAuthProviderRecord | null =
+      existingProvider && !isOAuthProviderAvailable(existingProvider) ? existingProvider : null;
 
     const urlFields: Record<string, string | undefined> = {
       issuer_url: input.body.issuer_url,
@@ -262,10 +272,10 @@ export class ProviderProposalService {
       }
     }
 
-    const provider = await oauthProviderService.createProvider({
+    const providerInput = {
       slug: proposedSlug,
       display_name: providerName,
-      auth_type: issuerUrl ? "oidc" : "oauth2",
+      auth_type: (issuerUrl ? "oidc" : "oauth2") as "oidc" | "oauth2",
       issuer: issuerUrl ?? undefined,
       discovery_url: discoveryUrl ?? undefined,
       authorization_url: authorizationUrl ?? undefined,
@@ -283,11 +293,16 @@ export class ProviderProposalService {
       metadata: {
         source: "agent_proposal",
         proposal_id: proposal.id,
+        adopted_existing: Boolean(adoptTarget),
         openapi_url: input.body.openapi_url ?? null,
         mcp_url: input.body.mcp_url ?? null,
         api_base_url: input.body.api_base_url ?? null,
       },
-    });
+    };
+
+    const provider = adoptTarget
+      ? await oauthProviderService.adoptProvider(adoptTarget.id, providerInput)
+      : await oauthProviderService.createProvider(providerInput);
 
     const updated = await updateProviderProposal(proposal.id, {
       status: "created",
@@ -302,6 +317,7 @@ export class ProviderProposalService {
         proposal_id: proposal.id,
         slug: proposedSlug,
         connectable: Boolean(provider.client_id),
+        adopted_existing: Boolean(adoptTarget),
       },
     });
 

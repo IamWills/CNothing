@@ -722,6 +722,61 @@ export class OAuthProviderService {
     return toProviderAdmin(provider);
   }
 
+  async adoptProvider(
+    id: string,
+    input: {
+      slug: string;
+      display_name: string;
+      auth_type?: "oauth2" | "oidc";
+      discovery_url?: string;
+      issuer?: string;
+      authorization_url?: string;
+      token_url?: string;
+      userinfo_url?: string;
+      jwks_url?: string;
+      client_id?: string;
+      client_secret?: string;
+      registration_endpoint?: string;
+      device_authorization_endpoint?: string;
+      default_scopes?: string[];
+      supported_scopes?: string[];
+      pkce_required?: boolean;
+      token_auth_method?: "client_secret_basic" | "client_secret_post" | "none";
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    const { mergeDiscoveredProviderInput } = await import("./oidc-provider-discovery.service");
+    const { adoptOAuthProvider, toProviderAdmin } = await import("./oauth.repository");
+    const merged = await mergeDiscoveredProviderInput({
+      ...input,
+      auth_type: input.auth_type === "oidc" ? "oidc" : "oauth2",
+    });
+    const provider = await adoptOAuthProvider({
+      id,
+      display_name: merged.display_name,
+      auth_type: merged.auth_type,
+      issuer: merged.issuer,
+      discovery_url: merged.discovery_url,
+      authorization_url: merged.authorization_url,
+      token_url: merged.token_url,
+      userinfo_url: merged.userinfo_url,
+      jwks_url: merged.jwks_url,
+      client_id: merged.client_id,
+      client_secret: merged.client_secret,
+      registration_endpoint: merged.registration_endpoint,
+      device_authorization_endpoint: merged.device_authorization_endpoint,
+      default_scopes: merged.default_scopes,
+      supported_scopes: merged.supported_scopes,
+      pkce_required: merged.pkce_required,
+      token_auth_method: merged.token_auth_method,
+      metadata: merged.metadata,
+    });
+    if (!provider) {
+      throw new NotFoundError("OAuth provider not found");
+    }
+    return toProviderAdmin(provider);
+  }
+
   async discoverProvider(input: { discovery_url?: string; issuer?: string }) {
     const { discoverOAuthProvider } = await import("./oidc-provider-discovery.service");
     return discoverOAuthProvider(input);

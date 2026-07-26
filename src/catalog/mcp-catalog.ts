@@ -146,7 +146,7 @@ const MCP_TOOLS: McpToolDescriptor[] = [
   {
     name: "submit_provider_proposal",
     description:
-      "Onboard a NEW OAuth 2.0 / OIDC provider that CNothing doesn't know yet. Provide a discovery/issuer URL; if the provider supports RFC 7591 Dynamic Client Registration, CNothing registers an OAuth client automatically, otherwise an operator must configure client credentials once.",
+      "Onboard an OAuth 2.0 / OIDC provider that is missing or not yet connectable. Provide a discovery/issuer URL; if the provider supports RFC 7591 Dynamic Client Registration, CNothing registers an OAuth client automatically, otherwise an operator must configure client credentials once. If the slug already exists and is connectable, you get provider_exists — use request_access with that slug instead.",
     inputSchema: {
       type: "object",
       properties: {

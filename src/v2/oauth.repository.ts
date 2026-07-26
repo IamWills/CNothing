@@ -307,6 +307,111 @@ export async function updateOAuthProviderCredentials(input: {
   return row ? mapProviderRow(row) : null;
 }
 
+/** True when users/agents can connect and request_access against this provider. */
+export function isOAuthProviderAvailable(provider: OAuthProviderRecord): boolean {
+  return toProviderPublic(provider).connectable;
+}
+
+/**
+ * Adopt an unconfigured/disabled provider row (e.g. builtin google) from an agent proposal.
+ * Keeps id/slug/is_builtin; refreshes endpoints and optional DCR credentials.
+ */
+export async function adoptOAuthProvider(input: {
+  id: string;
+  display_name: string;
+  auth_type: OAuthAuthType;
+  issuer?: string | null;
+  discovery_url?: string | null;
+  authorization_url?: string | null;
+  token_url?: string | null;
+  userinfo_url?: string | null;
+  jwks_url?: string | null;
+  client_id?: string;
+  client_secret?: string;
+  default_scopes?: string[];
+  supported_scopes?: string[];
+  pkce_required?: boolean;
+  token_auth_method?: OAuthProviderRecord["token_auth_method"];
+  registration_endpoint?: string | null;
+  device_authorization_endpoint?: string | null;
+  metadata?: JsonObject;
+}): Promise<OAuthProviderRecord | null> {
+  const existing = await findOAuthProviderById(input.id);
+  if (!existing) {
+    return null;
+  }
+
+  const tokenAuthMethod = input.token_auth_method ?? existing.token_auth_method;
+  const nextClientId = input.client_id?.trim() || existing.client_id;
+  const wroteSecret = Boolean(input.client_secret?.trim());
+  const hasSecretOrPublic =
+    tokenAuthMethod === "none" ||
+    wroteSecret ||
+    Boolean(existing.client_secret_vault_id) ||
+    Boolean(existing.encrypted_client_secret);
+  const status =
+    nextClientId && (tokenAuthMethod === "none" || hasSecretOrPublic) ? "active" : "unconfigured";
+
+  let clientSecretVaultId: string | null = null;
+  if (input.client_secret?.trim()) {
+    clientSecretVaultId = await storeProviderClientSecretInVault({
+      providerId: input.id,
+      clientSecret: input.client_secret.trim(),
+    });
+  }
+
+  const result = await pool.query(
+    `
+      UPDATE cap_oauth_providers
+      SET display_name = $2,
+          auth_type = $3,
+          issuer = $4,
+          discovery_url = $5,
+          authorization_url = $6,
+          token_url = $7,
+          userinfo_url = $8,
+          jwks_url = $9,
+          client_id = $10,
+          encrypted_client_secret = CASE WHEN $11::text IS NOT NULL THEN NULL ELSE encrypted_client_secret END,
+          client_secret_vault_id = COALESCE($11, client_secret_vault_id),
+          registration_endpoint = $12,
+          device_authorization_endpoint = $13,
+          default_scopes = $14::jsonb,
+          supported_scopes = $15::jsonb,
+          pkce_required = $16,
+          token_auth_method = $17,
+          status = $18,
+          metadata = COALESCE(metadata, '{}'::jsonb) || $19::jsonb,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [
+      input.id,
+      input.display_name,
+      input.auth_type,
+      input.issuer ?? null,
+      input.discovery_url ?? null,
+      input.authorization_url ?? null,
+      input.token_url ?? null,
+      input.userinfo_url ?? null,
+      input.jwks_url ?? null,
+      nextClientId,
+      clientSecretVaultId,
+      input.registration_endpoint ?? null,
+      input.device_authorization_endpoint ?? null,
+      JSON.stringify(input.default_scopes ?? []),
+      JSON.stringify(input.supported_scopes ?? []),
+      input.pkce_required ?? true,
+      tokenAuthMethod,
+      status,
+      JSON.stringify(input.metadata ?? {}),
+    ],
+  );
+  const row = result.rows[0];
+  return row ? mapProviderRow(row) : null;
+}
+
 export async function createOAuthConnection(input: {
   user_id: string;
   tenant_id?: string;

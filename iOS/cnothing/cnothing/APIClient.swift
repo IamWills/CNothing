@@ -85,9 +85,9 @@ final class APIClient: ObservableObject {
         urlSession = APIClient.makeSession()
     }
 
-    func switchAccount(deviceId: String) {
-        guard !deviceId.isEmpty else { return }
-        AccountStore.shared.switchTo(deviceId: deviceId)
+    func switchAccount(deviceId targetDeviceId: String) {
+        guard !targetDeviceId.isEmpty else { return }
+        AccountStore.shared.switchTo(deviceId: targetDeviceId)
         syncFromStore()
     }
 
@@ -134,8 +134,8 @@ final class APIClient: ObservableObject {
     }
 
     /// Remove the active account (or a specific device). If none remain, returns to pairing.
-    func unpair(deviceId: String? = nil) {
-        let target = deviceId ?? activeAccount?.deviceId
+    func unpair(deviceId targetDeviceId: String? = nil) {
+        let target = targetDeviceId ?? activeAccount?.deviceId
         guard let target else { return }
         AccountStore.shared.removeAccount(deviceId: target)
         syncFromStore()
@@ -209,6 +209,21 @@ final class APIClient: ObservableObject {
         let response: ConnectionsResponse = try await request(
             method: "GET",
             path: "/v4/connections"
+        )
+        return response.items
+    }
+
+    func connections(for account: PairedAccount) async throws -> [OAuthConnection] {
+        guard let token = AccountStore.shared.sessionToken(for: account.deviceId),
+              let base = URL(string: account.baseURL)
+        else {
+            throw APIError.notPaired
+        }
+        let response: ConnectionsResponse = try await request(
+            method: "GET",
+            path: "/v4/connections",
+            baseURLOverride: base,
+            sessionTokenOverride: token
         )
         return response.items
     }

@@ -29,10 +29,10 @@
 
 同一台 iPhone 可配对多个 CNothing 账号并分别审批：
 
-1. 主界面点右上角 **+**（或打开 Accounts → Add Account），扫描另一用户 Devices 页的配对码。
-2. 点顶部 **Account** 行打开账户列表并切换当前审批身份。
-3. 推送若带 `user_id`，会自动切到对应账号再打开审批。
-4. 账户列表左滑或菜单 **Remove** 可解除单个账号；不影响其他账号。
+1. **账号** Tab：列出已绑定账号；右上角 **+** 扫描另一用户 Devices 页的配对码添加账号。
+2. 点某个账号进入管理页，查看平台 / 账号与 OAuth 连接，底部可 **解绑账号**。
+3. **授权** Tab：聚合所有已绑定账号的待审批请求，逐条批准或拒绝。
+4. 推送若带 `user_id`，会切到 **授权** Tab 并打开对应审批。
 
 旧版单账号安装会在首次启动时自动迁移到多账号存储。
 
@@ -101,6 +101,7 @@ App 支持英文（默认）与简体中文，采用 Xcode String Catalog：
 | `DeviceKey.swift` | 每账号独立的 Secure Enclave 签名密钥 |
 | `PushRegistrar.swift` | APNs 注册、通知代理、审批导航路由 |
 | `PairingView.swift` | 首次配对 / 添加账号 |
-| `AccountsView.swift` | 账号列表、切换、移除 |
-| `PendingRequestsView.swift` | 当前账号待审批列表 |
+| `AccountsView.swift` | 账号 Tab：列表与添加 |
+| `AccountDetailView.swift` | 单账号管理与解绑 |
+| `PendingRequestsView.swift` | 授权 Tab：全账号待审批列表 |
 | `ApprovalDetailView.swift` | 审批详情页 |

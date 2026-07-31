@@ -1,51 +1,25 @@
 import SwiftUI
 
+/// One pending request tagged with the paired account that owns it.
+private struct PendingInboxItem: Identifiable, Hashable {
+    let account: PairedAccount
+    let request: AccessRequest
+
+    var id: String { "\(account.deviceId).\(request.access_request_id)" }
+}
+
+/// Tab: inbox of authorization requests across all paired accounts.
 struct PendingRequestsView: View {
     @ObservedObject private var api = APIClient.shared
     @ObservedObject private var router = ApprovalRouter.shared
 
-    @State private var requests: [AccessRequest] = []
+    @State private var items: [PendingInboxItem] = []
     @State private var errorMessage = ""
     @State private var isLoading = false
-    @State private var showAccounts = false
-    @State private var showAddAccount = false
-    @State private var showRemoveConfirmation = false
 
     var body: some View {
         NavigationStack(path: $router.path) {
             List {
-                Section {
-                    Button {
-                        showAccounts = true
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Account")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(api.userId ?? "—")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                            }
-                            Spacer()
-                            if api.accounts.count > 1 {
-                                Text("\(api.accounts.count)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    LabeledContent(
-                        "Push",
-                        value: PushRegistrar.shared.isRegistered
-                            ? String(localized: "Enabled")
-                            : String(localized: "Polling")
-                    )
-                }
-
                 if !errorMessage.isEmpty {
                     Section {
                         NetworkErrorBanner(
@@ -57,38 +31,59 @@ struct PendingRequestsView: View {
                     }
                 }
 
-                Section("Pending Requests") {
-                    if isLoading && requests.isEmpty && errorMessage.isEmpty {
+                Section {
+                    if isLoading && items.isEmpty && errorMessage.isEmpty {
                         ProgressView("Loading…")
-                    } else if requests.isEmpty && !isLoading {
-                        Text("No pending authorization requests for this account. Switch accounts above, or ask the agent to pass your user_id / open approval_url.")
+                    } else if items.isEmpty && !isLoading {
+                        Text("No pending authorization requests. Ask an agent to request access, or open an approval link.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(requests) { request in
-                        NavigationLink(value: request.access_request_id) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(request.provider).fontWeight(.semibold)
-                                    Spacer()
-                                    Text(request.status)
-                                        .font(.caption)
-                                        .foregroundStyle(.orange)
+
+                    ForEach(items) { item in
+                        Button {
+                            api.switchAccount(deviceId: item.account.deviceId)
+                            router.path.append(item.request.access_request_id)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(item.request.provider).fontWeight(.semibold)
+                                        Spacer()
+                                        Text(item.request.status)
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    }
+                                    if let reason = item.request.reason, !reason.isEmpty {
+                                        Text(reason)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(item.request.requested_hosts.joined(separator: ", "))
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Text(item.account.userId)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
                                 }
-                                if let reason = request.reason, !reason.isEmpty {
-                                    Text(reason).font(.footnote).foregroundStyle(.secondary)
-                                }
-                                Text(request.requested_hosts.joined(separator: ", "))
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
                             }
                         }
+                        .foregroundStyle(.primary)
+                    }
+                } header: {
+                    Text("Pending Requests")
+                } footer: {
+                    if api.accounts.count > 1 {
+                        Text("Requests from every paired account are listed here.")
                     }
                 }
             }
-            .navigationTitle("CNothing Approvals")
+            .navigationTitle("Approvals")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await refresh(resetSession: true) }
                     } label: {
@@ -97,67 +92,27 @@ struct PendingRequestsView: View {
                                 .controlSize(.small)
                         } else {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .semibold))
                         }
                     }
                     .accessibilityLabel(Text("Refresh"))
                     .disabled(isLoading)
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showAddAccount = true
-                    } label: {
-                        Image(systemName: "person.badge.plus")
-                    }
-                    .accessibilityLabel(Text("Add Account"))
-
-                    Menu {
-                        Button {
-                            showAccounts = true
-                        } label: {
-                            Label("Manage Accounts", systemImage: "person.2")
-                        }
-                        Button("Remove Account", role: .destructive) {
-                            showRemoveConfirmation = true
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
-            .confirmationDialog(
-                "Remove this account?",
-                isPresented: $showRemoveConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Remove", role: .destructive) {
-                    api.unpair()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("You will stop receiving approval requests for \(api.userId ?? "this account") on this phone.")
             }
             .navigationDestination(for: String.self) { requestId in
                 ApprovalDetailView(requestId: requestId) {
                     Task { await refresh() }
                 }
             }
-            .sheet(isPresented: $showAccounts) {
-                AccountsView()
-            }
-            .sheet(isPresented: $showAddAccount) {
-                PairingView(isAddingAccount: true) {
-                    showAddAccount = false
-                    Task { await refresh() }
-                }
-            }
             .refreshable { await refresh(resetSession: true) }
-            .task(id: api.activeAccount?.deviceId) {
+            .task {
                 await refresh()
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15))
                     await refresh(silent: true)
                 }
+            }
+            .onChange(of: api.accounts.map(\.deviceId)) { _, _ in
+                Task { await refresh() }
             }
         }
     }
@@ -174,14 +129,33 @@ struct PendingRequestsView: View {
                 isLoading = false
             }
         }
-        do {
-            requests = try await api.pendingRequests()
-            errorMessage = ""
-        } catch {
-            if !silent {
-                errorMessage = error.localizedDescription
+
+        let results = await api.pendingRequestsAllAccounts()
+        var next: [PendingInboxItem] = []
+        for (account, requests) in results {
+            for request in requests {
+                next.append(PendingInboxItem(account: account, request: request))
             }
         }
+        next.sort { lhs, rhs in
+            (lhs.request.created_at ?? lhs.request.expires_at)
+                > (rhs.request.created_at ?? rhs.request.expires_at)
+        }
+
+        // If every account failed and we got nothing, surface a soft error when not silent.
+        if next.isEmpty, !api.accounts.isEmpty, !silent {
+            // Distinguish "empty inbox" vs "all fetches failed" by probing one account.
+            do {
+                _ = try await api.pendingRequests()
+                errorMessage = ""
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        } else {
+            errorMessage = ""
+        }
+
+        items = next
     }
 }
 

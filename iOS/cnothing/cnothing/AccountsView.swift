@@ -1,69 +1,55 @@
 import SwiftUI
 
-/// Manage paired CNothing accounts on this phone.
+/// Tab: list of paired CNothing accounts on this phone.
 struct AccountsView: View {
     @ObservedObject private var api = APIClient.shared
-    @Environment(\.dismiss) private var dismiss
 
     @State private var showAddAccount = false
-    @State private var pendingRemove: PairedAccount?
-    @State private var showRemoveConfirmation = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Text("Each account is a CNothing user paired to this phone. Switch accounts to review and approve that user's agent requests.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Accounts") {
-                    ForEach(api.accounts) { account in
-                        Button {
-                            api.switchAccount(deviceId: account.deviceId)
-                            dismiss()
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(account.userId)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text(account.deviceName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if api.activeAccount?.deviceId == account.deviceId {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.tint)
-                                }
-                            }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingRemove = account
-                                showRemoveConfirmation = true
+                if api.accounts.isEmpty {
+                    ContentUnavailableView(
+                        "No Accounts",
+                        systemImage: "person.crop.circle.badge.plus",
+                        description: Text("Tap + to pair a CNothing account from the Console Devices page.")
+                    )
+                } else {
+                    Section {
+                        ForEach(api.accounts) { account in
+                            NavigationLink {
+                                AccountDetailView(account: account)
                             } label: {
-                                Text("Remove")
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.tint)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(account.accountLogin)
+                                            .font(.body.weight(.semibold))
+                                        Text(account.platformDisplayName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 2)
                             }
                         }
-                    }
-                }
-
-                Section {
-                    Button {
-                        showAddAccount = true
-                    } label: {
-                        Label("Add Account", systemImage: "person.badge.plus")
+                    } footer: {
+                        Text("Tap an account to manage it. Approvals for every account appear in the Approvals tab.")
                     }
                 }
             }
             .navigationTitle("Accounts")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showAddAccount = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(Text("Add Account"))
                 }
             }
             .sheet(isPresented: $showAddAccount) {
@@ -71,22 +57,10 @@ struct AccountsView: View {
                     showAddAccount = false
                 }
             }
-            .confirmationDialog(
-                "Remove this account?",
-                isPresented: $showRemoveConfirmation,
-                titleVisibility: .visible,
-                presenting: pendingRemove
-            ) { account in
-                Button("Remove", role: .destructive) {
-                    api.unpair(deviceId: account.deviceId)
-                    if !api.isPaired {
-                        dismiss()
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: { account in
-                Text("Stop approving requests for \(account.userId) on this phone.")
-            }
         }
     }
+}
+
+#Preview {
+    AccountsView()
 }

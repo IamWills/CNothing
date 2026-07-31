@@ -16,6 +16,28 @@ struct PairedAccount: Codable, Identifiable, Hashable {
     let createdAt: Date
 
     var displayName: String { userId }
+
+    /// `github:alice` → `github`
+    var platformSlug: String {
+        let parts = userId.split(separator: ":", maxSplits: 1).map(String.init)
+        return parts.count == 2 ? parts[0] : "cnothing"
+    }
+
+    /// `github:alice` → `alice`
+    var accountLogin: String {
+        let parts = userId.split(separator: ":", maxSplits: 1).map(String.init)
+        return parts.count == 2 ? parts[1] : userId
+    }
+
+    var platformDisplayName: String {
+        switch platformSlug.lowercased() {
+        case "github": return "GitHub"
+        case "google": return "Google"
+        case "microsoft": return "Microsoft"
+        case "apple": return "Apple"
+        default: return platformSlug.capitalized
+        }
+    }
 }
 
 /// Persists multiple paired accounts and the currently active one.

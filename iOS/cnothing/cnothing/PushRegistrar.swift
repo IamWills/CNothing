@@ -7,18 +7,24 @@ import UserNotifications
 /// Navigation hub: push taps and deep links land on an approval screen.
 final class ApprovalRouter: ObservableObject {
     static let shared = ApprovalRouter()
+    @Published var selectedTab: MainTab = .approvals
     @Published var path = NavigationPath()
     /// When a push/deep link targets a specific CNothing user, switch before opening.
     @Published var pendingUserId: String?
 
     func openApproval(requestId: String, userId: String? = nil) {
         Task { @MainActor in
+            selectedTab = .approvals
             if let userId, !userId.isEmpty {
                 pendingUserId = userId
-                _ = AccountStore.shared.switchToUserId(userId)
-                APIClient.shared.switchAccount(
-                    deviceId: AccountStore.shared.activeAccount?.deviceId ?? ""
-                )
+                if let account = AccountStore.shared.accounts.first(where: { $0.userId == userId }) {
+                    APIClient.shared.switchAccount(deviceId: account.deviceId)
+                } else {
+                    _ = AccountStore.shared.switchToUserId(userId)
+                    APIClient.shared.switchAccount(
+                        deviceId: AccountStore.shared.activeAccount?.deviceId ?? ""
+                    )
+                }
             } else {
                 _ = await APIClient.shared.activateAccountForAccessRequest(requestId: requestId)
             }

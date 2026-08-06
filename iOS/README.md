@@ -6,11 +6,12 @@
 
 **推送（推荐）**
 
-1. 你在 [Devices](https://cnothing.com/devices) 复制 **agent ID**（如 `github:Ciamme`）或生成 **短码**（如 `u_7K2M9P`），发给 agent。
-2. Agent 在 `POST /v4/access-requests` 里带上 `user_id`（完整 ID 或短码均可）。
+1. Agent **只要知道你的 GitHub 用户名**（或 Devices 页的 agent ID / 短码），就应在
+   `POST /v4/access-requests` 里传 `user_id`（如 `alice`、`github:alice`、`u_7K2M9P`）。
+2. 你也可在 [Devices](https://cnothing.com/devices) 复制 **agent ID** 或生成 **短码** 发给 agent。
 3. CNothing 通过 APNs 推送到已配对的 iPhone；点通知进入审批页。
 
-**深链兜底（agent 不知道你的 ID 时）**
+**深链兜底（agent 完全不知道你的身份时）**
 
 1. Agent 只发 `approval_url`（`https://cnothing.com/approve-proxy/{id}`）。
 2. 你在**手机**上打开该链接：Universal Link 会打开本 App（已配对时直达审批）；未装 App 则走 Safari 网页审批。

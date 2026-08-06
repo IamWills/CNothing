@@ -53,7 +53,7 @@ const TOOLS = [
   {
     name: "request_access",
     description:
-      "Request connection-level access to an OAuth provider. Returns access_request_id and approval_url. Show approval_url to the human user; they approve once in the browser (this is where OAuth registration/login to the target site happens — the agent must not attempt it).",
+      "Request connection-level access to an OAuth provider. Returns access_request_id and approval_url. ALWAYS pass user_id when you know the human's GitHub login, github:… id, or u_ short code so they get a phone push and only Approve; only omit when unknown, then show the exact approval_url — do not block. Agent must not attempt OAuth itself.",
     inputSchema: {
       type: "object",
       properties: {
@@ -67,7 +67,7 @@ const TOOLS = [
         user_id: {
           type: "string",
           description:
-            "Optional. CNothing agent ID, short code u_XXXXXX, or known GitHub login for phone push. If unknown, omit and send approval_url — do not block.",
+            "Pass whenever known: CNothing id, short code u_XXXXXX, or GitHub login/username for phone push. Omit only if unknown — then send approval_url; do not block.",
         },
         callback_url: {
           type: "string",
@@ -262,7 +262,7 @@ async function handleMessage(rpc: JsonRpcRequest): Promise<void> {
           serverInfo: { name: "cnothing-mcp", version: "0.1.0" },
           capabilities: { tools: { listChanged: false } },
           instructions:
-            "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. You never log into GitHub. Flow: register_agent (if needed) -> list_providers -> request_access (give EXACT approval_url; pass user_id/agent ID/u_ short code for phone push when known — otherwise do NOT block, just send the link for phone Universal Link) -> get_access_status -> proxy_request. Remember resolved_user_id for later. Skill: https://cnothing.com/skill.md",
+            "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. You never log into GitHub. Flow: register_agent (if needed) -> list_providers -> request_access (MUST pass user_id when you know their GitHub username / github:… / u_ short code / prior resolved_user_id so they get phone push; if unknown, still call and give EXACT approval_url — do NOT block) -> get_access_status -> proxy_request. Remember resolved_user_id for later. Skill: https://cnothing.com/skill.md",
         });
         return;
 

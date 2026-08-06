@@ -47,29 +47,37 @@ Before a real GitHub call can succeed, all of the following must be true:
 
 If step 2–4 are missing, proxy calls will fail. Do not invent workarounds.
 
-Optional (phone approvals like Okta Verify):
+Phone approvals (like Okta Verify) — **pass `user_id` whenever you can**:
 
-- Human pairs iOS at `https://cnothing.com/devices` and copies their **agent ID**
-  (e.g. `github:alice`) or generates a **short code** (`u_XXXXXX`).
-- Pass that value as `user_id` in `request_access` → APNs push to their phone.
-- **Do not block** if you do not have their ID: create the request, send
-  `approval_url`, and ask them to open it on their phone (Universal Link opens the
-  app). Remember `resolved_user_id` from the response for next time.
+- Human pairs iOS at `https://cnothing.com/devices`. Their CNothing id is usually
+  `github:{login}` after signing in with GitHub.
+- **If you already know their GitHub username** (they told you, it is in the chat
+  context, profile, email signature, prior `resolved_user_id`, etc.), you **MUST**
+  pass it as `user_id` on `request_access` (plain login `alice` or `github:alice`).
+  That targets APNs push so they only tap Approve — do **not** force them to
+  manually copy/open a bare link when you already know who they are.
+- Same rule for a share code (`u_XXXXXX`) or full id they already gave you.
+- **Only if you truly do not know any identity hint:** create the request without
+  `user_id`, send the exact `approval_url`, and ask them to open it on their phone
+  (Universal Link). Remember `resolved_user_id` from the response for next time.
 
 ---
 
-## Phone push — do not stall asking for user_id
+## Phone push — prefer known identity; never stall when unknown
 
-1. If the human already gave you an agent ID (`github:…`) or short code (`u_…`),
-   pass it as `user_id`.
-2. Otherwise **immediately** `request_access` without `user_id`, send them the exact
-   `approval_url`, and say: open this on your phone to approve (or copy your ID from
-   https://cnothing.com/devices for push next time).
-3. After approval, store `resolved_user_id` from the access-request response / status
-   when present, and reuse it on later `request_access` calls.
+1. **Known identity → always pass `user_id`.** Sources in priority order:
+   - Prior `resolved_user_id` from an earlier access request
+   - Full CNothing id (`github:alice`) or short code (`u_XXXXXX`) the human shared
+   - **Their GitHub login / username** if you know it (resolved to `github:{login}`
+     when that account already exists on CNothing)
+2. If none of the above: **immediately** `request_access` without `user_id`, send
+   the exact `approval_url`, and say: open this on your phone to approve (or copy
+   your ID from https://cnothing.com/devices for push next time).
+3. After any successful resolve/approval, store `resolved_user_id` and reuse it on
+   later `request_access` calls.
 
-`user_id` accepts: full CNothing id, share code `u_XXXXXX`, or a known GitHub login
-(resolved to `github:{login}` only if that account already exists on CNothing).
+Do **not** ask the human to paste a link when you already know their GitHub
+username — pass `user_id` so they get a push instead.
 
 ---
 
@@ -124,10 +132,13 @@ curl -X POST https://cnothing.com/v4/access-requests \
   -d '{
     "provider": "github",
     "reason": "List repositories and manage issues",
-    "user_id": "OPTIONAL_CNOTHING_USER_ID",
+    "user_id": "alice",
     "callback_url": "https://OPTIONAL-HTTPS-WEBHOOK.example/hook"
   }'
 ```
+
+Pass `user_id` whenever known — e.g. GitHub login `alice`, `github:alice`, or
+`u_XXXXXX`. Omit only when you have no identity hint.
 
 MCP: `request_access { provider, reason?, user_id?, callback_url?, hosts? }`
 
@@ -135,16 +146,20 @@ Response includes:
 
 - `access_request_id`
 - `approval_url` — **always** `https://cnothing.com/approve-proxy/{uuid}`
-- `resolved_user_id` — canonical id when `user_id`/short code resolved (remember it)
-- `pushed_to_devices` — APNs send count (0 means use the link / pair phone)
+  (may include `?user=...` when `user_id` resolved; still use the exact string)
+- `resolved_user_id` — canonical id when `user_id`/short code/GitHub login resolved
+  (remember it and reuse)
+- `pushed_to_devices` — APNs send count (`> 0` means tell them to check the phone
+  notification; still share `approval_url` as fallback)
 
-**Rules for `approval_url`:**
+**Rules for `approval_url` / `user_id`:**
 
 - Give the human the **exact** URL from the response (prefer they open it on phone).
 - Do **not** rewrite it to `/authorize/...`, `/v4/approve/...`, or
   `/v4/access-requests/.../approve` (those are not the browser approval page).
 - Do **not** ask the human to paste tokens back to you.
 - Do **not** refuse to create the request until they give you a user_id.
+- Do **not** omit `user_id` when you already know their GitHub username / agent ID.
 
 ### Step 3 — Human onboarding (tell them this if they are new)
 
@@ -232,9 +247,10 @@ Read MCP resource `resource://cnothing/v4-workflow` after connect.
 7. Proxy URL host must match the grant allowlist (e.g. `api.github.com`) or you get
    `host_not_allowed`.
 8. On `grant_revoked`, create a new access request — do not reuse the old grant.
-9. **Phone push:** pass `user_id` (agent ID or `u_` short code) when you have it.
-   If you do not, still create the request and send `approval_url` — never block the
-   conversation waiting for user_id. Prefer the human open the link on their phone.
+9. **Phone push:** if you know their GitHub username, CNothing id, or `u_` short
+   code, you **must** pass it as `user_id` so they get a push and only need to
+   Approve. If you do not know any identity, still create the request and send
+   `approval_url` — never block the conversation waiting for user_id.
 
 ---
 
@@ -248,6 +264,7 @@ Read MCP resource `resource://cnothing/v4-workflow` after connect.
 | `approval_url` rewritten | Agent guessed path | Use exact response URL |
 | Proxy `host_not_allowed` | Wrong host | Use `api.github.com` (or grant hosts) |
 | Access stays pending | Human never approved / not connected | Remind human: login → connect → open approval_url |
+| Human must copy link every time | Agent omitted known `user_id` | Pass GitHub login / `github:…` / `u_…` so push fires |
 | No providers listed | Operator config | Provider may be missing; or `submit_provider_proposal` |
 
 ---

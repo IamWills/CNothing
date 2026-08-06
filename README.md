@@ -25,8 +25,8 @@ Production: [https://cnothing.com](https://cnothing.com)
 
 | Role | Does | Does not |
 | --- | --- | --- |
-| **Agent** | Register → `request_access` → show exact `approval_url` → poll for `grant_id` → `POST /v4/proxy` | Log into GitHub; hold tokens; invent approval URLs |
-| **Human** | Sign in at `/login`, connect provider at `/connect`, open `approval_url` and Approve | Paste passwords/PATs/session tokens to the agent |
+| **Agent** | Register → `request_access` (**pass `user_id` when GitHub username known**) → show exact `approval_url` / push → poll for `grant_id` → `POST /v4/proxy` | Log into GitHub; hold tokens; invent approval URLs |
+| **Human** | Sign in at `/login`, connect provider at `/connect`, Approve via phone push or `approval_url` | Paste passwords/PATs/session tokens to the agent |
 
 ```text
 0. Agent self-registers          →  POST /v4/agents/register { name }

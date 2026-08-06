@@ -164,7 +164,7 @@ export class ProxyService {
     if (resolved.unresolved) {
       humanOnboarding = `Could not resolve "${resolved.unresolved}" to a CNothing user. Ask the human to open ${approvalBase}/devices, copy their agent ID or share code, and send it to you — or just give them approval_url to open on their phone. Do not block waiting for user_id.`;
     } else if (!userHint) {
-      humanOnboarding = `No user_id provided. Send the human this exact approval_url (best opened on their phone). For push next time: they copy their agent ID or share code from ${approvalBase}/devices. Do not block the flow waiting for user_id.`;
+      humanOnboarding = `No user_id provided. If you know the human's GitHub username, CNothing id (github:…), or u_ short code, call request_access again WITH user_id so they get a phone push. Otherwise send this exact approval_url (best opened on their phone). They can also copy their agent ID from ${approvalBase}/devices. Do not block waiting for user_id.`;
     } else if (pushedToDevices === 0) {
       humanOnboarding = `No paired phone found for user "${userHint}". Tell the human: 1) sign in at ${approvalBase}/login; 2) open ${approvalBase}/devices, generate the pairing QR, install the CNothing iOS app and scan it. For now, open approval_url (on phone or desktop).`;
     }
@@ -179,7 +179,7 @@ export class ProxyService {
       approval_url: `${approvalBase}/approve-proxy/${request.id}${userQuery}`,
       human_instruction: userHint
         ? "If pushed_to_devices > 0, tell the human to check their phone notification. Always also share approval_url as a fallback (phone Universal Link or browser)."
-        : "Give the human this exact approval_url — prefer they open it on their phone. Do not invent /v4/approve/... paths. Do not block waiting for user_id.",
+        : "Give the human this exact approval_url — prefer they open it on their phone. If you already know their GitHub username, prefer re-requesting with user_id for push. Do not invent /v4/approve/... paths. Do not block waiting for user_id.",
       pushed_to_devices: pushedToDevices,
       resolved_user_id: userHint ?? null,
       callback_registered: Boolean(callbackUrl),

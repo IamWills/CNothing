@@ -79,27 +79,39 @@
   "arguments": {
     "agent_access_token": "agent_...",
     "provider": "github",
-    "reason": "代表您访问 GitHub 仓库"
+    "reason": "代表您访问 GitHub 仓库",
+    "user_id": "alice"
   }
 }
 ```
 
+**只要你知道用户身份，就必须传 `user_id`：** GitHub 用户名（如 `alice`）、
+完整 id（`github:alice`）、短码（`u_XXXXXX`）、或此前记住的 `resolved_user_id`。
+这样用户会收到手机推送，点批准即可，**不要**在已知用户名时还让用户手动复制链接。
+
+仅在完全不知道身份时省略 `user_id`，并立刻把返回的 `approval_url` 发给用户。
+
 返回 `access_request_id` 与 `approval_url`。
 
-`approval_url` **永远是** `https://cnothing.com/approve-proxy/{uuid}`。  
-**禁止**改写成 `/authorize/...`、`/v4/approve/...`、`/v4/access-requests/.../approve`。
+`approval_url` **永远是** `https://cnothing.com/approve-proxy/{uuid}`（解析到用户时
+可能带 `?user=`）。**禁止**改写成 `/authorize/...`、`/v4/approve/...`、
+`/v4/access-requests/.../approve`。
 
-### 3. 只把链接发给用户
+### 3. 通知用户批准
 
-> 请在浏览器打开此链接，登录 CNothing（如需），选择 GitHub 连接并点 Approve：  
+若 `pushed_to_devices > 0`：告知用户查看手机通知并批准；同时附上 `approval_url` 作兜底。
+
+若未推送：把链接发给用户（优先在手机上打开）：
+
+> 请打开此链接批准（手机 Universal Link 可直达 App）：  
 > `https://cnothing.com/approve-proxy/{uuid}`
 
 若用户是新人，可补充：
 
 1. `https://cnothing.com/login` 登录  
 2. `https://cnothing.com/connect` 连接 GitHub  
-3. 打开上面的 `approval_url` 批准  
-4. 可选：`https://cnothing.com/devices` 配对手机推送审批  
+3. 打开上面的 `approval_url` 批准（或点推送）  
+4. 可选：`https://cnothing.com/devices` 配对手机；把 agent ID / 短码告诉 agent，下次可推送 
 
 ### 4. 轮询
 
@@ -134,6 +146,7 @@ REST 等价：`POST /v4/proxy`，Header `Authorization: Bearer agent_...`。
 | 使用 `/authorize/{id}` 或 v2 工具 | 已下线；只用 `/approve-proxy/{uuid}` |
 | 自己拼 approval URL | 只用 `request_access` 返回的原文 |
 | 没有 user_id 就卡住不发请求 | 立刻创建请求并发送 `approval_url`；短码/ID 仅用于下次推送 |
+| 已知 GitHub 用户名却不传 user_id | **必须**传 `user_id`（登录名或 `github:…`），让用户收推送批准 |
 
 ---
 

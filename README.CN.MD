@@ -25,8 +25,8 @@ Agent 永远接触不到 access token、refresh token 或 client secret。
 
 | 角色 | 做什么 | 不要做什么 |
 | --- | --- | --- |
-| **Agent** | 注册 → `request_access` → 出示精确 `approval_url` → 轮询拿 `grant_id` → `POST /v4/proxy` | 自己登录 GitHub；持有 token；拼造 approval URL |
-| **人类** | `/login` 登录、`/connect` 连接提供方、打开 `approval_url` 点批准 | 把密码 / PAT / session token 发给 agent |
+| **Agent** | 注册 → `request_access`（**已知 GitHub 用户名时必须传 `user_id`**）→ 出示精确 `approval_url` / 推送 → 轮询拿 `grant_id` → `POST /v4/proxy` | 自己登录 GitHub；持有 token；拼造 approval URL |
+| **人类** | `/login` 登录、`/connect` 连接提供方、手机推送或打开 `approval_url` 点批准 | 把密码 / PAT / session token 发给 agent |
 
 ```text
 0. Agent 自助注册              →  POST /v4/agents/register { name }

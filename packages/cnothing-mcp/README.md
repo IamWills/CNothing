@@ -23,7 +23,10 @@ curl -X POST https://cnothing.com/v4/agents/register \
 3. For real provider calls, the **human** must:
    - Sign in at `https://cnothing.com/login`
    - Connect the provider at `https://cnothing.com/connect`
-   - Open the exact `approval_url` from `request_access` and Approve
+   - Approve via phone push (when you pass `user_id`) or open the exact `approval_url`
+
+When you know the human's GitHub username, CNothing id, or `u_` short code, **always**
+pass it as `user_id` on `request_access` so they get a push and only need to Approve.
 
 ## Configure in your MCP client
 
@@ -61,8 +64,10 @@ Cursor (`~/.cursor/mcp.json`) or Claude Desktop (`claude_desktop_config.json`):
 ## Flow
 
 0. Optional: `start_sandbox` → `proxy_request` on `echo_url` (no human).
-1. `request_access { provider: "github", reason: "..." }`
-2. Give the human the exact `approval_url` (`https://cnothing.com/approve-proxy/{uuid}`).
+1. `request_access { provider: "github", reason: "...", user_id?: "alice" }` —
+   **pass `user_id` whenever you know** their GitHub login / `github:…` / `u_` code.
+2. If `pushed_to_devices > 0`, tell them to Approve on the phone; always also share
+   the exact `approval_url` (`https://cnothing.com/approve-proxy/{uuid}`) as fallback.
    Never rewrite it.
 3. `get_access_status` until `status: "approved"` → `grant_id`.
 4. `proxy_request { grant_id, method, url, body? }` for any API of that provider.

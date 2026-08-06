@@ -6,7 +6,6 @@ import {
   findActiveShareCodeUser,
   findLatestActiveShareCodeMeta,
   revokeActiveShareCodes,
-  userIdentityExists,
 } from "./share-code.repository";
 import { normalizeShareCodeInput } from "./share-code.util";
 
@@ -74,7 +73,9 @@ export const shareCodeService = new ShareCodeService();
 
 /**
  * Resolve an agent-supplied identity hint to a canonical CNothing user_id.
- * Accepts: full id (github:alice), share code (u_XXXXXX), or github login (alice → github:alice if known).
+ * Accepts: full id (github:alice), share code (u_XXXXXX), or github login
+ * (alice → github:alice). Bare GitHub logins are always mapped to github:{login};
+ * no separate lookup endpoint exists — agents must pass the username as user_id.
  */
 export async function resolveAgentUserHint(raw?: string): Promise<{
   userId?: string;
@@ -90,18 +91,27 @@ export async function resolveAgentUserHint(raw?: string): Promise<{
     return { userId: value };
   }
 
-  // Share code
-  const fromCode = await shareCodeService.resolveToUserId(value);
-  if (fromCode) {
-    return { userId: fromCode };
+  // Share code only when explicitly prefixed (avoid colliding with 6-char GitHub logins).
+  if (/^u_/i.test(value)) {
+    const fromCode = await shareCodeService.resolveToUserId(value);
+    if (fromCode) {
+      return { userId: fromCode };
+    }
+    return { unresolved: value };
   }
 
-  // GitHub login alias (only if that account already exists on the platform)
-  if (/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(value)) {
-    const githubId = `github:${value}`;
-    if (await userIdentityExists(githubId)) {
-      return { userId: githubId };
+  // Bare 6-char share-code body (ambiguous with short GitHub logins): try code first.
+  if (/^[A-Za-z0-9]{6}$/.test(value)) {
+    const fromCode = await shareCodeService.resolveToUserId(value);
+    if (fromCode) {
+      return { userId: fromCode };
     }
+  }
+
+  // GitHub login alias → github:{login}. Always accept so agents can pass a known
+  // username without a separate resolve API (e.g. "Ciamme" → "github:Ciamme").
+  if (/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(value)) {
+    return { userId: `github:${value}` };
   }
 
   return { unresolved: value };

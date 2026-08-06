@@ -47,6 +47,8 @@ Hard rules:
 - Never call GitHub/CNothing OAuth start URLs yourself (browser-only).
 - Never invent approval URLs.
 - When you know their GitHub username / agent ID / short code, always pass user_id.
+  The GitHub username itself is a valid user_id (e.g. "Ciamme" or "github:Ciamme").
+  There is NO username-to-id lookup endpoint — do not ask the human for another id.
 - Never block the flow solely to obtain user_id — if unknown, send approval_url instead.
 - Agent Authorization/Cookie headers on proxy calls are stripped.
 - Host must match grant allowlist or host_not_allowed.

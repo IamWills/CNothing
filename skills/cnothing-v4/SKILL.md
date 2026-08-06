@@ -76,8 +76,17 @@ Phone approvals (like Okta Verify) — **pass `user_id` whenever you can**:
 3. After any successful resolve/approval, store `resolved_user_id` and reuse it on
    later `request_access` calls.
 
-Do **not** ask the human to paste a link when you already know their GitHub
-username — pass `user_id` so they get a push instead.
+`user_id` accepts (no lookup API needed — pass these strings directly):
+
+| Value you have | Put in `user_id` | Example |
+| --- | --- | --- |
+| GitHub username | the login as-is **or** `github:{login}` | `Ciamme` or `github:Ciamme` |
+| Short code from /devices | `u_XXXXXX` | `u_7K2M9P` |
+| Prior `resolved_user_id` | reuse exactly | `github:Ciamme` |
+
+**There is no endpoint to convert a username into a user_id.** The username *is*
+a valid `user_id` value. Do not ask the human for a different “CNothing user ID”
+when you already know their GitHub login.
 
 ---
 
@@ -261,10 +270,12 @@ Read MCP resource `resource://cnothing/v4-workflow` after connect.
 | Trying AuthAI / envelopes / KV | Following obsolete docs | Use only this v4 skill |
 | Calling `/authorize/{id}` or `/v2/...` | Old capability flow | Use `/approve-proxy/{uuid}` from API |
 | “I need to log into GitHub” | Role confusion | Human logs in; you proxy after grant |
+| “OpenAPI says CNothing user id, so I cannot pass GitHub username” | Misread schema | **`user_id` accepts the GitHub username directly** (`Ciamme` or `github:Ciamme`). There is **no** username→id lookup endpoint. Call `POST /v4/access-requests` with `"user_id":"Ciamme"` now — do not ask the human for another id. |
 | `approval_url` rewritten | Agent guessed path | Use exact response URL |
 | Proxy `host_not_allowed` | Wrong host | Use `api.github.com` (or grant hosts) |
 | Access stays pending | Human never approved / not connected | Remind human: login → connect → open approval_url |
 | Human must copy link every time | Agent omitted known `user_id` | Pass GitHub login / `github:…` / `u_…` so push fires |
+| Blocked by TLS / cannot fetch OpenAPI | Agent network issue | Still call `https://cnothing.com/v4/access-requests` with known `user_id`; do not stall asking the human for an id |
 | No providers listed | Operator config | Provider may be missing; or `submit_provider_proposal` |
 
 ---

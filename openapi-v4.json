@@ -3,7 +3,7 @@
   "info": {
     "title": "CNothing v4 — Universal Credential-Injecting Proxy",
     "version": "4.0.0",
-    "description": "One user approval per OAuth provider, then agents call any https API of that provider through POST /v4/proxy. CNothing injects the user's OAuth token server-side; agents never see tokens, refresh tokens, or client secrets. Responses are redacted and every proxied request is audited."
+    "description": "One user approval per OAuth provider, then agents call any https API of that provider through POST /v4/proxy. CNothing injects the user's OAuth token server-side; agents never see tokens, refresh tokens, or client secrets. Responses are redacted and every proxied request is audited.\n\nPhone push: POST /v4/access-requests accepts user_id as a GitHub username (e.g. Ciamme), github:Ciamme, or u_XXXXXX — there is no separate username→id lookup API. Prefer https://cnothing.com/skill.md and /mcp over guessing from this OpenAPI alone."
   },
   "servers": [{ "url": "https://cnothing.com" }],
   "components": {
@@ -76,6 +76,7 @@
     "/v4/access-requests": {
       "post": {
         "summary": "Agent requests connection-level access to a provider",
+        "description": "Creates an access request and returns approval_url. Pass user_id when known: GitHub username (\"Ciamme\"), github:Ciamme, or u_ short code — this enables phone push. Do not invent a separate user-id lookup; the username IS a valid user_id value.",
         "security": [{ "agentToken": [] }],
         "requestBody": {
           "content": {
@@ -89,7 +90,8 @@
                   "reason": { "type": "string" },
                   "user_id": {
                     "type": "string",
-                    "description": "Optional CNothing user id. When set, the approval is pushed to the user's paired iOS authenticator devices and approval_url carries ?user=."
+                    "description": "OPTIONAL targeting hint for phone push. Pass ANY of: (1) GitHub login/username alone, e.g. \"Ciamme\"; (2) full CNothing id \"github:Ciamme\"; (3) short code \"u_XXXXXX\"; (4) prior resolved_user_id. There is NO separate lookup endpoint — put the username directly in user_id. Do NOT ask the human for a different \"CNothing user ID\". Omit only when you truly do not know who they are; then still create the request and send approval_url.",
+                    "examples": ["Ciamme", "github:Ciamme", "u_7K2M9P"]
                   },
                   "callback_url": {
                     "type": "string",

@@ -147,6 +147,7 @@ REST 等价：`POST /v4/proxy`，Header `Authorization: Bearer agent_...`。
 | 自己拼 approval URL | 只用 `request_access` 返回的原文 |
 | 没有 user_id 就卡住不发请求 | 立刻创建请求并发送 `approval_url`；短码/ID 仅用于下次推送 |
 | 已知 GitHub 用户名却不传 user_id | **必须**传 `user_id`（登录名或 `github:…`），让用户收推送批准 |
+| 「OpenAPI 要 CNothing user id，不能传用户名」 | **可以**直接传 GitHub 用户名；没有单独的解析接口 |
 
 ---
 

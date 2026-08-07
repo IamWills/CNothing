@@ -1,23 +1,17 @@
-import { requireAdminAccess } from "../admin/admin-auth";
+import { requireAdminAccess } from "../v4/operator-auth";
 import { NotFoundError, ValidationError } from "../utils/errors";
 import { parseJsonBody } from "../utils/http";
-import { readOptionalObject, readRequiredString, requireAgentFromRequest } from "../v2/agent-auth";
-import { listAuthProviders } from "../v2/auth-providers.service";
-import { githubOAuthService } from "../v2/github-oauth.service";
-import { oidcService } from "../v2/oidc.service";
-import { oauthConnectionService, oauthProviderService } from "../v2/oauth-connection.service";
-import { createOAuthConnection, createOAuthProvider, findOAuthProviderBySlug } from "../v2/oauth.repository";
-import { sanitizeAgentResponse } from "../v2/secret-redaction";
-import { buildUserSessionCookie, clearUserSessionCookie } from "../v2/session-cookie";
+import { readOptionalObject, readRequiredString } from "../v4/agent-auth";
+import { listAuthProviders } from "../v4/auth-providers.service";
+import { githubOAuthService } from "../v4/github-oauth.service";
+import { oidcService } from "../v4/oidc.service";
+import { oauthConnectionService, oauthProviderService } from "../v4/oauth-connection.service";
+import { buildUserSessionCookie, clearUserSessionCookie } from "../v4/session-cookie";
 import {
-  readRequiredLoginFields,
   requireUserSession,
   userSessionService,
-} from "../v2/user-session";
-import { deviceFlowService } from "../v3/device-flow.service";
-import { providerProposalService } from "../v3/provider-proposal.service";
-import { normalizeTenantId } from "../v3/tenant-context.service";
-import type { ProviderProposalInput } from "../v3/v3.entity";
+} from "../v4/user-session";
+import { createAgent, listAgents, revokeAgent } from "../v4/platform.repository";
 import config from "../config";
 
 function inferBaseUrl(request: Request): string {
@@ -29,40 +23,15 @@ function inferBaseUrl(request: Request): string {
   return `${proto}://${host}`;
 }
 
-function readProposalInput(body: Record<string, unknown>): ProviderProposalInput {
-  return {
-    provider_name: readRequiredString(body, "provider_name"),
-    issuer_url: typeof body.issuer_url === "string" ? body.issuer_url : undefined,
-    discovery_url: typeof body.discovery_url === "string" ? body.discovery_url : undefined,
-    authorization_url: typeof body.authorization_url === "string" ? body.authorization_url : undefined,
-    token_url: typeof body.token_url === "string" ? body.token_url : undefined,
-    jwks_url: typeof body.jwks_url === "string" ? body.jwks_url : undefined,
-    userinfo_url: typeof body.userinfo_url === "string" ? body.userinfo_url : undefined,
-    registration_endpoint:
-      typeof body.registration_endpoint === "string" ? body.registration_endpoint : undefined,
-    scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : undefined,
-    description: typeof body.description === "string" ? body.description : undefined,
-    api_base_url: typeof body.api_base_url === "string" ? body.api_base_url : undefined,
-    slug: typeof body.slug === "string" ? body.slug : undefined,
-  };
-}
-
-/**
- * OAuth callback URLs are external contracts: they are registered inside
- * third-party OAuth apps and identity providers. The legacy /v2 and /v3
- * callback paths therefore stay mounted forever (as stable webhook URLs),
- * even though the /v2 and /v3 APIs themselves are decommissioned.
- */
+/** OAuth callbacks are exact v4 contracts registered with each provider. */
 export async function handleOAuthCallbackRequest(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
   const apiBaseUrl = inferBaseUrl(request);
 
-  // Connection callbacks: /{v2|v2.6|v3|v4}/oauth/callback/{slug}
-  const connectionMatch = path.match(/^\/(v2|v2\.6|v3|v4)\/oauth\/callback\/([^/]+)$/);
+  const connectionMatch = path.match(/^\/v4\/oauth\/callback\/([^/]+)$/);
   if (request.method === "GET" && connectionMatch) {
-    const apiVersion = connectionMatch[1] as "v2" | "v2.6" | "v3" | "v4";
-    const providerSlug = decodeURIComponent(connectionMatch[2]!);
+    const providerSlug = decodeURIComponent(connectionMatch[1]!);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     if (!code || !state) {
@@ -73,7 +42,7 @@ export async function handleOAuthCallbackRequest(request: Request): Promise<Resp
       code,
       state,
       apiBaseUrl,
-      oauthApiVersion: apiVersion,
+      oauthApiVersion: "v4",
     });
     if (result.session_cookie) {
       return new Response(null, {
@@ -84,8 +53,7 @@ export async function handleOAuthCallbackRequest(request: Request): Promise<Resp
     return Response.redirect(result.redirect_url, 302);
   }
 
-  // Console login callbacks: /{v2|v4}/auth/github/callback
-  const githubLoginMatch = path.match(/^\/(v2|v4)\/auth\/github\/callback$/);
+  const githubLoginMatch = path === "/v4/auth/github/callback";
   if (request.method === "GET" && githubLoginMatch) {
     const code = url.searchParams.get("code")?.trim();
     const state = url.searchParams.get("state")?.trim();
@@ -99,10 +67,9 @@ export async function handleOAuthCallbackRequest(request: Request): Promise<Resp
     });
   }
 
-  // Console login callbacks: /{v2|v4}/auth/oidc/{name}/callback
-  const oidcLoginMatch = path.match(/^\/(v2|v4)\/auth\/oidc\/([^/]+)\/callback$/);
+  const oidcLoginMatch = path.match(/^\/v4\/auth\/oidc\/([^/]+)\/callback$/);
   if (request.method === "GET" && oidcLoginMatch) {
-    const providerName = decodeURIComponent(oidcLoginMatch[2]!);
+    const providerName = decodeURIComponent(oidcLoginMatch[1]!);
     const code = url.searchParams.get("code")?.trim();
     const state = url.searchParams.get("state")?.trim();
     if (!code || !state) {
@@ -126,15 +93,6 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
 
   // --- User sessions ---
 
-  if (request.method === "POST" && path === "/v4/auth/login") {
-    const body = await parseJsonBody(request);
-    const { userId, loginToken } = readRequiredLoginFields(body);
-    const result = await userSessionService.login({ userId, loginToken });
-    return Response.json(result, {
-      headers: { "Set-Cookie": buildUserSessionCookie(result.session_token) },
-    });
-  }
-
   if (request.method === "POST" && path === "/v4/auth/logout") {
     const result = await userSessionService.logout(request);
     return Response.json(result, {
@@ -144,18 +102,6 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
 
   if (request.method === "GET" && path === "/v4/auth/me") {
     return Response.json(await userSessionService.me(request));
-  }
-
-  if (request.method === "POST" && path === "/v4/auth/login-tokens") {
-    requireAdminAccess(request);
-    const body = await parseJsonBody(request);
-    const result = await userSessionService.issueLoginToken({
-      userId: readRequiredString(body, "user_id"),
-      createdBy: "admin",
-      ttlSeconds:
-        typeof body.ttl_seconds === "number" ? Math.trunc(body.ttl_seconds) : undefined,
-    });
-    return Response.json(result, { status: 201 });
   }
 
   // --- Console login providers (GitHub / OIDC) ---
@@ -225,21 +171,15 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
 
   // --- Agents ---
 
-  // Self-service registration: an agent token by itself grants nothing —
-  // every proxy grant still requires an explicit user approval — so open
-  // registration is safe (protected by the global /v4 rate limiter).
-  if (request.method === "POST" && path === "/v4/agents/register") {
+  // Agent enrollment is an operator action. Anonymous self-registration lets
+  // attackers create unlimited identities and approval spam even when grants
+  // still require user consent.
+  if (request.method === "POST" && path === "/v4/agents") {
+    requireAdminAccess(request);
     const body = await parseJsonBody(request);
-    const ownerUserId =
-      typeof body.owner_user_id === "string" && body.owner_user_id.trim()
-        ? body.owner_user_id.trim()
-        : "self-registered";
-    const { createAgent } = await import("../v2/v2.repository");
     const created = await createAgent({
       name: readRequiredString(body, "name"),
-      owner_user_id: ownerUserId,
-      tenant_id:
-        typeof body.tenant_id === "string" ? normalizeTenantId(body.tenant_id) : undefined,
+      owner_user_id: readRequiredString(body, "owner_user_id"),
       metadata: readOptionalObject(body, "metadata"),
     });
     return Response.json(
@@ -254,11 +194,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
           created_at: created.agent.created_at,
         },
         access_token: created.access_token,
-        next_steps: {
-          sandbox: "POST /v4/sandbox/start — full self-test without human approval",
-          request_access:
-            "POST /v4/access-requests — real providers require the user to open approval_url",
-        },
+        next_step: "Configure this token in the MCP client environment, then call list_grants.",
       },
       { status: 201 },
     );
@@ -266,38 +202,19 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
 
   if (request.method === "GET" && path === "/v4/agents") {
     requireAdminAccess(request);
-    const { listAgents } = await import("../v2/v2.repository");
     const ownerUserId = url.searchParams.get("owner_user_id")?.trim() || undefined;
     const items = await listAgents({ owner_user_id: ownerUserId });
     return Response.json({ ok: true, items });
   }
 
-  // --- OAuth providers (admin management + agent proposals) ---
-
-  if (request.method === "POST" && path === "/v4/providers/proposals") {
-    const agent = await requireAgentFromRequest(request);
-    const body = await parseJsonBody(request);
-    const proposal = await providerProposalService.submitProposal({
-      agent,
-      body: readProposalInput(body),
-      apiBaseUrl,
-    });
-    return Response.json(sanitizeAgentResponse({ ok: true, proposal }), { status: 201 });
+  if (request.method === "DELETE" && segments.length === 3 && segments[1] === "agents") {
+    requireAdminAccess(request);
+    const revoked = await revokeAgent({ id: decodeURIComponent(segments[2] ?? "") });
+    if (!revoked) throw new NotFoundError("Agent not found or already revoked");
+    return Response.json({ ok: true, revoked: true });
   }
 
-  if (
-    request.method === "GET" &&
-    segments.length === 4 &&
-    segments[1] === "providers" &&
-    segments[2] === "proposals"
-  ) {
-    const agent = await requireAgentFromRequest(request);
-    const proposal = await providerProposalService.getProposal({
-      agent,
-      proposalId: decodeURIComponent(segments[3] ?? ""),
-    });
-    return Response.json(sanitizeAgentResponse({ ok: true, proposal }));
-  }
+  // --- OAuth providers (operator managed) ---
 
   if (request.method === "GET" && path === "/v4/providers/admin") {
     requireAdminAccess(request);
@@ -369,30 +286,6 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     return Response.json(result);
   }
 
-  if (request.method === "POST" && path === "/v4/oauth/device/start") {
-    const session = await requireUserSession(request);
-    const body = await parseJsonBody(request);
-    const result = await deviceFlowService.startDeviceFlow({
-      request,
-      providerId: typeof body.provider_id === "string" ? body.provider_id : undefined,
-      providerSlug: typeof body.provider_slug === "string" ? body.provider_slug : undefined,
-      userId: session.user_id,
-      scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : undefined,
-    });
-    return Response.json(result, { status: 201 });
-  }
-
-  if (request.method === "POST" && path === "/v4/oauth/device/poll") {
-    const session = await requireUserSession(request);
-    const body = await parseJsonBody(request);
-    const result = await deviceFlowService.pollDeviceFlow({
-      sessionId: readRequiredString(body, "session_id"),
-      userId: session.user_id,
-      apiBaseUrl,
-    });
-    return Response.json(result);
-  }
-
   if (
     request.method === "DELETE" &&
     segments.length === 3 &&
@@ -402,65 +295,6 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     const connectionId = decodeURIComponent(segments[2] ?? "");
     await oauthConnectionService.revokeConnection(connectionId, session.user_id);
     return Response.json({ ok: true });
-  }
-
-  // --- Internal E2E seeds (disabled unless KEYSERVICE_E2E_INTERNAL=1) ---
-
-  if (path.startsWith("/v4/internal/e2e/")) {
-    if (!config.e2eInternalEnabled) {
-      throw new ValidationError("E2E internal endpoints are disabled", {
-        error_code: "e2e_internal_disabled",
-      });
-    }
-    requireAdminAccess(request);
-
-    if (request.method === "POST" && path === "/v4/internal/e2e/seed-oauth-connection") {
-      const body = await parseJsonBody(request);
-      const providerSlug = readRequiredString(body, "provider_slug");
-      const provider = await findOAuthProviderBySlug(providerSlug);
-      if (!provider) {
-        throw new NotFoundError(`OAuth provider not found: ${providerSlug}`);
-      }
-      const userId = readRequiredString(body, "user_id");
-      const connection = await createOAuthConnection({
-        user_id: userId,
-        provider_id: provider.id,
-        provider_account_id: `e2e-${userId}`,
-        display_name: `E2E ${providerSlug}`,
-        access_token: readRequiredString(body, "access_token"),
-        scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : provider.default_scopes,
-        metadata: { source: "e2e_seed" },
-      });
-      return Response.json({
-        ok: true,
-        connection: { id: connection.id, provider_slug: providerSlug, user_id: userId },
-      });
-    }
-
-    if (request.method === "POST" && path === "/v4/internal/e2e/seed-provider") {
-      const body = await parseJsonBody(request);
-      const mockBaseUrl = readRequiredString(body, "mock_base_url").replace(/\/+$/, "");
-      const slug =
-        typeof body.slug === "string" && body.slug.trim()
-          ? body.slug.trim()
-          : `e2e-provider-${Date.now()}`;
-      const provider = await createOAuthProvider({
-        slug,
-        display_name: "E2E Mock Provider",
-        auth_type: "oauth2",
-        authorization_url: `${mockBaseUrl}/authorize`,
-        token_url: `${mockBaseUrl}/token`,
-        userinfo_url: `${mockBaseUrl}/userinfo`,
-        device_authorization_endpoint: `${mockBaseUrl}/device/code`,
-        client_id: "e2e-client",
-        client_secret: "e2e-secret",
-        default_scopes: ["read"],
-        supported_scopes: ["read"],
-        pkce_required: false,
-        token_auth_method: "client_secret_post",
-      });
-      return Response.json({ ok: true, provider: { id: provider.id, slug: provider.slug } });
-    }
   }
 
   return null;

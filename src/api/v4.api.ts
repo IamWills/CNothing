@@ -1,11 +1,10 @@
 import { parseJsonBody } from "../utils/http";
 import { NotFoundError, ValidationError } from "../utils/errors";
-import { readRequiredString, requireAgentFromRequest } from "../v2/agent-auth";
-import { readUserSessionToken, requireUserSession } from "../v2/user-session";
-import { listOAuthProviders, toProviderPublic } from "../v2/oauth.repository";
-import { oauthConnectionService } from "../v2/oauth-connection.service";
+import { readRequiredString, requireAgentFromRequest } from "../v4/agent-auth";
+import { readUserSessionToken, requireUserSession } from "../v4/user-session";
+import { listOAuthProviders, toProviderPublic } from "../v4/oauth.repository";
+import { oauthConnectionService } from "../v4/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
-import { sandboxService } from "../v4/sandbox.service";
 import { deviceService } from "../v4/device.service";
 import { shareCodeService } from "../v4/share-code.service";
 import config from "../config";
@@ -42,18 +41,6 @@ export async function handleV4Request(request: Request): Promise<Response> {
       `${consoleBase}/approve-proxy/${encodeURIComponent(accessRequestId)}`,
       302,
     );
-  }
-
-  // --- Sandbox (agent self-test without human approval) ---
-
-  if (request.method === "POST" && path === "/v4/sandbox/start") {
-    const agent = await requireAgentFromRequest(request);
-    const result = await sandboxService.start({ agent, apiBaseUrl: inferBaseUrl(request) });
-    return Response.json(result, { status: 201 });
-  }
-
-  if (path === "/v4/sandbox/echo") {
-    return sandboxService.echo(request);
   }
 
   // --- Devices (iOS authenticator pairing) ---

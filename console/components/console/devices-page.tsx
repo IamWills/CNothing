@@ -21,7 +21,7 @@ import {
   revokeV4Device,
   type V4Device,
 } from "@/lib/api-v4";
-import { v4ChannelTabs } from "@/lib/v2-channel-tabs";
+import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function DevicesPage() {

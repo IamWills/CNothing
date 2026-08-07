@@ -1,17 +1,14 @@
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { handleAdminRequest } from "./admin/admin.api";
-import { handleKeyRequest } from "./api/key.api";
 import { handleV4Request } from "./api/v4.api";
 import { handleOAuthCallbackRequest, handleV4PlatformRequest } from "./api/v4-platform.api";
-import { handleCatalogRequest } from "./catalog/catalog.api";
 import config from "./config";
 import { initDb, pool } from "./db";
 import { runV4StartupBootstrap } from "./v4/bootstrap.service";
-import { migrateOAuthTokensToVault } from "./v3/oauth-token-vault-migration.service";
+import { migrateOAuthTokensToVault } from "./v4/legacy-token-migration.service";
 import { applySecurityMiddleware } from "./middleware/security";
-import { handleMcpInfo, handleMcpMessage, handleMcpSse } from "./mcp/mcp-handler";
+import { handleMcpInfo, handleMcpMessage } from "./mcp/mcp-handler";
 import { toHttpResponse } from "./utils/errors";
 import { corsHeaders } from "./utils/http";
 
@@ -64,17 +61,13 @@ function renderHomePage(baseUrl: string): string {
   const endpointRows = [
     ["/health", "Health check"],
     ["/skill.md", "Primary skill markdown for AI discovery"],
-    ["/mcp", "MCP endpoint (v4 universal proxy tools)"],
-    ["/openapi-v4.json", "OpenAPI document (v4 universal credential-injecting proxy)"],
+    ["/mcp", "Authenticated MCP endpoint for v4 proxy tools"],
+    ["/openapi.json", "OpenAPI document for the v4 credential-injecting proxy"],
     ["/v4/providers", "List OAuth providers"],
     ["/v4/access-requests", "Agent requests connection-level proxy access"],
     ["/v4/proxy", "Universal credential-injecting HTTP proxy (agent never sees tokens)"],
     ["/v4/grants", "List/revoke connection-level grants"],
     ["/v4/connections", "User OAuth connections"],
-    ["/openapi.json", "OpenAPI document (v1 AuthAI + Encrypted KV, legacy)"],
-    ["/v1/authai/public-key", "AuthAI public key (v1 legacy)"],
-    ["/v1/catalog/mcp", "Browsable MCP tools and resources"],
-    ["/v1/catalog/skills", "Bundled skills catalog"],
   ];
 
   const links = endpointRows
@@ -240,10 +233,6 @@ async function router(request: Request): Promise<Response> {
     return withCors(await handleMcpMessage(request), request);
   }
   if (pathname === "/mcp" && request.method === "GET") {
-    const accept = request.headers.get("Accept") ?? "";
-    if (accept.includes("text/event-stream")) {
-      return withCors(handleMcpSse(baseUrl, "/mcp"), request);
-    }
     return withCors(
       Response.json(handleMcpInfo(baseUrl), {
         headers: { "Cache-Control": "public, max-age=60" },
@@ -259,13 +248,6 @@ async function router(request: Request): Promise<Response> {
       request,
     );
   }
-  if (pathname === "/mcp/sse" && request.method === "GET") {
-    return withCors(handleMcpSse(baseUrl, "/mcp/message"), request);
-  }
-  if (pathname === "/mcp/message" && request.method === "POST") {
-    return withCors(await handleMcpMessage(request), request);
-  }
-
   if (pathname === "/mcp/manifest" || pathname === "/.well-known/mcp/manifest.json") {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -282,16 +264,11 @@ async function router(request: Request): Promise<Response> {
     );
   }
 
-  if (pathname === "/openapi.json" && isOpenApiDocumentRequest(request)) {
-    return serveOpenApiDocument(request, "openapi.json");
-  }
-
-  if (pathname === "/openapi-v4.json" && isOpenApiDocumentRequest(request)) {
+  if ((pathname === "/openapi.json" || pathname === "/openapi-v4.json") && isOpenApiDocumentRequest(request)) {
     return serveOpenApiDocument(request, "openapi-v4.json");
   }
 
-  // OAuth callback URLs are registered inside third-party OAuth apps.
-  // Legacy /v2 and /v3 callback paths stay mounted for compatibility.
+  // OAuth callback URLs are exact external contracts registered with providers.
   const callbackResponse = await handleOAuthCallbackRequest(request);
   if (callbackResponse) {
     return withCors(callbackResponse, request);
@@ -303,44 +280,6 @@ async function router(request: Request): Promise<Response> {
       return withCors(platformResponse, request);
     }
     return withCors(await handleV4Request(request), request);
-  }
-
-  if (pathname.startsWith("/v1/")) {
-    if (pathname.startsWith("/v1/catalog/")) {
-      return withCors(await handleCatalogRequest(request), request);
-    }
-    if (pathname.startsWith("/v1/admin/")) {
-      return withCors(await handleAdminRequest(request), request);
-    }
-    return withCors(await handleKeyRequest(request, baseUrl), request);
-  }
-
-  // v2 / v2.5 / v2.6 / v3 are decommissioned. Point old integrations at v4.
-  if (
-    pathname.startsWith("/v2/") ||
-    pathname.startsWith("/v2.6/") ||
-    pathname.startsWith("/v3/") ||
-    pathname.startsWith("/api/v3")
-  ) {
-    return withCors(
-      Response.json(
-        {
-          error: {
-            type: "Gone",
-            message:
-              "The v2/v3 capability APIs are decommissioned. Use the v4 universal proxy API instead.",
-            error_code: "api_version_decommissioned",
-            migration: {
-              docs: `${baseUrl}/openapi-v4.json`,
-              request_access: "POST /v4/access-requests",
-              proxy: "POST /v4/proxy",
-            },
-          },
-        },
-        { status: 410 },
-      ),
-      request,
-    );
   }
 
   return withCors(

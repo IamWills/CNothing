@@ -1,19 +1,39 @@
 import { ValidationError } from "./errors";
+import config from "../config";
+
+function allowedBrowserOrigins(): Set<string> {
+  const origins = new Set<string>();
+  for (const value of [config.consoleUrl, config.publicBaseUrl]) {
+    if (!value) continue;
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      // Configuration validation reports invalid public URLs at startup.
+    }
+  }
+  return origins;
+}
+
+export function isAllowedBrowserOrigin(origin: string): boolean {
+  return allowedBrowserOrigins().has(origin);
+}
 
 export function corsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin");
   const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Session",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-CNothing-Request-Id",
     "Access-Control-Max-Age": "86400",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
   };
 
-  if (origin) {
+  if (origin && isAllowedBrowserOrigin(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
     headers["Access-Control-Allow-Credentials"] = "true";
     headers.Vary = "Origin";
-  } else {
-    headers["Access-Control-Allow-Origin"] = "*";
+  } else if (origin) {
+    headers.Vary = "Origin";
   }
 
   return headers;

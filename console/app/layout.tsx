@@ -49,8 +49,7 @@ export const metadata: Metadata = {
   other: {
     "ai:product": "CNothing",
     "ai:version": "v4",
-    "ai:capabilities": "universal-proxy,mcp,skills,oauth-broker,approvals",
-    "ai:skills-index": "https://cnothing.com/skills/index.json",
+    "ai:capabilities": "oauth-proxy,mcp,ios-approvals",
     "ai:getting-started": "https://cnothing.com/getting-started.md",
     "ai:primary-skill": "https://cnothing.com/skill.md",
     "ai:mcp-discovery": "https://cnothing.com/.well-known/mcp",

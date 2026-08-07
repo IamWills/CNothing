@@ -1,17 +1,17 @@
 import config from "../config";
 import {
-  BUILTIN_PROVIDER_TEMPLATES,
+  BUILTIN_PROVIDER_SLUGS,
   ENV_CLIENT_ID_KEYS,
   ENV_CLIENT_SECRET_KEYS,
-} from "../v2/builtin-providers";
+} from "./oauth-provider-env";
 import {
   findOAuthProviderBySlug,
   updateOAuthProviderCredentials,
-} from "../v2/oauth.repository";
+} from "./oauth.repository";
 
 /** Sync builtin OAuth provider credentials from env vars on startup. */
 export async function runV4StartupBootstrap(): Promise<void> {
-  for (const slug of Object.keys(BUILTIN_PROVIDER_TEMPLATES)) {
+  for (const slug of BUILTIN_PROVIDER_SLUGS) {
     if (slug === "github" && config.githubOAuth) {
       const provider = await findOAuthProviderBySlug("github");
       if (provider) {

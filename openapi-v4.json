@@ -1,412 +1,438 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.1.0",
   "info": {
-    "title": "CNothing v4 — Universal Credential-Injecting Proxy",
+    "title": "CNothing V4",
     "version": "4.0.0",
-    "description": "One user approval per OAuth provider, then agents call any https API of that provider through POST /v4/proxy. CNothing injects the user's OAuth token server-side; agents never see tokens, refresh tokens, or client secrets. Responses are redacted and every proxied request is audited.\n\nPhone push: POST /v4/access-requests accepts user_id as a GitHub username (e.g. Ciamme), github:Ciamme, or u_XXXXXX — there is no separate username→id lookup API. Prefer https://cnothing.com/skill.md and /mcp over guessing from this OpenAPI alone."
+    "description": "OAuth and credential-injecting proxy infrastructure for AI agents. Agents receive grants and sanitized API responses, never OAuth tokens or client secrets. Prefer the MCP endpoint at /mcp for agent use. Human approval supports the Console and the CNothing iOS authenticator with APNs and device-bound signatures."
   },
   "servers": [{ "url": "https://cnothing.com" }],
+  "tags": [
+    { "name": "Agent", "description": "Bearer-authenticated operations used by an AI agent." },
+    { "name": "User", "description": "Browser or iOS operations authenticated by a CNothing user session." },
+    { "name": "iOS", "description": "Pairing, APNs registration, polling, and device-bound approval." },
+    { "name": "Operator", "description": "Administrative operations protected by KEYSERVICE_BEARER_TOKEN." },
+    { "name": "Authentication", "description": "GitHub and OIDC browser sign-in." }
+  ],
   "components": {
     "securitySchemes": {
       "agentToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Agent access token issued via POST /v4/agents/register (admin)."
+        "description": "Agent token issued once by POST /v4/agents. Configure it as CNOTHING_AGENT_TOKEN for the stdio MCP client, or as the Authorization bearer for hosted MCP/HTTP."
       },
       "userSession": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "cn_session",
-        "description": "User session cookie (browser/Console); a Bearer session token is also accepted."
+        "name": "cnothing_user_session",
+        "description": "Browser session cookie. Device sessions may also use their bearer session token."
       },
       "adminToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Platform operator admin token."
+        "description": "Operator token configured by KEYSERVICE_BEARER_TOKEN."
+      }
+    },
+    "parameters": {
+      "ResourceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["ok", "error"],
+        "properties": {
+          "ok": { "const": false },
+          "error": { "type": "string" },
+          "error_code": { "type": "string" }
+        }
+      },
+      "AccessRequestInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider", "reason"],
+        "properties": {
+          "provider": { "type": "string", "examples": ["github"] },
+          "hosts": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional API host allowlist. Omit to use the provider's safe defaults."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Short human-readable explanation of why the agent needs access."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Optional iOS push target. Pass a GitHub username, github:username, a u_ share code, or a previously resolved CNothing user ID directly. Do not call or invent a user lookup endpoint."
+          },
+          "callback_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional public HTTPS URL notified after approval or denial."
+          }
+        }
+      },
+      "ProxyInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["grant_id", "method", "url"],
+        "properties": {
+          "grant_id": { "type": "string" },
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] },
+          "url": { "type": "string", "format": "uri", "description": "Must be HTTPS and match the grant host allowlist." },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "body": { "description": "JSON-compatible upstream request body." }
+        }
+      },
+      "PairDeviceInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pairing_code", "public_key_jwk"],
+        "properties": {
+          "pairing_code": { "type": "string" },
+          "device_name": { "type": "string" },
+          "platform": { "type": "string", "default": "ios" },
+          "public_key_jwk": { "type": "object", "description": "P-256 public key; the private key remains in the iOS Secure Enclave." }
+        }
+      },
+      "DeviceVerdictInput": {
+        "type": "object",
+        "properties": {
+          "connection_id": { "type": "string", "description": "Required for approval." },
+          "allowed_hosts": { "type": "array", "items": { "type": "string" } },
+          "allowed_methods": { "type": "array", "items": { "type": "string" } },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "challenge_id": { "type": "string", "description": "Required for a paired-device session." },
+          "signature": { "type": "string", "description": "Base64url P-256 signature from the paired device." }
+        }
       }
     }
   },
   "paths": {
     "/v4/providers": {
       "get": {
-        "summary": "List active OAuth providers",
-        "responses": { "200": { "description": "Provider list (public view, no secrets)" } }
+        "tags": ["Agent"],
+        "summary": "List active, connectable OAuth providers",
+        "description": "Call this before request_access. It returns public provider metadata only.",
+        "responses": { "200": { "description": "Active providers." } }
       },
       "post": {
-        "summary": "Create an OAuth provider (admin)",
+        "tags": ["Operator"],
+        "summary": "Create an OAuth provider",
         "security": [{ "adminToken": [] }],
-        "responses": { "201": { "description": "Provider created" } }
+        "responses": { "201": { "description": "Provider created." } }
+      }
+    },
+    "/v4/providers/admin": {
+      "get": {
+        "tags": ["Operator"],
+        "summary": "List provider configuration without exposing secrets",
+        "security": [{ "adminToken": [] }],
+        "responses": { "200": { "description": "Provider administration views." } }
+      }
+    },
+    "/v4/providers/{id}": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get public provider metadata",
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Provider." }, "404": { "description": "Not found." } }
       }
     },
     "/v4/providers/{id}/credentials": {
       "patch": {
-        "summary": "Set provider client credentials (admin)",
+        "tags": ["Operator"],
+        "summary": "Store provider client credentials in the Vault",
         "security": [{ "adminToken": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Credentials updated" } }
-      }
-    },
-    "/v4/providers/proposals": {
-      "post": {
-        "summary": "Propose a new OAuth provider (agent, OIDC discovery + RFC 7591 DCR)",
-        "security": [{ "agentToken": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["provider_name"],
-                "properties": {
-                  "provider_name": { "type": "string" },
-                  "discovery_url": { "type": "string" },
-                  "issuer_url": { "type": "string" },
-                  "authorization_url": { "type": "string" },
-                  "token_url": { "type": "string" },
-                  "registration_endpoint": { "type": "string" },
-                  "scopes": { "type": "array", "items": { "type": "string" } },
-                  "slug": { "type": "string" }
-                }
-              }
-            }
-          }
-        },
-        "responses": { "201": { "description": "Proposal created (auto-activated when DCR succeeds)" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Credentials updated; secret values are never returned." } }
       }
     },
     "/v4/access-requests": {
       "post": {
-        "summary": "Agent requests connection-level access to a provider",
-        "description": "Creates an access request and returns approval_url. Pass user_id when known: GitHub username (\"Ciamme\"), github:Ciamme, or u_ short code — this enables phone push. Do not invent a separate user-id lookup; the username IS a valid user_id value.",
+        "tags": ["Agent"],
+        "summary": "Request a connection-level grant",
+        "description": "Use the returned approval_url exactly as provided. If user_id resolves to a paired user, CNothing also sends an iOS push. The agent must then poll GET /v4/access-requests/{id}; it must not browse, rewrite, or POST to the approval URL.",
         "security": [{ "agentToken": [] }],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["provider"],
-                "properties": {
-                  "provider": { "type": "string", "example": "github" },
-                  "hosts": { "type": "array", "items": { "type": "string" }, "example": ["api.github.com"] },
-                  "reason": { "type": "string" },
-                  "user_id": {
-                    "type": "string",
-                    "description": "OPTIONAL targeting hint for phone push. Pass ANY of: (1) GitHub login/username alone, e.g. \"Ciamme\"; (2) full CNothing id \"github:Ciamme\"; (3) short code \"u_XXXXXX\"; (4) prior resolved_user_id. There is NO separate lookup endpoint — put the username directly in user_id. Do NOT ask the human for a different \"CNothing user ID\". Omit only when you truly do not know who they are; then still create the request and send approval_url.",
-                    "examples": ["Ciamme", "github:Ciamme", "u_7K2M9P"]
-                  },
-                  "callback_url": {
-                    "type": "string",
-                    "description": "Optional https URL. On approve/deny CNothing POSTs { event, access_request_id, status, grant_id, provider, agent_id }."
-                  }
-                }
-              }
-            }
-          }
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccessRequestInput" } } }
         },
-        "responses": {
-          "201": { "description": "Returns access_request_id and approval_url for the human user" }
-        }
-      }
-    },
-    "/v4/access-requests/pending": {
-      "get": {
-        "summary": "List pending access requests targeted at the signed-in user (iOS authenticator polling)",
-        "security": [{ "userSession": [] }],
-        "responses": { "200": { "description": "Pending requests where user_hint matches the session user" } }
+        "responses": { "201": { "description": "Pending request, exact human approval URL, and push/onboarding status." } }
       }
     },
     "/v4/access-requests/{id}": {
       "get": {
-        "summary": "Poll access request status (agent) / load for approval (user)",
+        "tags": ["Agent", "User"],
+        "summary": "Poll request status or load approval details",
         "security": [{ "agentToken": [] }, { "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Status; when approved includes grant_id" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Request status. Once approved, the agent receives grant_id, not an OAuth token." } }
       }
     },
-    "/v4/devices/pairing-codes": {
-      "post": {
-        "summary": "Generate a device pairing code (user, Console)",
+    "/v4/access-requests/pending": {
+      "get": {
+        "tags": ["iOS", "User"],
+        "summary": "List pending approvals for the signed-in user",
+        "description": "Used by the iOS authenticator as a resilient fallback when APNs delivery is delayed.",
         "security": [{ "userSession": [] }],
-        "responses": { "201": { "description": "pairing_code valid for 10 minutes" } }
-      }
-    },
-    "/v4/devices/pair": {
-      "post": {
-        "summary": "iOS app redeems a pairing code and receives a device session token",
-        "description": "Okta Verify-style enrollment: the app should include the device's P-256 public key (public_key_jwk). The private key stays in the Secure Enclave; approve/deny later requires signing a one-time challenge with it.",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["pairing_code"],
-                "properties": {
-                  "pairing_code": { "type": "string" },
-                  "device_name": { "type": "string" },
-                  "platform": { "type": "string", "default": "ios" },
-                  "public_key_jwk": {
-                    "type": "object",
-                    "description": "EC P-256 JWK { kty, crv, x, y } for device-bound approvals"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": { "201": { "description": "device + long-lived session_token" } }
+        "responses": { "200": { "description": "Pending approvals." } }
       }
     },
     "/v4/access-requests/{id}/challenge": {
       "post": {
-        "summary": "Device-only: issue a one-time approval challenge to sign",
-        "description": "Requires a device session (from /v4/devices/pair). Returns { challenge_id, nonce }. The device signs 'cnothing-approval.v1.{challenge_id}.{nonce}.{access_request_id}.{verdict}' with its enrolled P-256 key (ECDSA/SHA-256, DER, base64url) and sends challenge_id + signature in the approve/deny body.",
+        "tags": ["iOS"],
+        "summary": "Issue a one-time device approval challenge",
+        "description": "Only a session created by device pairing may request this nonce.",
         "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "201": { "description": "challenge_id, nonce, expires_at" } }
-      }
-    },
-    "/v4/devices/{id}/push-token": {
-      "post": {
-        "summary": "Register the device's APNs push token",
-        "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["push_token"],
-                "properties": {
-                  "push_token": { "type": "string" },
-                  "push_environment": { "type": "string", "enum": ["production", "sandbox"] }
-                }
-              }
-            }
-          }
-        },
-        "responses": { "200": { "description": "Token stored" } }
-      }
-    },
-    "/v4/devices": {
-      "get": {
-        "summary": "List the user's paired authenticator devices",
-        "security": [{ "userSession": [] }],
-        "responses": { "200": { "description": "Device list" } }
-      }
-    },
-    "/v4/devices/{id}": {
-      "delete": {
-        "summary": "Revoke a paired device",
-        "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Revoked" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "201": { "description": "Nonce and expiry for Secure Enclave signing." } }
       }
     },
     "/v4/access-requests/{id}/approve": {
       "post": {
-        "summary": "Console/API only: user session POSTs approval (not a browser page)",
-        "description": "This is a JSON API used by the Console after the user opens approval_url (/approve-proxy/{id}). Do NOT send humans to this path in a browser. Humans must open the approval_url returned by POST /v4/access-requests.",
+        "tags": ["iOS", "User"],
+        "summary": "Approve access and create a scoped grant",
         "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["connection_id"],
-                "properties": {
-                  "connection_id": { "type": "string" },
-                  "allowed_hosts": { "type": "array", "items": { "type": "string" } },
-                  "allowed_methods": { "type": "array", "items": { "type": "string" } },
-                  "expires_at": { "type": "string", "format": "date-time" }
-                }
-              }
-            }
-          }
-        },
-        "responses": { "201": { "description": "Grant created" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceVerdictInput" } } } },
+        "responses": { "201": { "description": "Grant created. Paired-device sessions require a valid challenge signature." } }
       }
     },
     "/v4/access-requests/{id}/deny": {
       "post": {
-        "summary": "User denies the access request",
+        "tags": ["iOS", "User"],
+        "summary": "Deny an access request",
         "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Denied" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceVerdictInput" } } } },
+        "responses": { "200": { "description": "Request denied. Paired-device sessions require a valid challenge signature." } }
       }
     },
     "/v4/proxy": {
       "post": {
-        "summary": "Credential-injecting HTTP proxy (agent never sees tokens)",
+        "tags": ["Agent"],
+        "summary": "Call an approved third-party HTTPS API",
+        "description": "CNothing injects the OAuth credential server-side, strips agent-supplied credential headers, enforces method and host constraints, blocks SSRF, redacts secrets, and audits the call.",
         "security": [{ "agentToken": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["grant_id", "method", "url"],
-                "properties": {
-                  "grant_id": { "type": "string" },
-                  "method": { "type": "string", "example": "GET" },
-                  "url": { "type": "string", "example": "https://api.github.com/user/repos" },
-                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-                  "body": {}
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Upstream status/headers/body, redacted server-side" }
-        }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProxyInput" } } } },
+        "responses": { "200": { "description": "Sanitized upstream status, headers, and body." } }
       }
     },
     "/v4/grants": {
       "get": {
-        "summary": "List connection-level grants (agent: own grants; user: grants they approved)",
+        "tags": ["Agent", "User"],
+        "summary": "List grants visible to the current principal",
         "security": [{ "agentToken": [] }, { "userSession": [] }],
-        "responses": { "200": { "description": "Grant list" } }
+        "responses": { "200": { "description": "Agent grants or user-owned grants." } }
       }
     },
     "/v4/grants/{id}/revoke": {
       "post": {
-        "summary": "User revokes a grant",
+        "tags": ["User"],
+        "summary": "Revoke a grant",
         "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Revoked" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Grant revoked." } }
       }
     },
     "/v4/connections": {
       "get": {
-        "summary": "List the user's OAuth connections",
+        "tags": ["User"],
+        "summary": "List the user's third-party OAuth connections",
         "security": [{ "userSession": [] }],
-        "responses": { "200": { "description": "Connection list (no tokens)" } }
+        "responses": { "200": { "description": "Connections without credentials." } }
       }
     },
     "/v4/connections/{id}": {
       "delete": {
-        "summary": "Revoke an OAuth connection (also revokes remote tokens when supported)",
+        "tags": ["User"],
+        "summary": "Revoke a third-party connection",
         "security": [{ "userSession": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Revoked" } }
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Connection revoked." } }
       }
     },
     "/v4/oauth/connect/start": {
       "post": {
-        "summary": "Start the OAuth connect flow for a provider (user)",
+        "tags": ["User"],
+        "summary": "Start connecting a third-party account",
         "security": [{ "userSession": [] }],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "provider_slug": { "type": "string" },
-                  "provider_id": { "type": "string" },
-                  "redirect_after": { "type": "string" },
-                  "scopes": { "type": "array", "items": { "type": "string" } }
-                }
-              }
-            }
-          }
-        },
-        "responses": { "200": { "description": "Returns authorization_url to open in the browser" } }
+        "responses": { "200": { "description": "Provider authorization URL." } }
       }
     },
     "/v4/oauth/callback/{slug}": {
       "get": {
-        "summary": "OAuth authorization-code callback (registered at the provider)",
-        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "302": { "description": "Redirects back to the Console" } }
+        "tags": ["Authentication"],
+        "summary": "Complete a third-party OAuth connection",
+        "parameters": [
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "302": { "description": "Redirect back to the Console." } }
       }
     },
-    "/v4/oauth/device/start": {
+    "/v4/devices/pairing-codes": {
       "post": {
-        "summary": "Start an OAuth device flow (for providers with device_authorization_endpoint)",
+        "tags": ["iOS", "User"],
+        "summary": "Create a short-lived iOS pairing code",
         "security": [{ "userSession": [] }],
-        "responses": { "201": { "description": "Returns user_code and verification_uri" } }
+        "responses": { "201": { "description": "Pairing code and expiry." } }
       }
     },
-    "/v4/oauth/device/poll": {
+    "/v4/devices/pair": {
       "post": {
-        "summary": "Poll the device flow until the connection is created",
-        "security": [{ "userSession": [] }],
-        "responses": { "200": { "description": "Pending or connection created" } }
+        "tags": ["iOS"],
+        "summary": "Pair an iOS authenticator",
+        "description": "Consumes the code, registers the device public key, and returns a device session token. No existing session is required.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PairDeviceInput" } } } },
+        "responses": { "201": { "description": "Paired device and device session token." } }
       }
     },
-    "/v4/agents/register": {
-      "post": {
-        "summary": "Self-register an agent and issue its access token (no auth required; rate-limited)",
-        "description": "Open self-service registration. An agent token by itself grants nothing: every proxy grant still requires an explicit user approval via approval_url.",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["name"],
-                "properties": {
-                  "name": { "type": "string" },
-                  "owner_user_id": { "type": "string", "description": "Optional; defaults to self-registered" },
-                  "metadata": { "type": "object" }
-                }
-              }
-            }
-          }
-        },
-        "responses": { "201": { "description": "Agent plus one-time access_token" } }
-      }
-    },
-    "/v4/sandbox/start": {
-      "post": {
-        "summary": "Provision an auto-approved sandbox grant for a full agent self-test",
-        "description": "Creates a sandbox provider/connection/grant so the agent can exercise the entire flow (access request, grant, credential-injecting proxy, redaction) without human approval or a real OAuth provider. Returns grant_id and echo_url.",
-        "security": [{ "agentToken": [] }],
-        "responses": { "201": { "description": "Sandbox grant_id + echo_url + example proxy call" } }
-      }
-    },
-    "/v4/sandbox/echo": {
+    "/v4/devices": {
       "get": {
-        "summary": "Sandbox mock upstream: echoes the request the proxy forwarded",
-        "responses": { "200": { "description": "Echo of method/path/query/headers/body; injected token appears as [REDACTED] in proxied responses" } }
+        "tags": ["iOS", "User"],
+        "summary": "List paired devices",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Devices without private keys or full push tokens." } }
+      }
+    },
+    "/v4/devices/{id}": {
+      "delete": {
+        "tags": ["iOS", "User"],
+        "summary": "Revoke a paired device and disable push",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Device revoked." } }
+      }
+    },
+    "/v4/devices/{id}/push-token": {
+      "post": {
+        "tags": ["iOS"],
+        "summary": "Register or rotate an APNs device token",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Push token registered." } }
+      }
+    },
+    "/v4/users/share-codes": {
+      "post": {
+        "tags": ["iOS", "User"],
+        "summary": "Issue a short-lived u_ share code for agent targeting",
+        "security": [{ "userSession": [] }],
+        "responses": { "201": { "description": "Share code and expiry." } }
+      }
+    },
+    "/v4/users/me/agent-id": {
+      "get": {
+        "tags": ["iOS", "User"],
+        "summary": "Get the identifier a human can give to an agent",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Canonical user ID and share-code status." } }
       }
     },
     "/v4/agents": {
       "get": {
-        "summary": "List agents (admin)",
+        "tags": ["Operator"],
+        "summary": "List agents",
         "security": [{ "adminToken": [] }],
-        "responses": { "200": { "description": "Agent list" } }
-      }
-    },
-    "/v4/auth/login": {
+        "responses": { "200": { "description": "Agents without token hashes." } }
+      },
       "post": {
-        "summary": "User login with a one-time login token",
-        "responses": { "200": { "description": "Session created (cookie + token)" } }
-      }
-    },
-    "/v4/auth/me": {
-      "get": {
-        "summary": "Current user session",
-        "security": [{ "userSession": [] }],
-        "responses": { "200": { "description": "Session info" } }
-      }
-    },
-    "/v4/auth/logout": {
-      "post": {
-        "summary": "Logout",
-        "security": [{ "userSession": [] }],
-        "responses": { "200": { "description": "Session revoked" } }
-      }
-    },
-    "/v4/auth/login-tokens": {
-      "post": {
-        "summary": "Issue a one-time login token for a user (admin)",
+        "tags": ["Operator"],
+        "summary": "Enroll an agent",
+        "description": "Returns the agent token once. Store it in a secret manager; CNothing stores only its hash.",
         "security": [{ "adminToken": [] }],
-        "responses": { "201": { "description": "Login token" } }
+        "responses": { "201": { "description": "Agent and one-time plaintext access token." } }
+      }
+    },
+    "/v4/agents/{id}": {
+      "delete": {
+        "tags": ["Operator"],
+        "summary": "Revoke an agent token",
+        "security": [{ "adminToken": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Agent revoked." } }
       }
     },
     "/v4/auth/providers": {
       "get": {
-        "summary": "List browser login providers (GitHub / OIDC) for the Console",
-        "responses": { "200": { "description": "Login provider descriptors" } }
+        "tags": ["Authentication"],
+        "summary": "List available browser sign-in methods",
+        "responses": { "200": { "description": "GitHub and configured OIDC sign-in methods." } }
+      }
+    },
+    "/v4/auth/github/start": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Start GitHub browser sign-in",
+        "responses": { "302": { "description": "Redirect to GitHub." } }
+      }
+    },
+    "/v4/auth/github/callback": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Complete GitHub browser sign-in",
+        "responses": { "302": { "description": "Set the user session cookie and redirect." } }
+      }
+    },
+    "/v4/auth/oidc/providers": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "List configured OIDC sign-in providers",
+        "responses": { "200": { "description": "Public OIDC provider list." } }
+      }
+    },
+    "/v4/auth/oidc/{name}/start": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Start OIDC browser sign-in",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "302": { "description": "Redirect to the identity provider." } }
+      }
+    },
+    "/v4/auth/oidc/{name}/callback": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Complete OIDC browser sign-in",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "302": { "description": "Set the user session cookie and redirect." } }
+      }
+    },
+    "/v4/auth/oauth/{slug}/start": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Sign in through a configured OAuth provider",
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "302": { "description": "Redirect to the provider." } }
+      }
+    },
+    "/v4/auth/me": {
+      "get": {
+        "tags": ["User"],
+        "summary": "Inspect the current user session",
+        "responses": { "200": { "description": "Authentication status and user ID." } }
+      }
+    },
+    "/v4/auth/logout": {
+      "post": {
+        "tags": ["User"],
+        "summary": "Revoke the current user session",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Logged out." } }
+      }
+    },
+    "/v4/admin/oidc/providers": {
+      "post": {
+        "tags": ["Operator"],
+        "summary": "Register an OIDC browser sign-in provider",
+        "security": [{ "adminToken": [] }],
+        "responses": { "201": { "description": "OIDC provider registered." } }
       }
     }
   }

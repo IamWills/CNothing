@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "../db";
-import type { JsonObject } from "../v2/v2.entity";
+import type { JsonObject } from "./platform.entity";
 
 export type ProxyAccessRequestStatus = "pending" | "approved" | "denied" | "expired";
 

@@ -101,9 +101,10 @@ final class APIClient: ObservableObject {
             "device_name": deviceName,
             "platform": "ios",
         ]
-        if let jwk = DeviceKey.publicKeyJwk(keyTag: keyTag) {
-            body["public_key_jwk"] = jwk
+        guard let jwk = DeviceKey.publicKeyJwk(keyTag: keyTag) else {
+            throw APIError.network(String(localized: "Unable to create the device approval key. Check device security settings and try again."))
         }
+        body["public_key_jwk"] = jwk
 
         let pairBase = baseURLOverride ?? baseURL
         if let baseURLOverride {

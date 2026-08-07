@@ -2,7 +2,7 @@
 
 import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { ExternalLink, Github, LayoutGrid, Library, LogIn, ShieldCheck, Smartphone } from "lucide-react";
+import { ExternalLink, Github, LayoutGrid, LogIn, Smartphone } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { brand } from "@/lib/brand";
@@ -38,19 +38,6 @@ const navigation: Array<{
       "/providers",
       "/approve-proxy",
     ],
-  },
-  { href: "/catalog", label: "Catalog", icon: LayoutGrid, matches: ["/catalog", "/skills"] },
-  {
-    href: "/clients",
-    label: "Legacy (v1)",
-    icon: Library,
-    matches: ["/clients", "/kv"],
-  },
-  {
-    href: "/standards",
-    label: "Legacy standards",
-    icon: ShieldCheck,
-    matches: ["/standards", "/standard"],
   },
 ];
 

@@ -2,9 +2,9 @@ import { createHmac, createPublicKey, createVerify, randomBytes, randomUUID } fr
 
 import config from "../config";
 import { NotFoundError, UnauthorizedError, ValidationError } from "../utils/errors";
-import { createUserSession } from "../v2/v2.repository";
-import { generateUserSessionToken, hashSessionToken } from "../v2/user-session";
-import type { JsonObject } from "../v2/v2.entity";
+import { createUserSession } from "./platform.repository";
+import { generateUserSessionToken, hashSessionToken } from "./user-session";
+import type { JsonObject } from "./platform.entity";
 import {
   consumeApprovalChallenge,
   consumePairingCode,
@@ -36,9 +36,11 @@ export function buildApprovalSignaturePayload(input: {
   return `cnothing-approval.v1.${input.challengeId}.${input.nonce}.${input.accessRequestId}.${input.verdict}`;
 }
 
-function validatePublicKeyJwk(value: unknown): JsonObject | null {
+function validatePublicKeyJwk(value: unknown): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
+    throw new ValidationError("public_key_jwk is required for device-bound approvals", {
+      error_code: "missing_public_key",
+    });
   }
   const jwk = value as Record<string, unknown>;
   if (jwk.kty !== "EC" || jwk.crv !== "P-256") {
@@ -146,7 +148,7 @@ export class DeviceService {
         user_id: device.user_id,
         platform: device.platform,
         device_name: device.device_name,
-        key_registered: Boolean(publicKeyJwk),
+        key_registered: true,
       },
       session_token: sessionToken,
     };
@@ -257,11 +259,17 @@ export class DeviceService {
     pushToken: string;
     pushEnvironment?: string;
   }) {
+    const pushToken = input.pushToken.trim();
+    if (!/^[0-9a-fA-F]{32,400}$/.test(pushToken) || pushToken.length % 2 !== 0) {
+      throw new ValidationError("push_token must be an APNs hexadecimal device token", {
+        error_code: "invalid_push_token",
+      });
+    }
     const environment = input.pushEnvironment === "sandbox" ? "sandbox" : "production";
     const device = await updateDevicePushToken({
       device_id: input.deviceId,
       user_id: input.userId,
-      push_token: input.pushToken.trim(),
+      push_token: pushToken.toLowerCase(),
       push_environment: environment,
     });
     if (!device) {

@@ -1,21 +1,24 @@
 #!/usr/bin/env bun
-/**
- * cnothing-mcp — local stdio MCP server for the CNothing v4 universal proxy.
- *
- * Once configured in an agent's MCP client (Cursor, Claude Desktop, ...), this
- * server becomes the agent's callable tool for registering/logging in to OAuth
- * 2.0 sites through CNothing. The agent authenticates to CNothing with
- * CNOTHING_AGENT_TOKEN; end users approve access once in the browser; tokens
- * never reach the agent.
- *
- * Env:
- *   CNOTHING_BASE_URL     e.g. https://cnothing.com (default)
- *   CNOTHING_AGENT_TOKEN  agent bearer token (required)
- */
+import {
+  MCP_LEGACY_PROTOCOL_VERSION,
+  MCP_PROTOCOL_VERSION,
+  MCP_SERVER_INSTRUCTIONS,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  MCP_TOOLS,
+  MCP_WORKFLOW_MARKDOWN,
+  MCP_WORKFLOW_URI,
+  type McpToolName,
+} from "./tools";
 
 const BASE_URL = (process.env.CNOTHING_BASE_URL ?? "https://cnothing.com").replace(/\/+$/, "");
-// Mutable: register_agent can fill it in at runtime if not preconfigured.
-let AGENT_TOKEN = process.env.CNOTHING_AGENT_TOKEN ?? "";
+const AGENT_TOKEN = process.env.CNOTHING_AGENT_TOKEN?.trim() ?? "";
+const LEGACY_PROTOCOL_VERSIONS = new Set([MCP_LEGACY_PROTOCOL_VERSION, "2025-06-18", "2024-11-05"]);
+const SUPPORTED_PROTOCOL_VERSIONS = [MCP_PROTOCOL_VERSION, ...LEGACY_PROTOCOL_VERSIONS];
+const SERVER_CAPABILITIES = {
+  tools: { listChanged: false },
+  resources: { subscribe: false, listChanged: false },
+};
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -24,219 +27,29 @@ type JsonRpcRequest = {
   params?: Record<string, unknown>;
 };
 
-const TOOLS = [
-  {
-    name: "register_agent",
-    description:
-      "Self-register this agent with CNothing and receive an agent access token (no admin needed; a token alone grants nothing until a human approves access). The token is applied to this MCP session automatically — also store it as CNOTHING_AGENT_TOKEN for future sessions.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Human-readable agent name" },
-        metadata: { type: "object", description: "Optional metadata" },
-      },
-      required: ["name"],
-    },
-  },
-  {
-    name: "start_sandbox",
-    description:
-      "Provision an auto-approved sandbox grant to self-test the full v4 flow (grant + credential-injecting proxy + redaction) without human approval or a real OAuth provider. Returns grant_id and echo_url for proxy_request.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "list_providers",
-    description:
-      "List OAuth 2.0 providers configured on CNothing. Use the returned slug with request_access.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "request_access",
-    description:
-      "Request connection-level access to an OAuth provider. Returns access_request_id and approval_url. ALWAYS pass user_id when you know the human's GitHub login, github:… id, or u_ short code so they get a phone push and only Approve; only omit when unknown, then show the exact approval_url — do not block. Agent must not attempt OAuth itself.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        provider: { type: "string", description: "Provider slug, e.g. github" },
-        hosts: {
-          type: "array",
-          items: { type: "string" },
-          description: "Optional host allowlist, e.g. [\"api.github.com\"]",
-        },
-        reason: { type: "string", description: "Shown to the user on the approval page" },
-        user_id: {
-          type: "string",
-          description:
-            "Pass whenever known: CNothing id, short code u_XXXXXX, or GitHub login/username for phone push. Omit only if unknown — then send approval_url; do not block.",
-        },
-        callback_url: {
-          type: "string",
-          description:
-            "Optional https URL that receives a POST when the user approves/denies (no polling needed).",
-        },
-      },
-      required: ["provider"],
-    },
-  },
-  {
-    name: "get_access_status",
-    description:
-      "Poll an access request. When status is approved, the response contains grant_id.",
-    inputSchema: {
-      type: "object",
-      properties: { access_request_id: { type: "string" } },
-      required: ["access_request_id"],
-    },
-  },
-  {
-    name: "proxy_request",
-    description:
-      "Call any https API of the granted provider through CNothing. The user's OAuth token is injected server-side and auto-refreshed; responses are redacted so tokens can never leak.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        grant_id: { type: "string" },
-        method: { type: "string", description: "GET / POST / PATCH / DELETE ..." },
-        url: { type: "string", description: "Full https URL on a granted host" },
-        headers: { type: "object", description: "Optional extra headers (auth headers are ignored)" },
-        body: { description: "Optional JSON body" },
-      },
-      required: ["grant_id", "method", "url"],
-    },
-  },
-  {
-    name: "list_grants",
-    description: "List this agent's connection-level grants.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "submit_provider_proposal",
-    description:
-      "Onboard a new OAuth 2.0 / OIDC provider by discovery URL. Providers supporting RFC 7591 Dynamic Client Registration are activated automatically.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        provider_name: { type: "string" },
-        discovery_url: { type: "string" },
-        issuer_url: { type: "string" },
-        authorization_url: { type: "string" },
-        token_url: { type: "string" },
-        registration_endpoint: { type: "string" },
-        scopes: { type: "array", items: { type: "string" } },
-        slug: { type: "string" },
-      },
-      required: ["provider_name"],
-    },
-  },
-  {
-    name: "get_provider_proposal",
-    description: "Check the status of a provider proposal.",
-    inputSchema: {
-      type: "object",
-      properties: { proposal_id: { type: "string" } },
-      required: ["proposal_id"],
-    },
-  },
-];
-
-async function api(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; data: unknown }> {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      authorization: `Bearer ${AGENT_TOKEN}`,
-      ...(body !== undefined ? { "content-type": "application/json" } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const text = await response.text();
-  let data: unknown;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { raw: text };
-  }
-  return { status: response.status, data };
+function objectArgs(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
-async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-  if (name === "register_agent") {
-    const { status, data } = await api("POST", "/v4/agents/register", {
-      name: args.name,
-      metadata: args.metadata,
-    });
-    if (status < 400 && data && typeof data === "object") {
-      const token = (data as Record<string, unknown>).access_token;
-      if (typeof token === "string" && token) {
-        AGENT_TOKEN = token;
-      }
-    }
-    return data;
-  }
+function serverInfo() {
+  return {
+    name: MCP_SERVER_NAME,
+    version: MCP_SERVER_VERSION,
+    description: "User-approved OAuth API proxy for AI agents",
+  };
+}
 
-  if (!AGENT_TOKEN) {
-    throw new Error(
-      "CNOTHING_AGENT_TOKEN is not set. Call the register_agent tool first (self-service), or set the token in the MCP server env.",
-    );
-  }
-
-  switch (name) {
-    case "start_sandbox": {
-      const { data } = await api("POST", "/v4/sandbox/start", {});
-      return data;
-    }
-    case "list_providers": {
-      const { data } = await api("GET", "/v4/providers");
-      return data;
-    }
-    case "request_access": {
-      const { data } = await api("POST", "/v4/access-requests", {
-        provider: args.provider,
-        hosts: args.hosts,
-        reason: args.reason,
-        user_id: args.user_id,
-        callback_url: args.callback_url,
-      });
-      return data;
-    }
-    case "get_access_status": {
-      const { data } = await api(
-        "GET",
-        `/v4/access-requests/${encodeURIComponent(String(args.access_request_id ?? ""))}`,
-      );
-      return data;
-    }
-    case "proxy_request": {
-      const { data } = await api("POST", "/v4/proxy", {
-        grant_id: args.grant_id,
-        method: args.method,
-        url: args.url,
-        headers: args.headers,
-        body: args.body,
-      });
-      return data;
-    }
-    case "list_grants": {
-      const { data } = await api("GET", "/v4/grants");
-      return data;
-    }
-    case "submit_provider_proposal": {
-      const { data } = await api("POST", "/v4/providers/proposals", args);
-      return data;
-    }
-    case "get_provider_proposal": {
-      const { data } = await api(
-        "GET",
-        `/v4/providers/proposals/${encodeURIComponent(String(args.proposal_id ?? ""))}`,
-      );
-      return data;
-    }
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
+function modernResult(value: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...value,
+    resultType: "complete",
+    _meta: {
+      ...objectArgs(value._meta),
+      "io.modelcontextprotocol/serverInfo": serverInfo(),
+    },
+  };
 }
 
 function respond(id: string | number | null, result: unknown): void {
@@ -244,74 +57,148 @@ function respond(id: string | number | null, result: unknown): void {
 }
 
 function respondError(id: string | number | null, code: number, message: string): void {
-  process.stdout.write(
-    `${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`,
-  );
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
+}
+
+async function api(method: string, path: string, body?: unknown): Promise<Record<string, unknown>> {
+  if (!AGENT_TOKEN) {
+    throw new Error(
+      "CNOTHING_AGENT_TOKEN is not configured. Ask the user or operator to create an agent in the CNothing Console and configure its one-time token in this MCP server environment.",
+    );
+  }
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${AGENT_TOKEN}`,
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) as unknown : {};
+  if (!response.ok) {
+    const record = objectArgs(data);
+    const error = objectArgs(record.error);
+    throw new Error(typeof error.message === "string" ? error.message : `CNothing API returned HTTP ${response.status}`);
+  }
+  return objectArgs(data);
+}
+
+async function callTool(name: McpToolName, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  switch (name) {
+    case "list_grants":
+      return api("GET", "/v4/grants");
+    case "list_providers":
+      return api("GET", "/v4/providers");
+    case "request_access":
+      return api("POST", "/v4/access-requests", args);
+    case "get_access_status":
+      return api("GET", `/v4/access-requests/${encodeURIComponent(String(args.access_request_id ?? ""))}`);
+    case "proxy_request":
+      return api("POST", "/v4/proxy", args);
+  }
 }
 
 async function handleMessage(rpc: JsonRpcRequest): Promise<void> {
   const id = rpc.id ?? null;
-  const params = rpc.params ?? {};
+  const params = objectArgs(rpc.params);
+  const isNotification = rpc.id === undefined;
+  const requestMeta = objectArgs(params._meta);
+  const isModern =
+    requestMeta["io.modelcontextprotocol/protocolVersion"] === MCP_PROTOCOL_VERSION;
+  const send = (value: Record<string, unknown>) =>
+    respond(id, isModern ? modernResult(value) : value);
+  if (rpc.method === "notifications/initialized" || rpc.method === "notifications/cancelled") return;
 
   try {
     switch (rpc.method) {
-      case "initialize":
-        respond(id, {
-          protocolVersion:
-            typeof params.protocolVersion === "string" ? params.protocolVersion : "2024-11-05",
-          serverInfo: { name: "cnothing-mcp", version: "0.1.0" },
-          capabilities: { tools: { listChanged: false } },
-          instructions:
-            "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. You never log into GitHub. Flow: register_agent (if needed) -> list_providers -> request_access (MUST pass user_id when you know their GitHub username / github:… / u_ short code / prior resolved_user_id so they get phone push; if unknown, still call and give EXACT approval_url — do NOT block) -> get_access_status -> proxy_request. Remember resolved_user_id for later. Skill: https://cnothing.com/skill.md",
+      case "server/discover":
+        send({
+          supportedVersions: SUPPORTED_PROTOCOL_VERSIONS,
+          capabilities: SERVER_CAPABILITIES,
+          instructions: MCP_SERVER_INSTRUCTIONS,
+          ttlMs: 300_000,
+          cacheScope: "public",
         });
         return;
-
-      case "notifications/initialized":
-      case "notifications/cancelled":
-        return; // notifications get no response
-
-      case "ping":
-        respond(id, {});
-        return;
-
-      case "tools/list":
-        respond(id, { tools: TOOLS });
-        return;
-
-      case "tools/call": {
-        const name = typeof params.name === "string" ? params.name : "";
-        const args =
-          params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
-            ? (params.arguments as Record<string, unknown>)
-            : {};
-        const result = await callTool(name, args);
+      case "initialize": {
+        if (isModern) {
+          respondError(id, -32601, "Method not found");
+          return;
+        }
+        const requestedProtocol =
+          typeof params.protocolVersion === "string" ? params.protocolVersion : MCP_LEGACY_PROTOCOL_VERSION;
         respond(id, {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          protocolVersion: LEGACY_PROTOCOL_VERSIONS.has(requestedProtocol)
+            ? requestedProtocol
+            : MCP_LEGACY_PROTOCOL_VERSION,
+          serverInfo: serverInfo(),
+          capabilities: SERVER_CAPABILITIES,
+          instructions: MCP_SERVER_INSTRUCTIONS,
         });
         return;
       }
-
-      default:
-        if (id !== null) {
-          respondError(id, -32601, `Method not found: ${rpc.method}`);
+      case "ping":
+        if (!isNotification) {
+          if (isModern) respondError(id, -32601, "Method not found");
+          else respond(id, {});
         }
+        return;
+      case "tools/list":
+        send({ tools: MCP_TOOLS, ...(isModern ? { ttlMs: 300_000, cacheScope: "public" } : {}) });
+        return;
+      case "resources/list":
+        send({
+          resources: [{ uri: MCP_WORKFLOW_URI, name: "CNothing v4 workflow", mimeType: "text/markdown" }],
+          ...(isModern ? { ttlMs: 300_000, cacheScope: "public" } : {}),
+        });
+        return;
+      case "resources/read":
+        if (String(params.uri ?? "") !== MCP_WORKFLOW_URI) {
+          respondError(id, isModern ? -32602 : -32002, "Resource not found");
+          return;
+        }
+        send({
+          contents: [{ uri: MCP_WORKFLOW_URI, mimeType: "text/markdown", text: MCP_WORKFLOW_MARKDOWN }],
+          ...(isModern ? { ttlMs: 300_000, cacheScope: "public" } : {}),
+        });
+        return;
+      case "tools/call": {
+        const name = typeof params.name === "string" ? params.name : "";
+        if (!MCP_TOOLS.some((tool) => tool.name === name)) {
+          respondError(id, -32602, `Unknown tool: ${name}`);
+          return;
+        }
+        try {
+          const data = await callTool(name as McpToolName, objectArgs(params.arguments));
+          const toolResult = {
+            content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+            structuredContent: data,
+          };
+          respond(id, isModern ? modernResult(toolResult) : toolResult);
+        } catch (error) {
+          const data = { ok: false, status: "error", next_action: "inspect_error", error: { message: error instanceof Error ? error.message : "Tool failed" } };
+          const toolResult = { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data, isError: true };
+          respond(id, isModern ? modernResult(toolResult) : toolResult);
+        }
+        return;
+      }
+      default:
+        if (!isNotification) respondError(id, -32601, `Method not found: ${rpc.method}`);
     }
   } catch (error) {
-    respondError(id, -32000, error instanceof Error ? error.message : String(error));
+    if (!isNotification) respondError(id, -32000, error instanceof Error ? error.message : String(error));
   }
 }
 
 let buffer = "";
-// Process messages strictly in order: register_agent must finish (and set
-// AGENT_TOKEN) before any subsequent tool call runs.
 let queue: Promise<void> = Promise.resolve();
-
 process.stdin.on("data", (chunk: Buffer) => {
   buffer += chunk.toString("utf8");
-  let newlineIndex = buffer.indexOf("\n");
-  while (newlineIndex >= 0) {
-    const line = buffer.slice(0, newlineIndex).trim();
-    buffer = buffer.slice(newlineIndex + 1);
+  let newline = buffer.indexOf("\n");
+  while (newline >= 0) {
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
     if (line) {
       try {
         const rpc = JSON.parse(line) as JsonRpcRequest;
@@ -320,10 +207,7 @@ process.stdin.on("data", (chunk: Buffer) => {
         respondError(null, -32700, "Parse error");
       }
     }
-    newlineIndex = buffer.indexOf("\n");
+    newline = buffer.indexOf("\n");
   }
 });
-
-process.stdin.on("end", () => {
-  void queue.then(() => process.exit(0));
-});
+process.stdin.on("end", () => void queue.then(() => process.exit(0)));

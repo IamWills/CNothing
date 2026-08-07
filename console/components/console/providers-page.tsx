@@ -19,7 +19,7 @@ import {
   type V4OAuthProviderAdmin,
 } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
-import { v4ChannelTabs } from "@/lib/v2-channel-tabs";
+import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
 
 const emptyCreateForm = {
   slug: "",

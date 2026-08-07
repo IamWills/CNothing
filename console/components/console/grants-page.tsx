@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
 import { fetchV4Grants, revokeV4Grant, type V4Grant } from "@/lib/api-v4";
-import { v4ChannelTabs } from "@/lib/v2-channel-tabs";
+import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function GrantsPage() {

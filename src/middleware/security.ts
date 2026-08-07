@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import config from "../config";
-import { redactLogMessage } from "../v2/secret-redaction";
+import { redactLogMessage } from "../v4/secret-redaction";
 
 type Bucket = {
   count: number;
@@ -43,7 +43,7 @@ function pruneExpiredEntries(now: number): void {
 }
 
 function checkRateLimit(request: Request, pathname: string): Response | null {
-  if (!pathname.startsWith("/v4/")) {
+  if (!pathname.startsWith("/v4/") && pathname !== "/mcp") {
     return null;
   }
 

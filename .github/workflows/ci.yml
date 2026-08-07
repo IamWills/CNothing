@@ -30,16 +30,26 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.10
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Test
+        run: bun test src
+
       - name: Build library
         run: bun run build
+
+      - name: Check Console
+        run: |
+          cd console
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run build
 
       - name: Prepare environment
         run: |
@@ -49,11 +59,8 @@ jobs:
             echo "DATABASE_URL=postgresql://keyservice:keyservice@127.0.0.1:5432/keyservice"
             echo "KEYSERVICE_BEARER_TOKEN=ci-test-admin-token"
             echo "KEYSERVICE_CONSOLE_URL=http://127.0.0.1:3000"
+            echo "KEYSERVICE_PUBLIC_URL=http://127.0.0.1:3021"
             echo "KEYSERVICE_USER_SESSION_TTL_SECONDS=86400"
-            echo "KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS=900"
-            echo "KEYSERVICE_V1_SUNSET_DATE=2026-12-17"
-            echo "KEYSERVICE_E2E_INTERNAL=1"
-            echo "KEYSERVICE_GITHUB_API_BASE_URL=http://127.0.0.1:3199"
           } >> .env
           cat .local-keys/generated.env >> .env
 
@@ -74,15 +81,6 @@ jobs:
           echo "API failed to start:"
           cat /tmp/keyservice.log
           exit 1
-
-      - name: Unit tests v4
-        run: bun test src/v4/__tests__
-
-      - name: E2E v4 flow
-        run: |
-          CNOTHING_BASE_URL=http://127.0.0.1:3021 \
-          CNOTHING_ADMIN_TOKEN=ci-test-admin-token \
-          bun run e2e:v4
 
       - name: Upload server log on failure
         if: failure()

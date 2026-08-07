@@ -1,17 +1,17 @@
 import config from "../config";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
-import { assertSafePublicUrlWithDns } from "../v3/url-safety.service";
-import { redactSecrets } from "../v2/secret-redaction";
-import type { AgentRecord } from "../v2/v2.entity";
-import type { OAuthConnectionRecord } from "../v2/v2.5.entity";
+import { assertSafePublicUrlWithDns } from "./url-safety.service";
+import { redactSecrets } from "./secret-redaction";
+import type { AgentRecord } from "./platform.entity";
+import type { OAuthConnectionRecord } from "./oauth.entity";
 import {
   findOAuthConnectionById,
   findOAuthProviderById,
   findOAuthProviderBySlug,
   getConnectionAccessToken,
   touchOAuthConnection,
-} from "../v2/oauth.repository";
-import { oauthConnectionService } from "../v2/oauth-connection.service";
+} from "./oauth.repository";
+import { oauthConnectionService } from "./oauth-connection.service";
 import {
   claimProxyAccessRequestUserHint,
   createProxyAccessRequest,
@@ -453,23 +453,11 @@ export class ProxyService {
       });
     }
 
-    // KEYSERVICE_E2E_INTERNAL=1 relaxes https/SSRF checks so E2E can target a
-    // local mock upstream. Never enable it in production (same switch as the
-    // /v2/internal/e2e seed endpoints).
-    let parsedUrl: URL;
-    if (config.e2eInternalEnabled) {
-      try {
-        parsedUrl = new URL(input.url.trim());
-      } catch {
-        throw new ValidationError("Invalid url", { error_code: "invalid_url" });
-      }
-    } else {
-      parsedUrl = await assertSafePublicUrlWithDns(input.url, "url");
-      if (parsedUrl.protocol !== "https:") {
-        throw new ValidationError("Only https URLs are allowed", {
-          error_code: "https_required",
-        });
-      }
+    const parsedUrl = await assertSafePublicUrlWithDns(input.url, "url");
+    if (parsedUrl.protocol !== "https:") {
+      throw new ValidationError("Only https URLs are allowed", {
+        error_code: "https_required",
+      });
     }
     if (!matchAllowedHost(parsedUrl.hostname, grant.allowed_hosts)) {
       throw new ForbiddenError(`Host not allowed by grant: ${parsedUrl.hostname}`, {

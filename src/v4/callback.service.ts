@@ -1,6 +1,5 @@
-import config from "../config";
 import { ValidationError } from "../utils/errors";
-import { assertSafePublicUrlWithDns } from "../v3/url-safety.service";
+import { assertSafePublicUrlWithDns } from "./url-safety.service";
 
 /**
  * Agent completion callbacks: when the user approves/denies an access request,
@@ -10,13 +9,6 @@ import { assertSafePublicUrlWithDns } from "../v3/url-safety.service";
 
 export async function validateCallbackUrl(rawUrl: string): Promise<string> {
   const trimmed = rawUrl.trim();
-  if (config.e2eInternalEnabled) {
-    try {
-      return new URL(trimmed).toString();
-    } catch {
-      throw new ValidationError("Invalid callback_url", { error_code: "invalid_callback_url" });
-    }
-  }
   const parsed = await assertSafePublicUrlWithDns(trimmed, "callback_url");
   if (parsed.protocol !== "https:") {
     throw new ValidationError("callback_url must be https", {

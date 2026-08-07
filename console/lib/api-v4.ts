@@ -12,7 +12,6 @@ export type V4OAuthProvider = {
   status: string;
   is_builtin: boolean;
   connectable: boolean;
-  supports_device_flow?: boolean;
 };
 
 export type V4OAuthProviderAdmin = V4OAuthProvider & {
@@ -135,25 +134,6 @@ export async function fetchV4AuthProviders(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V4AuthProvider[] }>(connection, "/v4/auth/providers");
 }
 
-export async function issueV4LoginToken(connection: ConsoleConnection, userId: string) {
-  return requestJson<{ ok: true; login_token: string; user_id: string; expires_at: string }>(
-    connection,
-    "/v4/auth/login-tokens",
-    { method: "POST", body: JSON.stringify({ user_id: userId }), admin: true },
-  );
-}
-
-export async function loginV4User(
-  connection: ConsoleConnection,
-  payload: { user_id: string; login_token: string },
-) {
-  return requestJson<{ ok: true; session_token: string; user_id: string; expires_at: string }>(
-    connection,
-    "/v4/auth/login",
-    { method: "POST", body: JSON.stringify(payload) },
-  );
-}
-
 export async function logoutV4User(connection: ConsoleConnection, userSessionToken?: string) {
   return requestJson<{ ok: true; revoked: boolean }>(connection, "/v4/auth/logout", {
     method: "POST",
@@ -263,36 +243,6 @@ export async function startV4OAuthConnect(
   );
 }
 
-export async function startV4DeviceFlow(
-  connection: ConsoleConnection,
-  payload: { provider_slug: string; scopes?: string[] },
-) {
-  return requestJson<{
-    ok: true;
-    session_id: string;
-    user_code: string;
-    verification_uri: string;
-    verification_uri_complete: string | null;
-    expires_at: string;
-    poll_interval_seconds: number;
-  }>(connection, "/v4/oauth/device/start", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function pollV4DeviceFlow(connection: ConsoleConnection, sessionId: string) {
-  return requestJson<{
-    ok: true;
-    status: "pending" | "completed" | "expired" | "denied";
-    connection_id?: string;
-    poll_interval_seconds?: number;
-  }>(connection, "/v4/oauth/device/poll", {
-    method: "POST",
-    body: JSON.stringify({ session_id: sessionId }),
-  });
-}
-
 export async function fetchV4Connections(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V4OAuthConnection[] }>(connection, "/v4/connections");
 }
@@ -325,8 +275,16 @@ export async function registerV4Agent(
 ) {
   return requestJson<{ ok: true; agent: V4Agent; access_token: string }>(
     connection,
-    "/v4/agents/register",
+    "/v4/agents",
     { method: "POST", body: JSON.stringify(payload), admin: true },
+  );
+}
+
+export async function revokeV4Agent(connection: ConsoleConnection, agentId: string) {
+  return requestJson<{ ok: true; revoked: true }>(
+    connection,
+    `/v4/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE", admin: true },
   );
 }
 

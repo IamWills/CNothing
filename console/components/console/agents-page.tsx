@@ -12,9 +12,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { fetchV4Agents, registerV4Agent, type V4Agent } from "@/lib/api-v4";
+import { fetchV4Agents, registerV4Agent, revokeV4Agent, type V4Agent } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
-import { dashboardTabs } from "@/lib/v2-channel-tabs";
+import { dashboardTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function AgentsPage() {
@@ -150,7 +150,19 @@ export function AgentsPage() {
                     </p>
                     <p className="mt-1 font-mono text-xs text-slate-500">{agent.id}</p>
                   </div>
-                  <div className="text-sm text-slate-500">{formatDate(agent.created_at)}</div>
+                  <div className="flex items-center gap-3 text-sm text-slate-500">
+                    <span>{formatDate(agent.created_at)}</span>
+                    {agent.status === "active" ? (
+                      <Button
+                        variant="secondary"
+                        onClick={() => void revokeV4Agent(connection, agent.id).then(refresh).catch((error) => {
+                          setErrorMessage(error instanceof Error ? error.message : "Unable to revoke agent.");
+                        })}
+                      >
+                        Revoke
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ))
             )}

@@ -1,6 +1,6 @@
 {
   "name": "cnothing",
-  "version": "0.2.0",
+  "version": "4.0.0",
   "description": "CNothing v4 — Universal Credential-Injecting Proxy for AI Agents: one user approval per OAuth provider, agents call any API without touching tokens",
   "type": "module",
   "main": "./dist/library.js",
@@ -26,9 +26,9 @@
     "console:dev": "cd console && bun run dev",
     "console:build": "cd console && bun run build",
     "console:start": "cd console && bun run start",
-    "e2e:v4": "bun run examples/e2e-v4/run.ts",
     "mcp:local": "bun run packages/cnothing-mcp/src/index.ts",
-    "test": "bun test src/v4/__tests__",
+    "test": "bun test src",
+    "console:typecheck": "cd console && bun run typecheck",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"
   },

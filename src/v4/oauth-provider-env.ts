@@ -1,0 +1,17 @@
+export const BUILTIN_PROVIDER_SLUGS = ["github", "google", "microsoft", "slack", "notion"] as const;
+
+export const ENV_CLIENT_ID_KEYS: Record<string, string> = {
+  github: "KEYSERVICE_GITHUB_OAUTH_CLIENT_ID",
+  google: "KEYSERVICE_GOOGLE_OAUTH_CLIENT_ID",
+  microsoft: "KEYSERVICE_MICROSOFT_OAUTH_CLIENT_ID",
+  slack: "KEYSERVICE_SLACK_OAUTH_CLIENT_ID",
+  notion: "KEYSERVICE_NOTION_OAUTH_CLIENT_ID",
+};
+
+export const ENV_CLIENT_SECRET_KEYS: Record<string, string> = {
+  github: "KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET",
+  google: "KEYSERVICE_GOOGLE_OAUTH_CLIENT_SECRET",
+  microsoft: "KEYSERVICE_MICROSOFT_OAUTH_CLIENT_SECRET",
+  slack: "KEYSERVICE_SLACK_OAUTH_CLIENT_SECRET",
+  notion: "KEYSERVICE_NOTION_OAUTH_CLIENT_SECRET",
+};

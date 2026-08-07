@@ -1,90 +1,48 @@
-# CNothing
+# CNothing v4
 
-English: [README.md](./README.md)
+CNothing 是面向 AI Agent 的认证基础设施。用户连接 OAuth Provider 并批准 Agent 的访问授权；CNothing 只在 HTTP 代理边界注入 Provider 凭证。Agent 永远不会获得密码、access token、refresh token、cookie 或 provider client secret。
 
-**CNothing v4** 是面向 AI agent 的通用凭证注入代理。
-用户按 OAuth 提供方批准一次后，agent 即可调用该提供方的 **任意 HTTPS API**。
-Agent 永远接触不到 access token、refresh token 或 client secret。
+## 唯一支持的流程
 
-线上： [https://cnothing.com](https://cnothing.com)
+1. 管理员在控制台创建 Agent，并把一次性展示的 Agent token 配置到 MCP 客户端环境。
+2. 用户在 `/login` 登录，在 `/connect` 连接第三方 Provider。
+3. Agent 首先调用 `list_grants`，优先复用符合 Provider 和 Host 范围的有效 Grant。
+4. 没有可用 Grant 时，调用 `list_providers`，再调用 `request_access`。
+5. 已知用户身份且设备已配对时，CNothing 向 iOS App 推送审批通知；返回的 `approval_url` 始终作为可靠兜底。
+6. Agent 通过 `get_access_status` 获得批准结果，然后用 `proxy_request` 调用第三方 API。
 
-## Agent 文档（从这里开始）
+托管 MCP：`https://cnothing.com/mcp`
 
-| 资源 | 地址 |
-| --- | --- |
-| **主 Skill（必读）** | [`skills/cnothing-v4/SKILL.md`](./skills/cnothing-v4/SKILL.md) → `https://cnothing.com/skill.md` |
-| MCP 说明 | [`docs/mcp.md`](./docs/mcp.md) |
-| OpenAPI | [`openapi-v4.json`](./openapi-v4.json) → `https://cnothing.com/openapi-v4.json` |
-| 托管 MCP | `https://cnothing.com/mcp` |
-| 本地 MCP | [`packages/cnothing-mcp`](./packages/cnothing-mcp) |
+Agent Skill：`https://cnothing.com/skill.md`
 
-**Agent 只支持 v4。** 不要使用 AuthAI envelope、KV 读写、
-`request_authorization`、`invoke_capability`、`/authorize/{id}`、`/v2/*`、`/v3/*`。
+OpenAPI：`https://cnothing.com/openapi.json`
 
-## Agent 与人类各自做什么
+## 核心组件
 
-| 角色 | 做什么 | 不要做什么 |
-| --- | --- | --- |
-| **Agent** | 注册 → `request_access`（**已知 GitHub 用户名时必须传 `user_id`**）→ 出示精确 `approval_url` / 推送 → 轮询拿 `grant_id` → `POST /v4/proxy` | 自己登录 GitHub；持有 token；拼造 approval URL |
-| **人类** | `/login` 登录、`/connect` 连接提供方、手机推送或打开 `approval_url` 点批准 | 把密码 / PAT / session token 发给 agent |
-
-```text
-0. Agent 自助注册              →  POST /v4/agents/register { name }
-1. 人类连接一次 Provider       →  https://cnothing.com/connect
-2. Agent 申请访问              →  POST /v4/access-requests { provider, reason? }
-3. 人类批准一次                →  精确的 approval_url（/approve-proxy/{uuid}）
-4. Agent 经代理调用任意 API    →  POST /v4/proxy { grant_id, method, url, body? }
-```
-
-无人自测：`POST /v4/sandbox/start`，再用返回的 `echo_url` 调 proxy。
-
-### 示例（已有 grant 后）
-
-```bash
-curl -X POST https://cnothing.com/v4/proxy \
-  -H "Authorization: Bearer $AGENT_TOKEN" \
-  -H "content-type: application/json" \
-  -d '{
-    "grant_id": "…",
-    "method": "GET",
-    "url": "https://api.github.com/user"
-  }'
-```
-
-## Agent 用 MCP
-
-- **托管：** `https://cnothing.com/mcp`
-- **本地 stdio：** 配置 `CNOTHING_BASE_URL` + `CNOTHING_AGENT_TOKEN`，见
-  [`packages/cnothing-mcp`](./packages/cnothing-mcp)
-
-## 人类控制台
-
-- 登录：`https://cnothing.com/login`
-- 连接提供方：`https://cnothing.com/connect`
-- 批准：`https://cnothing.com/approve-proxy/{uuid}`（只用 API 返回的 URL）
-- 手机审批（可选）：`https://cnothing.com/devices` + iOS — 见 [`iOS/README.md`](./iOS/README.md)
-
-## 旧版 API
-
-| 版本 | 状态 |
-| --- | --- |
-| **v4** | 现行 |
-| **v2 / v3** | 已移除 — `410 Gone` |
-| **v1 AuthAI + KV** | 仅兼容期废弃接口 — **不用于** GitHub / agent OAuth |
+- `src/v4`：Agent 身份、用户会话、OAuth Provider/Connection、加密 Vault、访问申请、Grant、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
+- `src/mcp`：托管 MCP transport 与工具执行。
+- `packages/cnothing-mcp`：stdio MCP 适配器，从 `CNOTHING_AGENT_TOKEN` 环境变量读取 Agent 凭证。
+- `console`：用户登录、Provider 连接、Agent 创建、审批、Grant 和设备管理。
+- `iOS`：多账户配对、APNs 和 Secure Enclave 审批签名。
 
 ## 本地开发
 
 ```bash
-cp .env.example .env
 bun install
+bun run generate-secrets
+# 将 .local-keys/generated.env 加入环境，并配置 DATABASE_URL。
 bun run migrate
 bun run dev
-bun run console:dev
 ```
 
-验证：`/health`、`/openapi-v4.json`、`/skill.md`、`/mcp`。  
-E2E：`bun run e2e:v4`。部署：[`deploy/README.md`](./deploy/README.md)。
+从旧版本升级时，先让 V4 启动迁移 OAuth 凭证并验证备份；确认迁移状态完成后，再由运维人员显式执行 `migrations/manual/cleanup_pre_v4.sql`。该破坏性清理不会被普通迁移自动运行。
 
-## 仓库
+验证：
 
-- [https://github.com/IamWills/CNothing](https://github.com/IamWills/CNothing)
+```bash
+bun test
+bun run typecheck
+bun run console:typecheck
+```
+
+生产 OAuth App 必须配置 `openapi-v4.json` 中列出的精确 v4 callback URL。

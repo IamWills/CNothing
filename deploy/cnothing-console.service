@@ -1,0 +1,28 @@
+[Unit]
+Description=CNothing V4 Console
+After=network-online.target keyservice.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=KEYSERVICE_USER
+Group=KEYSERVICE_GROUP
+WorkingDirectory=KEYSERVICE_ROOT/console
+Environment=NODE_ENV=production
+Environment=PORT=3022
+ExecStart=KEYSERVICE_BUN run start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=KEYSERVICE_ROOT/console/.next/cache
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

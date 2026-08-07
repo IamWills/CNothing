@@ -1,44 +1,19 @@
 {
   "schema_version": "v4",
+  "protocol_versions": ["2026-07-28", "2025-11-25", "2025-06-18", "2024-11-05"],
   "name_for_human": "CNothing v4",
-  "name_for_model": "cnothing_v4_universal_proxy",
-  "description_for_human": "Universal credential-injecting proxy: one user approval per OAuth provider, then agents call any API of that provider without ever seeing tokens.",
-  "description_for_model": "CNothing v4 ONLY. Do not use AuthAI, KV, request_authorization, invoke_capability, /authorize, /v2, or /v3. Agent NEVER logs into GitHub and NEVER receives tokens. Flow: register_agent → list_providers → request_access (exact approval_url at /approve-proxy/{uuid} for the human) → get_access_status → proxy_request. Human must sign in at /login and connect provider at /connect before approving. Primary skill: https://cnothing.com/skill.md",
+  "name_for_model": "cnothing_v4_oauth_proxy",
+  "description_for_human": "User-approved OAuth API access for AI agents, with encrypted token storage and iOS push approval.",
+  "description_for_model": "Call list_grants first. Reuse a matching active grant; otherwise call list_providers, request_access, relay the exact approval_url and iOS push instruction, wait with get_access_status, then call proxy_request. User credentials never enter tool arguments or results.",
   "auth": {
-    "type": "none",
-    "instructions": "Call register_agent (self-service) to obtain agent_access_token, or pass an existing token. The token alone grants nothing until a human opens approval_url and approves. Human OAuth happens only in the browser."
+    "type": "bearer",
+    "instructions": "Configure the Agent token in the MCP transport Authorization header. For stdio use CNOTHING_AGENT_TOKEN."
   },
-  "api": {
-    "type": "openapi",
-    "url": "https://cnothing.com/openapi-v4.json",
-    "is_user_authenticated": false
-  },
-  "server": {
-    "type": "http",
-    "base_url": "https://cnothing.com"
-  },
+  "server": { "type": "http", "url": "https://cnothing.com/mcp" },
   "documentation": {
-    "homepage": "https://cnothing.com",
-    "openapi_v4": "https://cnothing.com/openapi-v4.json",
-    "v4_workflow": "resource://cnothing/v4-workflow",
-    "primary_skill": "https://cnothing.com/skill.md",
-    "getting_started": "https://cnothing.com/getting-started.md"
+    "skill": "https://cnothing.com/skill.md",
+    "openapi": "https://cnothing.com/openapi.json",
+    "workflow": "resource://cnothing/v4-workflow"
   },
-  "tool_groups": [
-    {
-      "name": "agent_v4",
-      "description": "CNothing v4 universal proxy tools",
-      "tools": [
-        "register_agent",
-        "start_sandbox",
-        "list_providers",
-        "request_access",
-        "get_access_status",
-        "proxy_request",
-        "list_grants",
-        "submit_provider_proposal",
-        "get_provider_proposal"
-      ]
-    }
-  ]
+  "tools": ["list_grants", "list_providers", "request_access", "get_access_status", "proxy_request"]
 }

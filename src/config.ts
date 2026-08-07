@@ -1,251 +1,116 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 
 export interface AppConfig {
   port: number;
   databaseUrl: string;
   serviceName: string;
-  protocolVersion: string;
   consoleUrl?: string;
   publicBaseUrl: string;
   masterKey: Buffer;
-  authaiPrivateKeyPath: string;
-  authaiPublicKeyPath?: string;
-  authaiPrivateKeyPem: string;
-  authaiPublicKeyPem: string;
-  authaiKeyId: string;
-  challengeTtlSeconds: number;
-  bearerToken?: string;
+  bearerToken: string;
   userSessionTtlSeconds: number;
-  userLoginTokenTtlSeconds: number;
-  v1SunsetDate: string;
-  v2AutoBootstrap: boolean;
-  githubOAuth?: {
-    clientId: string;
-    clientSecret: string;
-  };
-  githubToken?: string;
-  webhookDefaultUrl?: string;
-  platformWebhookUrl?: string;
-  platformAgentName: string;
-  autoGrantLowRiskCapabilities: boolean;
-  searchApiBaseUrl?: string;
-  searchAutoBootstrap: boolean;
-  e2eInternalEnabled: boolean;
-  githubApiBaseUrl: string;
-  apns?: {
-    keyPem: string;
-    keyId: string;
-    teamId: string;
-    bundleId: string;
-  };
+  githubOAuth?: { clientId: string; clientSecret: string };
+  apns?: { keyPem: string; keyId: string; teamId: string; bundleId: string };
 }
 
-function readRequiredEnv(name: string): string {
+function required(name: string): string {
   const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`${name} is not set. Please configure it in .env or process environment.`);
-  }
+  if (!value) throw new Error(`${name} is not set.`);
   return value;
 }
 
-function readRequiredAny(names: string[]): string {
-  for (const name of names) {
-    const value = process.env[name]?.trim();
-    if (value) return value;
+function boundedInteger(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new Error(`${name} must be between ${min} and ${max}.`);
   }
-  throw new Error(`One of ${names.join(", ")} must be set.`);
+  return Math.trunc(value);
 }
 
-function resolveFilePath(inputPath: string): string {
-  return path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
+function decodeMasterKey(): Buffer {
+  const raw = required("KEYSERVICE_MASTER_KEY").replace(/-/g, "+").replace(/_/g, "/");
+  const padding = raw.length % 4 === 0 ? "" : "=".repeat(4 - (raw.length % 4));
+  const key = Buffer.from(`${raw}${padding}`, "base64");
+  if (key.length !== 32) throw new Error("KEYSERVICE_MASTER_KEY must decode to exactly 32 bytes.");
+  return key;
 }
 
-function readRequiredFile(inputPath: string, label: string): string {
-  const resolved = resolveFilePath(inputPath);
+function readSecretFile(filePath: string, label: string): string {
+  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
   try {
     return readFileSync(resolved, "utf8").trim();
   } catch (error) {
-    throw new Error(
-      `${label} could not be read from ${resolved}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    throw new Error(`${label} could not be read from ${resolved}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function decodeBase64Flexible(input: string): Buffer {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
-  return Buffer.from(`${normalized}${padding}`, "base64");
+function configuredHttpUrl(name: string, raw: string, originOnly = false): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${name} must be an absolute HTTP(S) URL.`);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error(`${name} must use http or https.`);
+  }
+  if (url.username || url.password) {
+    throw new Error(`${name} must not contain embedded credentials.`);
+  }
+  if (originOnly && (url.pathname !== "/" || url.search || url.hash)) {
+    throw new Error(`${name} must be an origin without a path, query, or fragment.`);
+  }
+  return (originOnly ? url.origin : url.toString()).replace(/\/+$/, "");
 }
 
-const masterKey = (() => {
-  const decoded = decodeBase64Flexible(readRequiredEnv("KEYSERVICE_MASTER_KEY"));
-  if (decoded.length !== 32) {
-    throw new Error("KEYSERVICE_MASTER_KEY must decode to exactly 32 bytes.");
-  }
-  return decoded;
+const port = boundedInteger("PORT", 3021, 1, 65535);
+const consoleUrlRaw = process.env.KEYSERVICE_CONSOLE_URL?.trim();
+const consoleUrl = consoleUrlRaw
+  ? configuredHttpUrl("KEYSERVICE_CONSOLE_URL", consoleUrlRaw)
+  : undefined;
+const publicBaseUrl = (() => {
+  const explicit = process.env.KEYSERVICE_PUBLIC_URL?.trim();
+  if (explicit) return configuredHttpUrl("KEYSERVICE_PUBLIC_URL", explicit, true);
+  if (consoleUrl) return new URL(consoleUrl).origin;
+  return `http://127.0.0.1:${port}`;
 })();
-
-const authaiPrivateKeyPath = readRequiredAny([
-  "KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH",
-  "KEYSERVICE_INGRESS_PRIVATE_KEY_PATH",
-]);
-
-const authaiPublicKeyPath = process.env.KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH?.trim() || undefined;
-
-const authaiPrivateKeyPem = readRequiredFile(authaiPrivateKeyPath, "KEYSERVICE_AUTHAI_PRIVATE_KEY_PATH");
-
-const authaiKeyPair = (() => {
-  const privateKey = createPrivateKey(authaiPrivateKeyPem);
-  const derivedPublicKey = createPublicKey(privateKey);
-  const derivedPublicKeyPem = derivedPublicKey.export({ type: "spki", format: "pem" }).toString();
-  const publicKeyPem = authaiPublicKeyPath
-    ? readRequiredFile(authaiPublicKeyPath, "KEYSERVICE_AUTHAI_PUBLIC_KEY_PATH")
-    : derivedPublicKeyPem;
-  const publicKey = createPublicKey(publicKeyPem);
-  const publicKeyDer = publicKey.export({ type: "spki", format: "der" });
-  const keyId = createHash("sha256").update(publicKeyDer).digest("hex");
-  return {
-    publicKeyPem,
-    keyId,
-  };
-})();
-
-const challengeTtlSeconds = (() => {
-  const raw = Number(process.env.KEYSERVICE_CHALLENGE_TTL_SECONDS ?? "300");
-  if (!Number.isFinite(raw) || raw < 30 || raw > 3600) {
-    throw new Error("KEYSERVICE_CHALLENGE_TTL_SECONDS must be a number between 30 and 3600.");
-  }
-  return Math.trunc(raw);
-})();
-
-const userSessionTtlSeconds = (() => {
-  const raw = Number(process.env.KEYSERVICE_USER_SESSION_TTL_SECONDS ?? "86400");
-  if (!Number.isFinite(raw) || raw < 300 || raw > 604800) {
-    throw new Error("KEYSERVICE_USER_SESSION_TTL_SECONDS must be between 300 and 604800.");
-  }
-  return Math.trunc(raw);
-})();
-
-const userLoginTokenTtlSeconds = (() => {
-  const raw = Number(process.env.KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS ?? "900");
-  if (!Number.isFinite(raw) || raw < 60 || raw > 86400) {
-    throw new Error("KEYSERVICE_USER_LOGIN_TOKEN_TTL_SECONDS must be between 60 and 86400.");
-  }
-  return Math.trunc(raw);
-})();
-
-const v1SunsetDate = (() => {
-  const raw = process.env.KEYSERVICE_V1_SUNSET_DATE?.trim();
-  if (raw) {
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) {
-      throw new Error("KEYSERVICE_V1_SUNSET_DATE must be a valid ISO date.");
-    }
-    return parsed.toISOString();
-  }
-  return "2026-12-17T00:00:00.000Z";
-})();
-
-const v2AutoBootstrap = process.env.KEYSERVICE_V2_AUTO_BOOTSTRAP?.trim() !== "0";
 
 const githubOAuth = (() => {
   const clientId = process.env.KEYSERVICE_GITHUB_OAUTH_CLIENT_ID?.trim();
   const clientSecret = process.env.KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET?.trim();
-  if (clientId && clientSecret) {
-    return { clientId, clientSecret };
-  }
-  return undefined;
+  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
 })();
-
-const githubToken =
-  process.env.KEYSERVICE_GITHUB_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim() || undefined;
-
-const webhookDefaultUrl = process.env.KEYSERVICE_WEBHOOK_DEFAULT_URL?.trim() || undefined;
-
-const platformWebhookUrl = process.env.KEYSERVICE_PLATFORM_WEBHOOK_URL?.trim() || undefined;
-
-const autoGrantLowRiskCapabilities =
-  process.env.KEYSERVICE_V2_AUTO_GRANT_LOW_RISK?.trim() !== "0";
-
-const searchApiBaseUrl = process.env.KEYSERVICE_SEARCH_API_URL?.trim() || undefined;
-
-const searchAutoBootstrap =
-  searchApiBaseUrl !== undefined &&
-  process.env.KEYSERVICE_SEARCH_AUTO_BOOTSTRAP?.trim() !== "0";
-
-const e2eInternalEnabled = process.env.KEYSERVICE_E2E_INTERNAL?.trim() === "1";
-
-const githubApiBaseUrl =
-  process.env.KEYSERVICE_GITHUB_API_BASE_URL?.trim().replace(/\/+$/, "") ||
-  "https://api.github.com";
 
 const apns = (() => {
   const keyPath = process.env.KEYSERVICE_APNS_KEY_PATH?.trim();
   const keyId = process.env.KEYSERVICE_APNS_KEY_ID?.trim();
   const teamId = process.env.KEYSERVICE_APNS_TEAM_ID?.trim();
-  const bundleId =
-    process.env.KEYSERVICE_APNS_BUNDLE_ID?.trim() || "com.molobaya.app.cnothing";
-  if (!keyPath || !keyId || !teamId) {
-    return undefined;
+  const configuredValues = [keyPath, keyId, teamId].filter(Boolean).length;
+  if (configuredValues === 0) return undefined;
+  if (configuredValues !== 3) {
+    throw new Error(
+      "APNs requires KEYSERVICE_APNS_KEY_PATH, KEYSERVICE_APNS_KEY_ID, and KEYSERVICE_APNS_TEAM_ID together.",
+    );
   }
   return {
-    keyPem: readRequiredFile(keyPath, "KEYSERVICE_APNS_KEY_PATH"),
-    keyId,
-    teamId,
-    bundleId,
+    keyPem: readSecretFile(keyPath!, "KEYSERVICE_APNS_KEY_PATH"),
+    keyId: keyId!,
+    teamId: teamId!,
+    bundleId: process.env.KEYSERVICE_APNS_BUNDLE_ID?.trim() || "com.molobaya.app.cnothing",
   };
 })();
 
-const publicBaseUrl = (() => {
-  const explicit = process.env.KEYSERVICE_PUBLIC_URL?.trim();
-  if (explicit) {
-    return explicit.replace(/\/+$/, "");
-  }
-  const consoleUrl = process.env.KEYSERVICE_CONSOLE_URL?.trim();
-  if (consoleUrl) {
-    try {
-      return new URL(consoleUrl).origin;
-    } catch {
-      // fall through
-    }
-  }
-  const port = Number(process.env.PORT ?? "3021");
-  return `http://127.0.0.1:${port}`;
-})();
-
 const config: AppConfig = {
-  port: Number(process.env.PORT ?? "3021"),
-  databaseUrl: readRequiredEnv("DATABASE_URL"),
-  serviceName: "CNothing",
-  protocolVersion: "2024-11-05",
-  consoleUrl: process.env.KEYSERVICE_CONSOLE_URL?.trim() || undefined,
+  port,
+  databaseUrl: required("DATABASE_URL"),
+  serviceName: "CNothing v4",
+  consoleUrl,
   publicBaseUrl,
-  masterKey,
-  authaiPrivateKeyPath: resolveFilePath(authaiPrivateKeyPath),
-  authaiPublicKeyPath: authaiPublicKeyPath ? resolveFilePath(authaiPublicKeyPath) : undefined,
-  authaiPrivateKeyPem,
-  authaiPublicKeyPem: authaiKeyPair.publicKeyPem,
-  authaiKeyId: authaiKeyPair.keyId,
-  challengeTtlSeconds,
-  bearerToken: process.env.KEYSERVICE_BEARER_TOKEN?.trim() || undefined,
-  userSessionTtlSeconds,
-  userLoginTokenTtlSeconds,
-  v1SunsetDate,
-  v2AutoBootstrap,
+  masterKey: decodeMasterKey(),
+  bearerToken: required("KEYSERVICE_BEARER_TOKEN"),
+  userSessionTtlSeconds: boundedInteger("KEYSERVICE_USER_SESSION_TTL_SECONDS", 86400, 300, 604800),
   githubOAuth,
-  githubToken,
-  webhookDefaultUrl,
-  platformWebhookUrl,
-  platformAgentName: process.env.KEYSERVICE_PLATFORM_AGENT_NAME?.trim() || "cnothing-platform-agent",
-  autoGrantLowRiskCapabilities,
-  searchApiBaseUrl,
-  searchAutoBootstrap,
-  e2eInternalEnabled,
-  githubApiBaseUrl,
   apns,
 };
 

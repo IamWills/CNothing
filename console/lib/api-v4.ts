@@ -67,6 +67,17 @@ export type V4AccessRequest = {
   status: "pending" | "approved" | "denied" | "expired";
   user_hint?: string | null;
   expires_at: string;
+  type?: "delegation" | "action" | "transaction";
+  principal?: { type: string; id: string | null };
+  action?: string | null;
+  resource?: { provider?: string; hosts?: string[] };
+  mandate_id?: string | null;
+  decision?: {
+    verdict: "approved" | "denied";
+    decided_by: string | null;
+    decided_at: string | null;
+    mandate_id: string | null;
+  } | null;
 };
 
 export type V4Grant = {

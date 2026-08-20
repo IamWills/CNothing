@@ -12,14 +12,11 @@ import {
   touchOAuthConnection,
 } from "./oauth.repository";
 import { oauthConnectionService } from "./oauth-connection.service";
+import { approvalService } from "./approval.service";
+import { toAccessRequestPublic } from "./approval";
 import {
   approveAccessRequestWithGrant,
-  claimProxyAccessRequestUserHint,
-  createProxyAccessRequest,
-  decideProxyAccessRequest,
-  findProxyAccessRequest,
   findProxyGrantById,
-  listPendingAccessRequestsForUser,
   listProxyGrantsForAgent,
   listProxyGrantsForUser,
   revokeProxyGrant,
@@ -92,21 +89,6 @@ async function resolveAccessToken(connection: OAuthConnectionRecord): Promise<{
   return { token, connection: current };
 }
 
-/**
- * Describes why an atomic decide-claim failed: another approver already decided
- * the request, or it expired between the pre-check and the claim.
- */
-async function accessRequestNoLongerPending(requestId: string): Promise<ValidationError> {
-  const current = await findProxyAccessRequest(requestId);
-  const alreadyDecided = Boolean(current && current.status !== "pending");
-  return new ValidationError(
-    alreadyDecided ? `Access request is already ${current!.status}` : "Access request has expired",
-    {
-      error_code: alreadyDecided ? "access_request_not_pending" : "access_request_expired",
-    },
-  );
-}
-
 export class ProxyService {
   async requestAccess(input: {
     agent: AgentRecord;
@@ -137,7 +119,7 @@ export class ProxyService {
       ? await validateCallbackUrl(input.callbackUrl)
       : undefined;
 
-    const request = await createProxyAccessRequest({
+    const request = await approvalService.createDelegation({
       agent_id: input.agent.id,
       provider_slug: provider.slug,
       requested_hosts: hosts,
@@ -205,34 +187,18 @@ export class ProxyService {
 
   /** Pending approvals targeted at this user (for the iOS authenticator app). */
   async listPendingForUser(userId: string) {
-    const requests = await listPendingAccessRequestsForUser(userId);
-    return requests.map((request) => ({
-      access_request_id: request.id,
-      agent_id: request.agent_id,
-      provider: request.provider_slug,
-      requested_hosts: request.requested_hosts,
-      reason: request.reason,
-      status: request.status,
-      expires_at: request.expires_at,
-      created_at: request.created_at,
-    }));
+    const requests = await approvalService.listPendingForPrincipal(userId);
+    return requests.map(toAccessRequestPublic);
   }
 
   async getAccessStatus(id: string, agent: AgentRecord) {
-    const request = await findProxyAccessRequest(id);
+    const request = await approvalService.get(id);
     if (!request || request.agent_id !== agent.id) {
       throw new NotFoundError("Access request not found");
     }
     return {
       ok: true as const,
-      access_request_id: request.id,
-      status: request.status,
-      provider: request.provider_slug,
-      requested_hosts: request.requested_hosts,
-      grant_id: request.grant_id,
-      connection_id: request.connection_id,
-      expires_at: request.expires_at,
-      decided_at: request.decided_at,
+      ...toAccessRequestPublic(request),
     };
   }
 
@@ -242,7 +208,7 @@ export class ProxyService {
    * request for that user so the paired iPhone can poll/push it.
    */
   async getAccessRequestForApproval(id: string, viewerUserId?: string) {
-    let request = await findProxyAccessRequest(id);
+    let request = await approvalService.get(id);
     if (!request) {
       throw new NotFoundError("Access request not found");
     }
@@ -251,12 +217,10 @@ export class ProxyService {
       viewerUserId &&
       request.status === "pending" &&
       new Date(request.expires_at).getTime() >= Date.now() &&
-      !request.user_hint
+      !request.user_hint &&
+      !request.principal.id
     ) {
-      const claimed = await claimProxyAccessRequestUserHint({
-        id: request.id,
-        user_hint: viewerUserId,
-      });
+      const claimed = await approvalService.claimForPrincipal(request.id, viewerUserId);
       if (claimed) {
         request = claimed;
         try {
@@ -290,20 +254,7 @@ export class ProxyService {
     allowedMethods?: unknown;
     expiresAt?: string;
   }) {
-    const request = await findProxyAccessRequest(input.accessRequestId);
-    if (!request) {
-      throw new NotFoundError("Access request not found");
-    }
-    if (request.status !== "pending") {
-      throw new ValidationError(`Access request is already ${request.status}`, {
-        error_code: "access_request_not_pending",
-      });
-    }
-    if (new Date(request.expires_at).getTime() < Date.now()) {
-      throw new ValidationError("Access request has expired", {
-        error_code: "access_request_expired",
-      });
-    }
+    const request = await approvalService.requirePending(input.accessRequestId, input.userId);
 
     const connection = await findOAuthConnectionById(input.connectionId);
     if (!connection || connection.user_id !== input.userId) {
@@ -344,7 +295,7 @@ export class ProxyService {
       metadata: { access_request_id: request.id },
     });
     if (!grant) {
-      throw await accessRequestNoLongerPending(request.id);
+      throw await approvalService.noLongerPending(request.id);
     }
 
     if (request.callback_url) {
@@ -368,23 +319,11 @@ export class ProxyService {
   }
 
   async denyAccess(input: { accessRequestId: string; userId: string }) {
-    const request = await findProxyAccessRequest(input.accessRequestId);
-    if (!request) {
-      throw new NotFoundError("Access request not found");
-    }
-    if (request.status !== "pending") {
-      throw new ValidationError(`Access request is already ${request.status}`, {
-        error_code: "access_request_not_pending",
-      });
-    }
-    const decided = await decideProxyAccessRequest({
+    const request = await approvalService.requirePending(input.accessRequestId, input.userId);
+    await approvalService.deny({
       id: request.id,
-      status: "denied",
-      user_id: input.userId,
+      principalId: input.userId,
     });
-    if (!decided) {
-      throw await accessRequestNoLongerPending(request.id);
-    }
 
     if (request.callback_url) {
       dispatchAccessRequestCallback({

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { pool, withTransaction } from "../db";
+import { buildDelegationResource } from "./approval";
 import { buildMandateConstraints } from "./mandate";
 import type { JsonObject } from "./platform.entity";
 
 export type ProxyAccessRequestStatus = "pending" | "approved" | "denied" | "expired";
+
+/** Persistence of an ApprovalRequest. The v4 API still calls this an AccessRequest. */
 
 export type ProxyAccessRequestRecord = {
   id: string;
@@ -21,6 +24,14 @@ export type ProxyAccessRequestRecord = {
   decided_at: string | null;
   metadata: JsonObject;
   created_at: string;
+  approval_type: string;
+  principal_type: string;
+  principal_id: string | null;
+  action: string | null;
+  resource: JsonObject;
+  context: JsonObject;
+  risk: string | null;
+  decision: JsonObject | null;
 };
 
 export type ProxyGrantStatus = "active" | "revoked";
@@ -78,6 +89,16 @@ function mapAccessRequestRow(row: Record<string, unknown>): ProxyAccessRequestRe
     decided_at: row.decided_at ? asIso(row.decided_at) : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
+    approval_type: String(row.approval_type ?? "delegation"),
+    principal_type: String(row.principal_type ?? "user"),
+    principal_id: row.principal_id ? String(row.principal_id) : null,
+    action: row.action ? String(row.action) : null,
+    resource: normalizeMetadata(row.resource),
+    context: normalizeMetadata(row.context),
+    risk: row.risk ? String(row.risk) : null,
+    decision: row.decision && typeof row.decision === "object" && !Array.isArray(row.decision)
+      ? (row.decision as JsonObject)
+      : null,
   };
 }
 
@@ -115,11 +136,21 @@ export async function createProxyAccessRequest(input: {
   metadata?: JsonObject;
 }): Promise<ProxyAccessRequestRecord> {
   const id = randomUUID();
+  const principalId = input.user_hint?.trim() || null;
+  const resource = buildDelegationResource({
+    provider: input.provider_slug,
+    hosts: input.requested_hosts,
+  });
   const result = await pool.query(
     `
       INSERT INTO proxy_access_requests (
-        id, agent_id, provider_slug, requested_hosts, reason, user_hint, callback_url, expires_at, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval,$9)
+        id, agent_id, provider_slug, requested_hosts, reason, user_hint, callback_url,
+        expires_at, metadata,
+        approval_type, principal_type, principal_id, action, resource
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval,$9,
+        'delegation','user',$10,'delegate',$11::jsonb
+      )
       RETURNING *
     `,
     [
@@ -132,6 +163,8 @@ export async function createProxyAccessRequest(input: {
       input.callback_url ?? null,
       String(input.ttl_seconds ?? 3600),
       JSON.stringify(input.metadata ?? {}),
+      principalId,
+      JSON.stringify(resource),
     ],
   );
   return mapAccessRequestRow(result.rows[0]!);
@@ -143,7 +176,8 @@ export async function listPendingAccessRequestsForUser(
   const result = await pool.query(
     `
       SELECT * FROM proxy_access_requests
-      WHERE user_hint = $1 AND status = 'pending' AND expires_at > NOW()
+      WHERE status = 'pending' AND expires_at > NOW()
+        AND (user_hint = $1 OR principal_id = $1)
       ORDER BY created_at DESC
     `,
     [userId],
@@ -159,11 +193,15 @@ export async function claimProxyAccessRequestUserHint(input: {
   const result = await pool.query(
     `
       UPDATE proxy_access_requests
-      SET user_hint = $2, updated_at = NOW()
+      SET user_hint = $2,
+          principal_type = 'user',
+          principal_id = $2,
+          updated_at = NOW()
       WHERE id = $1
         AND status = 'pending'
         AND expires_at > NOW()
         AND (user_hint IS NULL OR user_hint = '' OR user_hint = $2)
+        AND (principal_id IS NULL OR principal_id = $2)
       RETURNING *
     `,
     [input.id, input.user_hint],
@@ -188,7 +226,20 @@ export async function decideProxyAccessRequest(input: {
   const result = await pool.query(
     `
       UPDATE proxy_access_requests
-      SET status = $2, user_id = $3, connection_id = $4, grant_id = $5, decided_at = NOW()
+      SET status = $2,
+          user_id = $3,
+          principal_type = 'user',
+          principal_id = COALESCE(principal_id, $3),
+          connection_id = $4,
+          grant_id = $5,
+          decided_at = NOW(),
+          decision = jsonb_strip_nulls(jsonb_build_object(
+            'verdict', $2::text,
+            'decided_by', $3::text,
+            'decided_at', NOW(),
+            'connection_id', $4::text,
+            'mandate_id', $5::text
+          ))
       WHERE id = $1 AND status = 'pending' AND expires_at > NOW()
       RETURNING *
     `,
@@ -221,6 +272,7 @@ export async function approveAccessRequestWithGrant(input: {
       `
         UPDATE proxy_access_requests
         SET status = 'approved', user_id = $2, connection_id = $3,
+            principal_type = 'user', principal_id = $2,
             decided_at = NOW(), updated_at = NOW()
         WHERE id = $1 AND status = 'pending' AND expires_at > NOW()
         RETURNING agent_id
@@ -261,10 +313,21 @@ export async function approveAccessRequestWithGrant(input: {
       ],
     );
 
-    await client.query(`UPDATE proxy_access_requests SET grant_id = $2 WHERE id = $1`, [
-      input.access_request_id,
-      grantId,
-    ]);
+    await client.query(
+      `
+        UPDATE proxy_access_requests
+        SET grant_id = $2,
+            decision = jsonb_strip_nulls(jsonb_build_object(
+              'verdict', 'approved',
+              'decided_by', $3::text,
+              'decided_at', NOW(),
+              'connection_id', $4::text,
+              'mandate_id', $2::text
+            ))
+        WHERE id = $1
+      `,
+      [input.access_request_id, grantId, input.user_id, input.connection_id],
+    );
 
     return mapGrantRow(grant.rows[0]!);
   });

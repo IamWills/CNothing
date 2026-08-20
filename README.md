@@ -4,6 +4,8 @@ CNothing is authentication infrastructure for AI agents. A user connects an OAut
 
 A Grant is the current representation of a Mandate: delegated authority from a principal (today, a User) to an agent, constrained to hosts, methods, and an expiry. Agents keep calling `list_grants` and `proxy_request`; they do not need to know the Mandate name.
 
+An AccessRequest is the current representation of an ApprovalRequest. Phase 3 only writes `type = delegation`. The same iOS pairing, APNs push, one-time challenge, and P-256 Secure Enclave signature path will later carry action and transaction approvals. Agents keep calling `request_access` / `get_access_status`.
+
 ## Supported workflow
 
 1. An operator creates an Agent in the Console and configures its one-time token in the MCP client environment.

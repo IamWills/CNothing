@@ -5,6 +5,7 @@ import { readUserSessionToken, requireUserSession } from "../v4/user-session";
 import { listOAuthProviders, toProviderPublic } from "../v4/oauth.repository";
 import { oauthConnectionService } from "../v4/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
+import { toAccessRequestPublic } from "../v4/approval";
 import { deviceService } from "../v4/device.service";
 import { shareCodeService } from "../v4/share-code.service";
 import config from "../config";
@@ -159,14 +160,9 @@ export async function handleV4Request(request: Request): Promise<Response> {
       const record = await proxyService.getAccessRequestForApproval(id, session.user_id);
       return Response.json({
         ok: true,
+        ...toAccessRequestPublic(record),
         access_request_id: record.id,
-        agent_id: record.agent_id,
         provider: record.provider_slug,
-        requested_hosts: record.requested_hosts,
-        reason: record.reason,
-        status: record.status,
-        user_hint: record.user_hint,
-        expires_at: record.expires_at,
       });
     }
     const agent = await requireAgentFromRequest(request);

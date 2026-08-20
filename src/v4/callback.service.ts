@@ -32,6 +32,7 @@ export function dispatchAccessRequestCallback(input: {
     status: input.status,
     provider: input.provider,
     grant_id: input.grantId ?? null,
+    mandate_id: input.grantId ?? null,
     agent_id: input.agentId,
     decided_at: new Date().toISOString(),
   });

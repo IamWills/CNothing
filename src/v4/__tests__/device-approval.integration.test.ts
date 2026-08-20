@@ -2,11 +2,13 @@ import { createSign, generateKeyPairSync, randomBytes, randomUUID } from "node:c
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
+import { givenAgent, givenProvider } from "../../__tests__/helpers/fixtures";
 import { buildApprovalSignaturePayload, deviceService } from "../device.service";
 import { createApprovalChallenge } from "../device.repository";
+import { proxyService } from "../proxy.service";
 
 const USER_ID = "github:alice";
-const ACCESS_REQUEST_ID = "11111111-1111-4111-8111-111111111111";
+const API_BASE_URL = "http://127.0.0.1:3021";
 
 function newDeviceKey() {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -30,6 +32,18 @@ async function pairFreshDevice() {
     publicKeyJwk: key.publicKeyJwk,
   });
   return { key, deviceId: paired.device.id, sessionToken: paired.session_token };
+}
+
+async function givenPendingAccessRequest(): Promise<string> {
+  const { agent } = await givenAgent();
+  const provider = await givenProvider();
+  const request = await proxyService.requestAccess({
+    agent,
+    provider: provider.slug,
+    userId: USER_ID,
+    apiBaseUrl: API_BASE_URL,
+  });
+  return request.access_request_id;
 }
 
 describeWithDb("device-bound approvals", () => {
@@ -82,23 +96,24 @@ describeWithDb("device-bound approvals", () => {
 
   test("a correctly signed verdict is accepted", async () => {
     const { key, deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await deviceService.issueApprovalChallenge({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
     });
 
     await deviceService.verifyDeviceApproval({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
       verdict: "approved",
       challengeId: challenge.challenge_id,
       signature: key.sign(
         buildApprovalSignaturePayload({
           challengeId: challenge.challenge_id,
           nonce: challenge.nonce,
-          accessRequestId: ACCESS_REQUEST_ID,
+          accessRequestId,
           verdict: "approved",
         }),
       ),
@@ -107,23 +122,24 @@ describeWithDb("device-bound approvals", () => {
 
   test("a challenge cannot be replayed", async () => {
     const { key, deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await deviceService.issueApprovalChallenge({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
     });
     const signature = key.sign(
       buildApprovalSignaturePayload({
         challengeId: challenge.challenge_id,
         nonce: challenge.nonce,
-        accessRequestId: ACCESS_REQUEST_ID,
+        accessRequestId,
         verdict: "approved",
       }),
     );
     const verdict = {
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
       verdict: "approved" as const,
       challengeId: challenge.challenge_id,
       signature,
@@ -137,9 +153,10 @@ describeWithDb("device-bound approvals", () => {
 
   test("an expired challenge is refused", async () => {
     const { key, deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await createApprovalChallenge({
       id: randomUUID(),
-      access_request_id: ACCESS_REQUEST_ID,
+      access_request_id: accessRequestId,
       device_id: deviceId,
       user_id: USER_ID,
       nonce: randomBytes(24).toString("base64url"),
@@ -150,14 +167,14 @@ describeWithDb("device-bound approvals", () => {
       deviceService.verifyDeviceApproval({
         userId: USER_ID,
         deviceId,
-        accessRequestId: ACCESS_REQUEST_ID,
+        accessRequestId,
         verdict: "approved",
         challengeId: challenge.id,
         signature: key.sign(
           buildApprovalSignaturePayload({
             challengeId: challenge.id,
             nonce: challenge.nonce,
-            accessRequestId: ACCESS_REQUEST_ID,
+            accessRequestId,
             verdict: "approved",
           }),
         ),
@@ -168,24 +185,25 @@ describeWithDb("device-bound approvals", () => {
   test("a verdict signed by a different key is refused", async () => {
     const { deviceId } = await pairFreshDevice();
     const attacker = newDeviceKey();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await deviceService.issueApprovalChallenge({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
     });
 
     await expect(
       deviceService.verifyDeviceApproval({
         userId: USER_ID,
         deviceId,
-        accessRequestId: ACCESS_REQUEST_ID,
+        accessRequestId,
         verdict: "approved",
         challengeId: challenge.challenge_id,
         signature: attacker.sign(
           buildApprovalSignaturePayload({
             challengeId: challenge.challenge_id,
             nonce: challenge.nonce,
-            accessRequestId: ACCESS_REQUEST_ID,
+            accessRequestId,
             verdict: "approved",
           }),
         ),
@@ -195,24 +213,25 @@ describeWithDb("device-bound approvals", () => {
 
   test("a signature for one verdict cannot approve the opposite verdict", async () => {
     const { key, deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await deviceService.issueApprovalChallenge({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
     });
 
     await expect(
       deviceService.verifyDeviceApproval({
         userId: USER_ID,
         deviceId,
-        accessRequestId: ACCESS_REQUEST_ID,
+        accessRequestId,
         verdict: "approved",
         challengeId: challenge.challenge_id,
         signature: key.sign(
           buildApprovalSignaturePayload({
             challengeId: challenge.challenge_id,
             nonce: challenge.nonce,
-            accessRequestId: ACCESS_REQUEST_ID,
+            accessRequestId,
             verdict: "denied",
           }),
         ),
@@ -222,12 +241,13 @@ describeWithDb("device-bound approvals", () => {
 
   test("a challenge is bound to its access request", async () => {
     const { key, deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await deviceService.issueApprovalChallenge({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
     });
-    const otherRequestId = "22222222-2222-4222-8222-222222222222";
+    const otherRequestId = await givenPendingAccessRequest();
 
     await expect(
       deviceService.verifyDeviceApproval({
@@ -250,10 +270,11 @@ describeWithDb("device-bound approvals", () => {
 
   test("a revoked device can no longer approve", async () => {
     const { key, deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
     const challenge = await deviceService.issueApprovalChallenge({
       userId: USER_ID,
       deviceId,
-      accessRequestId: ACCESS_REQUEST_ID,
+      accessRequestId,
     });
     await deviceService.revokeDevice({ userId: USER_ID, deviceId });
 
@@ -261,14 +282,14 @@ describeWithDb("device-bound approvals", () => {
       deviceService.verifyDeviceApproval({
         userId: USER_ID,
         deviceId,
-        accessRequestId: ACCESS_REQUEST_ID,
+        accessRequestId,
         verdict: "approved",
         challengeId: challenge.challenge_id,
         signature: key.sign(
           buildApprovalSignaturePayload({
             challengeId: challenge.challenge_id,
             nonce: challenge.nonce,
-            accessRequestId: ACCESS_REQUEST_ID,
+            accessRequestId,
             verdict: "approved",
           }),
         ),
@@ -278,13 +299,36 @@ describeWithDb("device-bound approvals", () => {
 
   test("another user cannot drive this device", async () => {
     const { deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
 
     await expect(
       deviceService.issueApprovalChallenge({
         userId: "github:mallory",
         deviceId,
-        accessRequestId: ACCESS_REQUEST_ID,
+        accessRequestId,
       }),
     ).rejects.toThrow(/device not found or revoked/i);
+  });
+
+  test("a challenge is not issued for a missing or already decided approval", async () => {
+    const { deviceId } = await pairFreshDevice();
+    const accessRequestId = await givenPendingAccessRequest();
+    await proxyService.denyAccess({ accessRequestId, userId: USER_ID });
+
+    await expect(
+      deviceService.issueApprovalChallenge({
+        userId: USER_ID,
+        deviceId,
+        accessRequestId,
+      }),
+    ).rejects.toThrow(/already denied/i);
+
+    await expect(
+      deviceService.issueApprovalChallenge({
+        userId: USER_ID,
+        deviceId,
+        accessRequestId: randomUUID(),
+      }),
+    ).rejects.toThrow(/not found/i);
   });
 });

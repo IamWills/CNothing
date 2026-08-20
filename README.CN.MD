@@ -4,6 +4,8 @@ CNothing 是面向 AI Agent 的认证基础设施。用户连接 OAuth Provider 
 
 Grant 是 Mandate 的当前表示：由 principal（现阶段为 User）授予 Agent 的委托权限，约束为 hosts、methods 和过期时间。Agent 继续调用 `list_grants` 和 `proxy_request`，不必理解 Mandate 这个名字。
 
+AccessRequest 是 ApprovalRequest 的当前表示。Phase 3 只写入 `type = delegation`。同一套 iOS 配对、APNs 推送、一次性 challenge 和 P-256 Secure Enclave 签名，后续会承载 action 与 transaction 审批。Agent 继续调用 `request_access` / `get_access_status`。
+
 ## 唯一支持的流程
 
 1. 管理员在控制台创建 Agent，并把一次性展示的 Agent token 配置到 MCP 客户端环境。

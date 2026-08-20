@@ -156,7 +156,7 @@
       "post": {
         "tags": ["Agent"],
         "summary": "Request a connection-level grant",
-        "description": "Use the returned approval_url exactly as provided. If user_id resolves to a paired user, CNothing also sends an iOS push. The agent must then poll GET /v4/access-requests/{id}; it must not browse, rewrite, or POST to the approval URL.",
+        "description": "Use the returned approval_url exactly as provided. If user_id resolves to a paired user, CNothing also sends an iOS push. The agent must then poll GET /v4/access-requests/{id}; it must not browse, rewrite, or POST to the approval URL. The record is an ApprovalRequest of type delegation: the same iOS pairing, APNs, and P-256 challenge path will later carry action and transaction approvals.",
         "security": [{ "agentToken": [] }],
         "requestBody": {
           "required": true,
@@ -178,7 +178,7 @@
       "get": {
         "tags": ["iOS", "User"],
         "summary": "List pending approvals for the signed-in user",
-        "description": "Used by the iOS authenticator as a resilient fallback when APNs delivery is delayed.",
+        "description": "Used by the iOS authenticator as a resilient fallback when APNs delivery is delayed. Each item is an ApprovalRequest; today's rows have type=delegation.",
         "security": [{ "userSession": [] }],
         "responses": { "200": { "description": "Pending approvals." } }
       }

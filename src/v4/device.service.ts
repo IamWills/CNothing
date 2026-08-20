@@ -16,6 +16,7 @@ import {
   revokeUserDevice,
   updateDevicePushToken,
 } from "./device.repository";
+import { approvalService } from "./approval.service";
 
 const PAIRING_CODE_TTL_SECONDS = 10 * 60;
 // Device sessions outlive browser sessions: the phone is a trusted authenticator.
@@ -169,6 +170,7 @@ export class DeviceService {
         error_code: "invalid_device",
       });
     }
+    await approvalService.requirePending(input.accessRequestId, input.userId);
     const challenge = await createApprovalChallenge({
       id: randomUUID(),
       access_request_id: input.accessRequestId,

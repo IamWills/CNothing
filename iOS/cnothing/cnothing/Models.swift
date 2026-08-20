@@ -27,11 +27,20 @@ struct AccessRequest: Decodable, Identifiable, Hashable {
     let status: String
     let expires_at: String
     let created_at: String?
+    let type: String?
+    let action: String?
 
     var id: String { access_request_id }
+    var isTransaction: Bool { type == "transaction" }
 }
 
 struct AccessRequestDetail: Decodable {
+    struct Resource: Decodable {
+        let method: String?
+        let url: String?
+        let path: String?
+    }
+
     let ok: Bool
     let access_request_id: String
     let agent_id: String?
@@ -40,6 +49,11 @@ struct AccessRequestDetail: Decodable {
     let reason: String?
     let status: String
     let expires_at: String
+    let type: String?
+    let action: String?
+    let resource: Resource?
+
+    var isTransaction: Bool { type == "transaction" }
 }
 
 struct ConnectionsResponse: Decodable {
@@ -61,7 +75,9 @@ struct ApproveResponse: Decodable {
     }
 
     let ok: Bool
-    let grant: Grant
+    let grant: Grant?
+    let transaction_id: String?
+    let status: String?
 }
 
 struct SimpleOkResponse: Decodable {

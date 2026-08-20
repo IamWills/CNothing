@@ -85,7 +85,8 @@
           "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] },
           "url": { "type": "string", "format": "uri", "description": "Must be HTTPS and match the grant host allowlist." },
           "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-          "body": { "description": "JSON-compatible upstream request body." }
+          "body": { "description": "JSON-compatible upstream request body." },
+          "idempotency_key": { "type": "string", "description": "Optional. Retries of a side-effecting call reuse the same Transaction." }
         }
       },
       "PairDeviceInput": {
@@ -102,10 +103,11 @@
       "DeviceVerdictInput": {
         "type": "object",
         "properties": {
-          "connection_id": { "type": "string", "description": "Required for approval." },
+          "connection_id": { "type": "string", "description": "Required when approving a delegation. Omitted for transaction approvals." },
           "allowed_hosts": { "type": "array", "items": { "type": "string" } },
           "allowed_methods": { "type": "array", "items": { "type": "string" } },
           "expires_at": { "type": "string", "format": "date-time" },
+          "require_approval": { "type": "boolean", "description": "When true, the minted Mandate opts into Transaction Intent: later non-GET proxy_request calls need a per-action approval." },
           "challenge_id": { "type": "string", "description": "Required for a paired-device session." },
           "signature": { "type": "string", "description": "Base64url P-256 signature from the paired device." }
         }
@@ -130,9 +132,19 @@
     "/v4/providers/admin": {
       "get": {
         "tags": ["Operator"],
-        "summary": "List provider configuration without exposing secrets",
+        "summary": "List the provider registry without exposing secrets",
+        "description": "Each item includes stored status plus registry_status (discovered | unverified | reviewed | active | disabled), source, registration_method, and the last validation result.",
         "security": [{ "adminToken": [] }],
         "responses": { "200": { "description": "Provider administration views." } }
+      }
+    },
+    "/v4/providers/proposals": {
+      "post": {
+        "tags": ["Agent", "Operator"],
+        "summary": "Propose a provider from untrusted discovery metadata",
+        "description": "Looks up the registry by slug or issuer. If missing, runs OIDC / OAuth authorization-server discovery through the same SSRF checks as the proxy and inserts an unconfigured row for operator review. Does not activate the provider. MCP tools are unchanged.",
+        "security": [{ "agentToken": [] }, { "adminToken": [] }],
+        "responses": { "201": { "description": "Existing or newly proposed provider." } }
       }
     },
     "/v4/providers/{id}": {
@@ -141,6 +153,13 @@
         "summary": "Get public provider metadata",
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "responses": { "200": { "description": "Provider." }, "404": { "description": "Not found." } }
+      },
+      "patch": {
+        "tags": ["Operator"],
+        "summary": "Review, activate, disable, or update OAuth metadata",
+        "security": [{ "adminToken": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Updated registry view." } }
       }
     },
     "/v4/providers/{id}/credentials": {
@@ -200,7 +219,7 @@
         "security": [{ "userSession": [] }],
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceVerdictInput" } } } },
-        "responses": { "201": { "description": "Grant created. Paired-device sessions require a valid challenge signature." } }
+        "responses": { "201": { "description": "Delegation mints a Grant. A transaction approval authorizes the existing Mandate and returns transaction_id; no new Grant is minted. Paired-device sessions require a valid challenge signature." } }
       }
     },
     "/v4/access-requests/{id}/deny": {
@@ -217,7 +236,7 @@
       "post": {
         "tags": ["Agent"],
         "summary": "Call an approved third-party HTTPS API",
-        "description": "CNothing injects the OAuth credential server-side, strips agent-supplied credential headers, enforces method and host constraints, blocks SSRF, redacts secrets, and audits the call.",
+        "description": "CNothing injects the OAuth credential server-side, strips agent-supplied credential headers, enforces method and host constraints, evaluates the mandate's opt-in policy, blocks SSRF, redacts secrets, and audits the call. When the mandate set require_approval, a write returns status=approval_required with the same approval_url shape as request_access; after the principal approves, retry the same proxy_request to execute.",
         "security": [{ "agentToken": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProxyInput" } } } },
         "responses": { "200": { "description": "Sanitized upstream status, headers, and body." } }

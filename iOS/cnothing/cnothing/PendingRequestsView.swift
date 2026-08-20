@@ -49,6 +49,13 @@ struct PendingRequestsView: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
                                         Text(item.request.provider).fontWeight(.semibold)
+                                        if item.request.isTransaction {
+                                            Text(item.request.action ?? "action")
+                                                .font(.caption2)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(.orange.opacity(0.15), in: Capsule())
+                                        }
                                         Spacer()
                                         Text(item.request.status)
                                             .font(.caption)

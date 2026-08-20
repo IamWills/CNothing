@@ -1,7 +1,7 @@
 import { requireAdminAccess } from "../v4/operator-auth";
-import { NotFoundError, ValidationError } from "../utils/errors";
+import { NotFoundError, UnauthorizedError, ValidationError } from "../utils/errors";
 import { parseJsonBody } from "../utils/http";
-import { readOptionalObject, readRequiredString } from "../v4/agent-auth";
+import { readOptionalObject, readRequiredString, requireAgentFromRequest } from "../v4/agent-auth";
 import { listAuthProviders } from "../v4/auth-providers.service";
 import { githubOAuthService } from "../v4/github-oauth.service";
 import { oidcService } from "../v4/oidc.service";
@@ -21,6 +21,19 @@ function inferBaseUrl(request: Request): string {
   const host = forwardedHost || request.headers.get("Host") || requestUrl.host;
   const proto = forwardedProto || requestUrl.protocol.replace(/:$/, "");
   return `${proto}://${host}`;
+}
+
+async function requireAdminOrAgent(request: Request) {
+  try {
+    requireAdminAccess(request);
+    return { actor: "admin" as const };
+  } catch (error) {
+    if (!(error instanceof UnauthorizedError)) {
+      throw error;
+    }
+  }
+  const agent = await requireAgentFromRequest(request);
+  return { actor: "agent" as const, agent };
 }
 
 /** OAuth callbacks are exact v4 contracts registered with each provider. */
@@ -222,6 +235,18 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     return Response.json({ ok: true, items });
   }
 
+  if (request.method === "POST" && path === "/v4/providers/proposals") {
+    await requireAdminOrAgent(request);
+    const body = await parseJsonBody(request);
+    const provider = await oauthProviderService.proposeProvider({
+      slug: typeof body.slug === "string" ? body.slug : undefined,
+      display_name: typeof body.display_name === "string" ? body.display_name : undefined,
+      discovery_url: typeof body.discovery_url === "string" ? body.discovery_url : undefined,
+      issuer: typeof body.issuer === "string" ? body.issuer : undefined,
+    });
+    return Response.json({ ok: true, provider }, { status: 201 });
+  }
+
   if (request.method === "POST" && path === "/v4/providers") {
     requireAdminAccess(request);
     const body = await parseJsonBody(request);
@@ -256,6 +281,28 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
       id: decodeURIComponent(segments[2] ?? ""),
       client_id: readRequiredString(body, "client_id"),
       client_secret: typeof body.client_secret === "string" ? body.client_secret : undefined,
+    });
+    return Response.json({ ok: true, provider });
+  }
+
+  if (request.method === "PATCH" && segments.length === 3 && segments[1] === "providers") {
+    requireAdminAccess(request);
+    const body = await parseJsonBody(request);
+    const provider = await oauthProviderService.updateProvider({
+      id: decodeURIComponent(segments[2] ?? ""),
+      display_name: typeof body.display_name === "string" ? body.display_name : undefined,
+      discovery_url: typeof body.discovery_url === "string" ? body.discovery_url : undefined,
+      issuer: typeof body.issuer === "string" ? body.issuer : undefined,
+      authorization_url: typeof body.authorization_url === "string" ? body.authorization_url : undefined,
+      token_url: typeof body.token_url === "string" ? body.token_url : undefined,
+      userinfo_url: typeof body.userinfo_url === "string" ? body.userinfo_url : undefined,
+      revoke_url: typeof body.revoke_url === "string" ? body.revoke_url : undefined,
+      jwks_url: typeof body.jwks_url === "string" ? body.jwks_url : undefined,
+      default_scopes: Array.isArray(body.default_scopes) ? body.default_scopes.map(String) : undefined,
+      supported_scopes: Array.isArray(body.supported_scopes) ? body.supported_scopes.map(String) : undefined,
+      login_enabled: typeof body.login_enabled === "boolean" ? body.login_enabled : undefined,
+      status: body.status === "active" || body.status === "disabled" ? body.status : undefined,
+      reviewed: body.reviewed === true,
     });
     return Response.json({ ok: true, provider });
   }

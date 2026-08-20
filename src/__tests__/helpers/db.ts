@@ -10,6 +10,7 @@ export const describeWithDb = testDatabaseReady ? describe : describe.skip;
 
 const MUTABLE_TABLES = [
   "proxy_request_audit",
+  "proxy_transactions",
   "proxy_grants",
   "proxy_access_requests",
   "device_approval_challenges",

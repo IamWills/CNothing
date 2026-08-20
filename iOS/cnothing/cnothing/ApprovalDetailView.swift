@@ -30,6 +30,12 @@ struct ApprovalDetailView: View {
                     }
                     LabeledContent("Provider", value: detail.provider)
                     LabeledContent("Status", value: detail.status)
+                    if detail.isTransaction {
+                        LabeledContent("Action", value: detail.action ?? "transaction")
+                        if let method = detail.resource?.method, let url = detail.resource?.url {
+                            LabeledContent("Request", value: "\(method) \(url)")
+                        }
+                    }
                     if let reason = detail.reason, !reason.isEmpty {
                         LabeledContent("Reason", value: reason)
                     }
@@ -44,18 +50,26 @@ struct ApprovalDetailView: View {
                 }
 
                 if detail.status == "pending" {
-                    Section("OAuth Connection") {
-                        if matchingConnections.isEmpty {
-                            Text("No available \(detail.provider) connection. Connect one first on the CNothing Console Connect page.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Connection", selection: $selectedConnectionId) {
-                                ForEach(matchingConnections) { connection in
-                                    Text(connection.display_name ?? connection.provider_slug)
-                                        .tag(connection.id)
+                    if !detail.isTransaction {
+                        Section("OAuth Connection") {
+                            if matchingConnections.isEmpty {
+                                Text("No available \(detail.provider) connection. Connect one first on the CNothing Console Connect page.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Picker("Connection", selection: $selectedConnectionId) {
+                                    ForEach(matchingConnections) { connection in
+                                        Text(connection.display_name ?? connection.provider_slug)
+                                            .tag(connection.id)
+                                    }
                                 }
                             }
+                        }
+                    } else {
+                        Section {
+                            Text("This authorizes one action through an existing mandate. Tokens stay on CNothing.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     }
 
@@ -63,11 +77,11 @@ struct ApprovalDetailView: View {
                         Button {
                             Task { await decide(approve: true) }
                         } label: {
-                            Label("Approve", systemImage: "checkmark.circle.fill")
+                            Label(detail.isTransaction ? "Approve Action" : "Approve", systemImage: "checkmark.circle.fill")
                                 .frame(maxWidth: .infinity)
                                 .fontWeight(.semibold)
                         }
-                        .disabled(selectedConnectionId.isEmpty || isWorking)
+                        .disabled((!detail.isTransaction && selectedConnectionId.isEmpty) || isWorking)
 
                         Button(role: .destructive) {
                             Task { await decide(approve: false) }
@@ -142,10 +156,17 @@ struct ApprovalDetailView: View {
             if approve {
                 let result = try await api.approve(
                     requestId: requestId,
-                    connectionId: selectedConnectionId
+                    connectionId: detail?.isTransaction == true ? nil : selectedConnectionId
                 )
-                let grantPrefix = String(result.grant.id.prefix(8))
-                resultMessage = String(localized: "Approved. Grant \(grantPrefix)… is now active.")
+                if let grantId = result.grant?.id {
+                    let grantPrefix = String(grantId.prefix(8))
+                    resultMessage = String(localized: "Approved. Grant \(grantPrefix)… is now active.")
+                } else if let transactionId = result.transaction_id {
+                    let prefix = String(transactionId.prefix(8))
+                    resultMessage = String(localized: "Action authorized (\(prefix)…). The agent can retry the same request.")
+                } else {
+                    resultMessage = String(localized: "Approved.")
+                }
             } else {
                 try await api.deny(requestId: requestId)
                 resultMessage = String(localized: "Denied.")

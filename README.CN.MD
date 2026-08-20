@@ -4,7 +4,7 @@ CNothing 是面向 AI Agent 的认证基础设施。用户连接 OAuth Provider 
 
 Grant 是 Mandate 的当前表示：由 principal（现阶段为 User）授予 Agent 的委托权限，约束为 hosts、methods 和过期时间。Agent 继续调用 `list_grants` 和 `proxy_request`，不必理解 Mandate 这个名字。
 
-AccessRequest 是 ApprovalRequest 的当前表示。Phase 3 只写入 `type = delegation`。同一套 iOS 配对、APNs 推送、一次性 challenge 和 P-256 Secure Enclave 签名，后续会承载 action 与 transaction 审批。Agent 继续调用 `request_access` / `get_access_status`。
+AccessRequest 是 ApprovalRequest 的当前表示。Delegation 会铸造 Mandate。当 Mandate 显式设置 `constraints.require_approval` 时，有副作用的 `proxy_request`（例如创建 GitHub Issue）会变成 Transaction Intent：Agent 仍然调用 `proxy_request`，收到带 `approval_url` 的 `approval_required`，用户批准后再重试同一请求。GET 不会被闸门拦住。Token 始终不离开 CNothing。
 
 ## 唯一支持的流程
 
@@ -13,11 +13,11 @@ AccessRequest 是 ApprovalRequest 的当前表示。Phase 3 只写入 `type = de
 3. Agent 首先调用 `list_grants`，优先复用符合 Provider 和 Host 范围的有效 Grant。
 4. 没有可用 Grant 时，调用 `list_providers`，再调用 `request_access`。
 5. 已知用户身份且设备已配对时，CNothing 向 iOS App 推送审批通知；返回的 `approval_url` 始终作为可靠兜底。
-6. Agent 通过 `get_access_status` 获得批准结果，然后用 `proxy_request` 调用第三方 API。
+6. Agent 通过 `get_access_status` 获得批准结果，然后用 `proxy_request` 调用第三方 API。若 Mandate 设置了 `require_approval`，写操作会返回 `approval_required`；用户批准后，Agent 重试同一条 `proxy_request`。
 
 ## Provider Registry
 
-`cap_oauth_providers` 是唯一的 Provider 实体。一条注册表记录同时承载 Provider 的两种角色：Agent 经凭证代理访问的第三方 API，以及在 `login_enabled` 为真时用户登录控制台所用的身份提供方。Provider client secret 只存放在 Vault，不写入 Provider 记录本身。
+`cap_oauth_providers` 是唯一的 Provider 实体。一条注册表记录同时承载 Provider 的两种角色：Agent 经凭证代理访问的第三方 API，以及在 `login_enabled` 为真时用户登录控制台所用的身份提供方。行上记录 `source`（`manual` | `discovered` | `imported`）以及存储状态 `active` | `unconfigured` | `disabled`。控制台把它们映射为 DISCOVERED / UNVERIFIED / REVIEWED / ACTIVE / DISABLED。发现得到的元数据一律视为不可信，走与代理相同的 SSRF 校验。Provider client secret 只存放在 Vault，不写入 Provider 记录本身。
 
 托管 MCP：`https://cnothing.com/mcp`
 
@@ -27,7 +27,7 @@ OpenAPI：`https://cnothing.com/openapi.json`
 
 ## 核心组件
 
-- `src/v4`：Agent 身份、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
+- `src/v4`：Agent 身份、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、Transaction Intent、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
 - `src/mcp`：托管 MCP transport 与工具执行。
 - `packages/cnothing-mcp`：stdio MCP 适配器，从 `CNOTHING_AGENT_TOKEN` 环境变量读取 Agent 凭证。
 - `console`：用户登录、Provider 连接、Agent 创建、审批、Grant 和设备管理。

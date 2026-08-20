@@ -8,7 +8,8 @@ import { pool } from "../../db";
 const { listAuthProviders } = await import("../auth-providers.service");
 const { oidcService } = await import("../oidc.service");
 const { resolveGitHubLoginProviderId } = await import("../login-provider.service");
-const { findOAuthProviderBySlug, updateOAuthProviderCredentials } = await import("../oauth.repository");
+const { findOAuthProviderBySlug, listOAuthProviders, updateOAuthProviderCredentials, toProviderPublic } = await import("../oauth.repository");
+const { oauthProviderService } = await import("../oauth-connection.service");
 const { upsertUserIdentity } = await import("../platform.repository");
 
 const API_BASE = "https://cnothing.example.com";
@@ -218,5 +219,60 @@ describeWithDb("unified provider registry", () => {
       client_secret: "acme-secret",
     });
     expect(updated).toMatchObject({ status: "active", client_id: "acme-client" });
+  });
+
+  test("a discovered proposal stays unconfigured until credentials and activation", async () => {
+    const proposed = await oauthProviderService.proposeProvider({
+      issuer: ISSUER,
+      display_name: "Example IdP",
+    });
+
+    expect(proposed).toMatchObject({
+      slug: "issuer-example-com",
+      source: "discovered",
+      status: "unconfigured",
+      registry_status: "discovered",
+      registration_method: "dynamic",
+      authorization_url: `${ISSUER}/authorize`,
+    });
+    expect(proposed.validation?.ok).toBe(true);
+    expect(proposed.connectable).toBe(false);
+
+    const publicItems = (await listOAuthProviders()).map(toProviderPublic).filter((item) => item.status === "active");
+    expect(publicItems.map((item) => item.slug)).not.toContain("issuer-example-com");
+
+    await expect(
+      oauthProviderService.setProviderStatus(proposed.id, "active"),
+    ).rejects.toThrow(/credentials/i);
+
+    const reviewed = await oauthProviderService.reviewProvider(proposed.id);
+    expect(reviewed.registry_status).toBe("reviewed");
+    expect(reviewed.reviewed_at).toBeTruthy();
+
+    await oauthProviderService.updateProviderCredentials({
+      id: proposed.id,
+      client_id: "example-client",
+      client_secret: "example-secret",
+    });
+    const activated = await oauthProviderService.setProviderStatus(proposed.id, "active");
+    expect(activated).toMatchObject({ status: "active", registry_status: "active", connectable: true });
+
+    const disabled = await oauthProviderService.setProviderStatus(proposed.id, "disabled");
+    expect(disabled.registry_status).toBe("disabled");
+    expect(disabled.connectable).toBe(false);
+  });
+
+  test("proposing the same issuer is idempotent", async () => {
+    const first = await oauthProviderService.proposeProvider({ issuer: ISSUER });
+    const second = await oauthProviderService.proposeProvider({ issuer: ISSUER });
+    expect(second.id).toBe(first.id);
+    expect(await countProviders()).toBe(1);
+  });
+
+  test("a blocked discovery target is not written into the registry", async () => {
+    await expect(
+      oauthProviderService.proposeProvider({ issuer: "https://127.0.0.1" }),
+    ).rejects.toThrow(/blocked/i);
+    expect(await countProviders()).toBe(0);
   });
 });

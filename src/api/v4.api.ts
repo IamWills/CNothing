@@ -228,10 +228,11 @@ export async function handleV4Request(request: Request): Promise<Response> {
     const result = await proxyService.approveAccess({
       accessRequestId: id,
       userId: session.user_id,
-      connectionId: readRequiredString(body, "connection_id"),
+      connectionId: typeof body.connection_id === "string" ? body.connection_id : undefined,
       allowedHosts: body.allowed_hosts,
       allowedMethods: body.allowed_methods,
       ...(typeof body.expires_at === "string" ? { expiresAt: body.expires_at } : {}),
+      ...(body.require_approval === true ? { requireApproval: true } : {}),
     });
     return Response.json(result, { status: 201 });
   }
@@ -250,6 +251,8 @@ export async function handleV4Request(request: Request): Promise<Response> {
       url: readRequiredString(body, "url"),
       ...(headers ? { headers } : {}),
       ...(body.body !== undefined ? { body: body.body } : {}),
+      ...(typeof body.idempotency_key === "string" ? { idempotencyKey: body.idempotency_key } : {}),
+      apiBaseUrl: inferBaseUrl(request),
     });
     return Response.json(result);
   }

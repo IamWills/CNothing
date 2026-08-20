@@ -1,10 +1,11 @@
-import { ValidationError } from "../utils/errors";
+import { AppError, ValidationError } from "../utils/errors";
 import { assertSafeMetadataUrl, fetchPublicJsonDocument } from "./safe-fetch";
 import type { JsonObject } from "./platform.entity";
 import type { OAuthProviderRecord } from "./oauth.entity";
 
 export type DiscoveredOAuthProvider = {
   issuer: string;
+  discovery_url: string;
   authorization_url: string;
   token_url: string;
   userinfo_url: string | null;
@@ -23,20 +24,39 @@ type OpenIdDiscoveryDocument = {
   scopes_supported?: string[];
 };
 
-function normalizeDiscoveryUrl(input: { discovery_url?: string; issuer?: string }): string {
+function wellKnownDiscoveryUrls(input: { discovery_url?: string; issuer?: string }): string[] {
   const discoveryUrl = input.discovery_url?.trim();
   if (discoveryUrl) {
-    if (discoveryUrl.includes("/.well-known/openid-configuration")) {
-      return discoveryUrl;
+    if (
+      discoveryUrl.includes("/.well-known/openid-configuration") ||
+      discoveryUrl.includes("/.well-known/oauth-authorization-server")
+    ) {
+      return [discoveryUrl];
     }
-    return `${discoveryUrl.replace(/\/+$/, "")}/.well-known/openid-configuration`;
+    const base = discoveryUrl.replace(/\/+$/, "");
+    return [
+      `${base}/.well-known/openid-configuration`,
+      `${base}/.well-known/oauth-authorization-server`,
+    ];
   }
 
   const issuer = input.issuer?.trim();
   if (!issuer) {
     throw new Error("discovery_url or issuer is required");
   }
-  return `${issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`;
+  const base = issuer.replace(/\/+$/, "");
+  return [
+    `${base}/.well-known/openid-configuration`,
+    `${base}/.well-known/oauth-authorization-server`,
+  ];
+}
+
+function isMissingMetadataDocument(error: unknown): boolean {
+  if (!(error instanceof AppError) || !error.details || typeof error.details !== "object") {
+    return false;
+  }
+  const code = (error.details as { error_code?: string }).error_code;
+  return code === "metadata_fetch_failed";
 }
 
 function sameIssuer(left: string, right: string): boolean {
@@ -60,7 +80,27 @@ export async function discoverOAuthProvider(input: {
   discovery_url?: string;
   issuer?: string;
 }): Promise<DiscoveredOAuthProvider> {
-  const discoveryEndpoint = normalizeDiscoveryUrl(input);
+  const urls = wellKnownDiscoveryUrls(input);
+  let lastError: unknown;
+  for (const [index, discoveryEndpoint] of urls.entries()) {
+    try {
+      return await fetchDiscoveryDocument(discoveryEndpoint, input);
+    } catch (error) {
+      lastError = error;
+      const canFallback =
+        index < urls.length - 1 && isMissingMetadataDocument(error);
+      if (!canFallback) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Discovery failed");
+}
+
+async function fetchDiscoveryDocument(
+  discoveryEndpoint: string,
+  input: { issuer?: string },
+): Promise<DiscoveredOAuthProvider> {
   const doc = await fetchPublicJsonDocument<OpenIdDiscoveryDocument>(discoveryEndpoint, {
     label: "discovery_url",
   });
@@ -89,6 +129,7 @@ export async function discoverOAuthProvider(input: {
 
   return {
     issuer,
+    discovery_url: discoveryEndpoint,
     authorization_url: (await assertSafeEndpoint(authorizationUrl, "authorization_url"))!,
     token_url: (await assertSafeEndpoint(tokenUrl, "token_url"))!,
     userinfo_url: await assertSafeEndpoint(doc.userinfo_endpoint, "userinfo_url"),
@@ -186,10 +227,6 @@ export async function mergeDiscoveredProviderInput(input: {
     issuer: input.issuer,
   });
 
-  const discoveryUrl = input.discovery_url?.trim()
-    ? normalizeDiscoveryUrl({ discovery_url: input.discovery_url })
-    : normalizeDiscoveryUrl({ issuer: discovered.issuer });
-
   const supportedScopes =
     input.supported_scopes && input.supported_scopes.length > 0
       ? input.supported_scopes
@@ -202,7 +239,7 @@ export async function mergeDiscoveredProviderInput(input: {
     display_name: input.display_name,
     auth_type: input.auth_type ?? "oidc",
     issuer: discovered.issuer,
-    discovery_url: discoveryUrl,
+    discovery_url: discovered.discovery_url,
     authorization_url: input.authorization_url ?? discovered.authorization_url,
     token_url: input.token_url ?? discovered.token_url,
     userinfo_url: input.userinfo_url ?? discovered.userinfo_url ?? undefined,

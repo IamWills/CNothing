@@ -694,20 +694,279 @@ export class OAuthProviderService {
       issuer?: string;
     },
   ) {
-    const { mergeDiscoveredProviderInput } = await import("./oidc-provider-discovery.service");
+    const { selectRegistrationStrategy } = await import("./provider-registration");
+    const { withRegistryMetadata } = await import("./provider-registry");
     const { createOAuthProvider, toProviderAdmin } = await import("./oauth.repository");
-    const merged = await mergeDiscoveredProviderInput({
-      ...input,
+    const strategy = selectRegistrationStrategy(input);
+    const prepared = await strategy.prepare({
+      slug: input.slug,
+      display_name: input.display_name,
       auth_type: input.auth_type === "oidc" ? "oidc" : "oauth2",
+      discovery_url: input.discovery_url,
+      issuer: input.issuer ?? undefined,
+      authorization_url: input.authorization_url,
+      token_url: input.token_url,
+      userinfo_url: input.userinfo_url,
+      revoke_url: input.revoke_url,
+      jwks_url: input.jwks_url,
+      client_id: input.client_id,
+      client_secret: input.client_secret,
+      default_scopes: input.default_scopes,
+      supported_scopes: input.supported_scopes,
+      pkce_required: input.pkce_required,
+      token_auth_method: input.token_auth_method,
+      login_enabled: input.login_enabled,
+      metadata: input.metadata,
     });
-    const provider = await createOAuthProvider(merged);
+    const provider = await createOAuthProvider({
+      ...prepared.provider,
+      source: prepared.source,
+      metadata: withRegistryMetadata(prepared.provider.metadata, {
+        method: prepared.method,
+        validation: prepared.validation,
+      }),
+    });
     return toProviderAdmin(provider);
+  }
+
+  /**
+   * Agent or operator submits an unknown issuer. Lookup first; if missing,
+   * run dynamic discovery and persist an unconfigured registry row for review.
+   * Never activates the provider and never stores a blocked internal URL.
+   */
+  async proposeProvider(input: {
+    slug?: string;
+    display_name?: string;
+    discovery_url?: string;
+    issuer?: string;
+  }) {
+    const { ValidationError } = await import("../utils/errors");
+    const { DynamicRegistrationStrategy } = await import("./provider-registration");
+    const { slugFromIssuerOrHost, withRegistryMetadata } = await import("./provider-registry");
+    const {
+      createOAuthProvider,
+      findOAuthProviderByIssuer,
+      findOAuthProviderBySlug,
+      toProviderAdmin,
+      updateOAuthProviderEndpoints,
+    } = await import("./oauth.repository");
+
+    const discoveryUrl = input.discovery_url?.trim();
+    const issuer = input.issuer?.trim();
+    if (!discoveryUrl && !issuer) {
+      throw new ValidationError("discovery_url or issuer is required", {
+        error_code: "missing_discovery",
+      });
+    }
+
+    const slug = (input.slug?.trim() || slugFromIssuerOrHost(issuer || discoveryUrl || "")).toLowerCase();
+    if (!slug) {
+      throw new ValidationError("slug could not be derived from issuer", { error_code: "missing_slug" });
+    }
+    const displayName = input.display_name?.trim() || slug;
+
+    const existing =
+      (await findOAuthProviderBySlug(slug)) ?? (issuer ? await findOAuthProviderByIssuer(issuer) : null);
+
+    const strategy = new DynamicRegistrationStrategy();
+    try {
+      const prepared = await strategy.prepare({
+        slug,
+        display_name: displayName,
+        discovery_url: discoveryUrl,
+        issuer,
+      });
+      const metadata = withRegistryMetadata(prepared.provider.metadata, {
+        method: prepared.method,
+        validation: prepared.validation,
+      });
+
+      if (existing) {
+        if (existing.status === "unconfigured" && existing.source === "discovered") {
+          const updated = await updateOAuthProviderEndpoints({
+            id: existing.id,
+            display_name: displayName,
+            issuer: prepared.provider.issuer,
+            discovery_url: prepared.provider.discovery_url,
+            authorization_url: prepared.provider.authorization_url,
+            token_url: prepared.provider.token_url,
+            userinfo_url: prepared.provider.userinfo_url,
+            revoke_url: prepared.provider.revoke_url,
+            jwks_url: prepared.provider.jwks_url,
+            default_scopes: prepared.provider.default_scopes,
+            supported_scopes: prepared.provider.supported_scopes,
+            metadata,
+          });
+          return toProviderAdmin(updated ?? existing);
+        }
+        return toProviderAdmin(existing);
+      }
+
+      const provider = await createOAuthProvider({
+        ...prepared.provider,
+        source: "discovered",
+        metadata,
+      });
+      return toProviderAdmin(provider);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const blocked = /blocked|https/i.test(message);
+      if (blocked || existing) {
+        throw error;
+      }
+      const provider = await createOAuthProvider({
+        slug,
+        display_name: displayName,
+        auth_type: "oidc",
+        issuer: issuer ?? null,
+        discovery_url: discoveryUrl ?? null,
+        source: "discovered",
+        metadata: withRegistryMetadata(
+          {},
+          {
+            method: "dynamic",
+            validation: {
+              ok: false,
+              checked_at: new Date().toISOString(),
+              method: "dynamic",
+              error: message,
+            },
+          },
+        ),
+      });
+      return toProviderAdmin(provider);
+    }
   }
 
   async listAdminProviders() {
     const { listOAuthProviders, toProviderAdmin } = await import("./oauth.repository");
     const providers = await listOAuthProviders();
     return providers.map(toProviderAdmin);
+  }
+
+  async reviewProvider(id: string) {
+    const { markOAuthProviderReviewed, toProviderAdmin } = await import("./oauth.repository");
+    const provider = await markOAuthProviderReviewed(id);
+    if (!provider) {
+      throw new NotFoundError("OAuth provider not found");
+    }
+    return toProviderAdmin(provider);
+  }
+
+  async setProviderStatus(id: string, status: "active" | "disabled") {
+    const { ValidationError } = await import("../utils/errors");
+    const { canActivateProvider } = await import("./provider-registry");
+    const { findOAuthProviderById, setOAuthProviderStatus, toProviderAdmin } = await import(
+      "./oauth.repository"
+    );
+    const existing = await findOAuthProviderById(id);
+    if (!existing) {
+      throw new NotFoundError("OAuth provider not found");
+    }
+    if (status === "active" && !canActivateProvider(existing)) {
+      throw new ValidationError("Provider needs client credentials before it can be activated", {
+        error_code: "provider_unconfigured",
+      });
+    }
+    const provider = await setOAuthProviderStatus(id, status);
+    return toProviderAdmin(provider!);
+  }
+
+  async updateProvider(input: {
+    id: string;
+    display_name?: string;
+    discovery_url?: string;
+    issuer?: string;
+    authorization_url?: string;
+    token_url?: string;
+    userinfo_url?: string;
+    revoke_url?: string;
+    jwks_url?: string;
+    default_scopes?: string[];
+    supported_scopes?: string[];
+    login_enabled?: boolean;
+    status?: "active" | "disabled";
+    reviewed?: boolean;
+  }) {
+    const { findOAuthProviderById, setProviderLoginEnabled, toProviderAdmin, updateOAuthProviderEndpoints } =
+      await import("./oauth.repository");
+    const { selectRegistrationStrategy } = await import("./provider-registration");
+    const { withRegistryMetadata } = await import("./provider-registry");
+    const existing = await findOAuthProviderById(input.id);
+    if (!existing) {
+      throw new NotFoundError("OAuth provider not found");
+    }
+
+    const hasDiscoveryUpdate = Boolean(input.discovery_url?.trim() || input.issuer?.trim());
+    const hasEndpointUpdate = Boolean(
+      input.authorization_url?.trim() ||
+        input.token_url?.trim() ||
+        input.userinfo_url?.trim() ||
+        input.revoke_url?.trim() ||
+        input.jwks_url?.trim(),
+    );
+
+    if (hasDiscoveryUpdate || hasEndpointUpdate) {
+      const strategy = selectRegistrationStrategy({
+        discovery_url: input.discovery_url ?? (hasDiscoveryUpdate ? undefined : existing.discovery_url ?? undefined),
+        issuer: input.issuer ?? (hasDiscoveryUpdate ? undefined : existing.issuer ?? undefined),
+      });
+      const prepared = await strategy.prepare({
+        slug: existing.slug,
+        display_name: input.display_name ?? existing.display_name,
+        auth_type: existing.auth_type === "oidc" ? "oidc" : "oauth2",
+        discovery_url: input.discovery_url ?? existing.discovery_url ?? undefined,
+        issuer: input.issuer ?? existing.issuer ?? undefined,
+        authorization_url: input.authorization_url ?? existing.authorization_url ?? undefined,
+        token_url: input.token_url ?? existing.token_url ?? undefined,
+        userinfo_url: input.userinfo_url ?? existing.userinfo_url ?? undefined,
+        revoke_url: input.revoke_url ?? existing.revoke_url ?? undefined,
+        jwks_url: input.jwks_url ?? existing.jwks_url ?? undefined,
+        default_scopes: input.default_scopes,
+        supported_scopes: input.supported_scopes,
+      });
+      await updateOAuthProviderEndpoints({
+        id: existing.id,
+        display_name: prepared.provider.display_name,
+        issuer: prepared.provider.issuer,
+        discovery_url: prepared.provider.discovery_url,
+        authorization_url: prepared.provider.authorization_url,
+        token_url: prepared.provider.token_url,
+        userinfo_url: prepared.provider.userinfo_url,
+        revoke_url: prepared.provider.revoke_url,
+        jwks_url: prepared.provider.jwks_url,
+        default_scopes: prepared.provider.default_scopes,
+        supported_scopes: prepared.provider.supported_scopes,
+        metadata: withRegistryMetadata(existing.metadata, {
+          method: prepared.method,
+          validation: prepared.validation,
+        }),
+      });
+    } else if (
+      input.display_name?.trim() ||
+      input.default_scopes ||
+      input.supported_scopes
+    ) {
+      await updateOAuthProviderEndpoints({
+        id: existing.id,
+        display_name: input.display_name,
+        default_scopes: input.default_scopes,
+        supported_scopes: input.supported_scopes,
+      });
+    }
+
+    if (input.reviewed) {
+      await this.reviewProvider(input.id);
+    }
+    if (input.login_enabled !== undefined) {
+      await setProviderLoginEnabled(input.id, input.login_enabled);
+    }
+    if (input.status) {
+      await this.setProviderStatus(input.id, input.status);
+    }
+
+    const updated = await findOAuthProviderById(input.id);
+    return toProviderAdmin(updated!);
   }
 
   async updateProviderCredentials(input: {

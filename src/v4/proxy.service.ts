@@ -29,6 +29,13 @@ import { dispatchAccessRequestCallback, validateCallbackUrl } from "./callback.s
 import { listActivePushDevices } from "./device.repository";
 import { resolveAgentUserHint } from "./share-code.service";
 import { evaluateMandateForRequest, mandateFromGrantRow, mandateIsRevokedOrExpired, toGrantPublic } from "./mandate";
+import { evaluatePolicy } from "./policy";
+import {
+  transactionIntentService,
+  type ApprovalRequiredEnvelope,
+  type DeniedEnvelope,
+} from "./transaction.service";
+import type { JsonObject } from "./platform.entity";
 
 import {
   DEFAULT_ALLOWED_METHODS,
@@ -249,12 +256,39 @@ export class ProxyService {
   async approveAccess(input: {
     accessRequestId: string;
     userId: string;
-    connectionId: string;
+    connectionId?: string;
     allowedHosts?: unknown;
     allowedMethods?: unknown;
     expiresAt?: string;
+    requireApproval?: boolean;
   }) {
     const request = await approvalService.requirePending(input.accessRequestId, input.userId);
+
+    if (request.type === "transaction") {
+      const transaction = await transactionIntentService.authorize(request.id, input.userId);
+      if (request.callback_url) {
+        dispatchAccessRequestCallback({
+          callbackUrl: request.callback_url,
+          accessRequestId: request.id,
+          status: "approved",
+          provider: request.provider_slug,
+          grantId: transaction.mandate_id,
+          agentId: request.agent_id,
+        });
+      }
+      return {
+        ok: true as const,
+        status: "approved" as const,
+        transaction_id: transaction.id,
+        access_request_id: request.id,
+        mandate_id: transaction.mandate_id,
+        grant_id: transaction.mandate_id,
+      };
+    }
+
+    if (!input.connectionId?.trim()) {
+      throw new ValidationError("connection_id is required", { error_code: "missing_field", field: "connection_id" });
+    }
 
     const connection = await findOAuthConnectionById(input.connectionId);
     if (!connection || connection.user_id !== input.userId) {
@@ -293,6 +327,7 @@ export class ProxyService {
       allowed_methods: allowedMethods,
       expires_at: input.expiresAt ?? null,
       metadata: { access_request_id: request.id },
+      require_approval: input.requireApproval,
     });
     if (!grant) {
       throw await approvalService.noLongerPending(request.id);
@@ -324,6 +359,9 @@ export class ProxyService {
       id: request.id,
       principalId: input.userId,
     });
+    if (request.type === "transaction") {
+      await transactionIntentService.deny(request.id, input.userId);
+    }
 
     if (request.callback_url) {
       dispatchAccessRequestCallback({
@@ -378,7 +416,21 @@ export class ProxyService {
     url: string;
     headers?: Record<string, unknown>;
     body?: unknown;
-  }) {
+    idempotencyKey?: string;
+    apiBaseUrl?: string;
+  }): Promise<
+    | {
+        ok: true;
+        status: number;
+        headers: Record<string, string>;
+        body: unknown;
+        truncated: boolean;
+        transaction_id?: string;
+        external_reference?: string | null;
+      }
+    | ApprovalRequiredEnvelope
+    | DeniedEnvelope
+  > {
     const startedAt = Date.now();
     const grant = await this.requireActiveGrant({ agent: input.agent, grantId: input.grantId });
     const mandate = mandateFromGrantRow(grant);
@@ -404,6 +456,152 @@ export class ProxyService {
       });
     }
 
+    const policy = evaluatePolicy({ method, url: parsedUrl, mandate });
+    if (policy.decision === "deny") {
+      throw new ForbiddenError(policy.reason, { error_code: "policy_denied" });
+    }
+
+    const apiBaseUrl = input.apiBaseUrl?.replace(/\/+$/, "") || config.publicBaseUrl.replace(/\/+$/, "");
+
+    if (policy.decision === "approval_required") {
+      const ensured = await transactionIntentService.ensureProposed({
+        agent: input.agent,
+        mandate,
+        method,
+        url: parsedUrl,
+        action: policy.action,
+        reason: policy.reason,
+        body: input.body,
+        idempotencyKey: input.idempotencyKey,
+        apiBaseUrl,
+      });
+      if (ensured.kind === "proposed") {
+        await writeProxyRequestAudit({
+          grant_id: grant.id,
+          agent_id: input.agent.id,
+          connection_id: grant.connection_id,
+          method,
+          url_host: parsedUrl.hostname,
+          url_path: parsedUrl.pathname,
+          duration_ms: Date.now() - startedAt,
+          success: true,
+          error_code: null,
+          transaction_id: ensured.transaction.id,
+          approval_request_id: ensured.envelope.request_id,
+          policy_decision: "approval_required",
+        });
+        return ensured.envelope;
+      }
+      if (ensured.kind === "denied") {
+        return ensured.envelope;
+      }
+      if (ensured.kind === "committed" && ensured.transaction.result) {
+        const stored = ensured.transaction.result;
+        return {
+          ok: true as const,
+          status: typeof stored.status === "number" ? stored.status : 200,
+          headers:
+            stored.headers && typeof stored.headers === "object" && !Array.isArray(stored.headers)
+              ? (stored.headers as Record<string, string>)
+              : {},
+          body: stored.body,
+          truncated: stored.truncated === true,
+          transaction_id: ensured.transaction.id,
+          external_reference: ensured.transaction.external_reference,
+        };
+      }
+
+      const claimed = await transactionIntentService.claimExecution(ensured.transaction.id);
+      if (claimed.status === "committed" && claimed.result) {
+        const stored = claimed.result;
+        return {
+          ok: true as const,
+          status: typeof stored.status === "number" ? stored.status : 200,
+          headers:
+            stored.headers && typeof stored.headers === "object" && !Array.isArray(stored.headers)
+              ? (stored.headers as Record<string, string>)
+              : {},
+          body: stored.body,
+          truncated: stored.truncated === true,
+          transaction_id: claimed.id,
+          external_reference: claimed.external_reference,
+        };
+      }
+
+      let executed: {
+        ok: true;
+        status: number;
+        headers: Record<string, string>;
+        body: unknown;
+        truncated: boolean;
+      };
+      try {
+        executed = await this.executeProxiedRequest({
+          agent: input.agent,
+          grant,
+          method,
+          parsedUrl,
+          headers: input.headers,
+          body: input.body,
+          startedAt,
+          transactionId: claimed.id,
+          approvalRequestId: claimed.approval_request_id,
+          policyDecision: "allow",
+        });
+      } catch (error) {
+        await transactionIntentService.complete(
+          claimed.id,
+          { error: error instanceof Error ? error.message : String(error) },
+          "failed",
+        );
+        throw error;
+      }
+      const resultPayload: JsonObject = {
+        status: executed.status,
+        headers: executed.headers,
+        body: executed.body,
+        truncated: executed.truncated,
+      };
+      const completed = await transactionIntentService.complete(
+        claimed.id,
+        resultPayload,
+        executed.status >= 200 && executed.status < 300 ? "committed" : "failed",
+      );
+      return {
+        ...executed,
+        transaction_id: claimed.id,
+        external_reference: completed?.external_reference ?? null,
+      };
+    }
+
+    return this.executeProxiedRequest({
+      agent: input.agent,
+      grant,
+      method,
+      parsedUrl,
+      headers: input.headers,
+      body: input.body,
+      startedAt,
+      policyDecision: "allow",
+    });
+  }
+
+  private async executeProxiedRequest(input: {
+    agent: AgentRecord;
+    grant: ProxyGrantRecord;
+    method: string;
+    parsedUrl: URL;
+    headers?: Record<string, unknown>;
+    body?: unknown;
+    startedAt: number;
+    transactionId?: string | null;
+    approvalRequestId?: string | null;
+    policyDecision?: string | null;
+  }) {
+    const grant = input.grant;
+    const method = input.method;
+    const parsedUrl = input.parsedUrl;
+
     const connection = await findOAuthConnectionById(grant.connection_id);
     if (!connection) {
       throw new ForbiddenError("OAuth connection no longer exists", {
@@ -423,7 +621,10 @@ export class ProxyService {
         method,
         url_host: parsedUrl.hostname,
         url_path: parsedUrl.pathname,
-        duration_ms: Date.now() - startedAt,
+        duration_ms: Date.now() - input.startedAt,
+        transaction_id: input.transactionId ?? null,
+        approval_request_id: input.approvalRequestId ?? null,
+        policy_decision: input.policyDecision ?? null,
         ...details,
       });
     };

@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase, warmConnectionPool } from "../../__tests__/helpers/db";
-import { givenAgent, givenConnection, givenProvider } from "../../__tests__/helpers/fixtures";
+import { givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
 import { proxyService } from "../proxy.service";
 import {
   createProxyAccessRequest,
@@ -58,12 +58,12 @@ describeWithDb("v4 access request → grant lifecycle", () => {
       apiBaseUrl: API_BASE_URL,
     });
 
-    const approved = await proxyService.approveAccess({
+    const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
       connectionId: connection.id,
       allowedMethods: ["GET", "POST"],
-    });
+    }));
 
     expect(approved.grant.allowed_hosts).toEqual(["api.github.com"]);
     expect(approved.grant.allowed_methods).toEqual(["GET", "POST"]);
@@ -254,11 +254,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
     });
-    const approved = await proxyService.approveAccess({
+    const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
       connectionId: connection.id,
-    });
+    }));
 
     await expect(
       proxyService.revokeGrant({ grantId: approved.grant.id, userId: "github:mallory" }),

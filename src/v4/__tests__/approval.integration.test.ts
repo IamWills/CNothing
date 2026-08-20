@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import { givenAgent, givenConnection, givenProvider } from "../../__tests__/helpers/fixtures";
+import { givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
 import { approvalService } from "../approval.service";
 import { proxyService } from "../proxy.service";
 import { findProxyAccessRequest } from "../proxy.repository";
@@ -76,11 +76,11 @@ describeWithDb("access request is stored as an approval request", () => {
       apiBaseUrl: API_BASE_URL,
     });
 
-    const approved = await proxyService.approveAccess({
+    const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: created.access_request_id,
       userId: USER_ID,
       connectionId: connection.id,
-    });
+    }));
 
     const stored = await findProxyAccessRequest(created.access_request_id);
     expect(stored?.status).toBe("approved");

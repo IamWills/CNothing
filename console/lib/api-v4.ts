@@ -15,14 +15,31 @@ export type V4OAuthProvider = {
 };
 
 export type V4OAuthProviderAdmin = V4OAuthProvider & {
+  issuer?: string | null;
+  discovery_url?: string | null;
   authorization_url: string | null;
   token_url: string | null;
   userinfo_url: string | null;
   revoke_url: string | null;
+  jwks_url?: string | null;
   client_id: string | null;
   has_client_secret: boolean;
   pkce_required: boolean;
   login_enabled: boolean;
+  source?: "manual" | "discovered" | "imported";
+  reviewed_at?: string | null;
+  registry_status?: "discovered" | "unverified" | "reviewed" | "active" | "disabled";
+  registration_method?: "manual" | "dynamic";
+  validation?: {
+    ok: boolean;
+    checked_at: string;
+    method: "manual" | "dynamic";
+    error?: string;
+    issuer?: string | null;
+    authorization_url?: string | null;
+    token_url?: string | null;
+    jwks_url?: string | null;
+  } | null;
 };
 
 export type V4OAuthConnection = {
@@ -70,7 +87,7 @@ export type V4AccessRequest = {
   type?: "delegation" | "action" | "transaction";
   principal?: { type: string; id: string | null };
   action?: string | null;
-  resource?: { provider?: string; hosts?: string[] };
+  resource?: { provider?: string; hosts?: string[]; method?: string; url?: string; path?: string };
   mandate_id?: string | null;
   decision?: {
     verdict: "approved" | "denied";
@@ -235,6 +252,43 @@ export async function createV4Provider(
   });
 }
 
+export async function proposeV4Provider(
+  connection: ConsoleConnection,
+  payload: { slug?: string; display_name?: string; discovery_url?: string; issuer?: string },
+) {
+  return requestJson<{ ok: true; provider: V4OAuthProviderAdmin }>(
+    connection,
+    "/v4/providers/proposals",
+    { method: "POST", body: JSON.stringify(payload), admin: true },
+  );
+}
+
+export async function updateV4Provider(
+  connection: ConsoleConnection,
+  providerId: string,
+  payload: {
+    display_name?: string;
+    discovery_url?: string;
+    issuer?: string;
+    authorization_url?: string;
+    token_url?: string;
+    userinfo_url?: string;
+    revoke_url?: string;
+    jwks_url?: string;
+    default_scopes?: string[];
+    supported_scopes?: string[];
+    login_enabled?: boolean;
+    status?: "active" | "disabled";
+    reviewed?: boolean;
+  },
+) {
+  return requestJson<{ ok: true; provider: V4OAuthProviderAdmin }>(
+    connection,
+    `/v4/providers/${encodeURIComponent(providerId)}`,
+    { method: "PATCH", body: JSON.stringify(payload), admin: true },
+  );
+}
+
 export async function updateV4ProviderCredentials(
   connection: ConsoleConnection,
   providerId: string,
@@ -318,13 +372,13 @@ export async function approveV4AccessRequest(
   connection: ConsoleConnection,
   id: string,
   payload: {
-    connection_id: string;
+    connection_id?: string;
     allowed_hosts?: string[];
     allowed_methods?: string[];
     expires_at?: string;
-  },
+  } = {},
 ) {
-  return requestJson<{ ok: true; grant: V4Grant }>(
+  return requestJson<{ ok: true; grant?: V4Grant; transaction_id?: string; mandate_id?: string }>(
     connection,
     `/v4/access-requests/${encodeURIComponent(id)}/approve`,
     { method: "POST", body: JSON.stringify(payload) },

@@ -17,6 +17,7 @@ Use CNothing when a task requires an API protected by a user's OAuth account.
 6. Relay `user_action.message` and the exact `approval_url` unchanged. When `pushed_to_devices` is positive, also tell the user to check the CNothing iOS notification.
 7. Call `get_access_status` no faster than `retry_after_seconds`.
 8. After approval, call `proxy_request` with the returned `grant_id` and an HTTPS URL covered by `allowed_hosts`.
+9. If `proxy_request` returns `status: approval_required`, relay the exact `approval_url`, poll `get_access_status`, then retry the same `proxy_request`. Do not call a separate execute tool.
 
 ## Role boundary
 
@@ -28,7 +29,7 @@ Do not add `Authorization` or `Cookie` to `proxy_request`; CNothing strips those
 
 - No matching grant: call `list_providers`, then `request_access`.
 - Provider missing or not connectable: tell the user an operator must configure it.
-- Approval pending: wait for `retry_after_seconds`; keep the exact approval URL available.
+- Approval pending (delegation or a write that returned `approval_required`): wait for `retry_after_seconds`; keep the exact approval URL available; then retry the same `proxy_request`.
 - Grant revoked or expired: request access again.
 - Host not allowed: use a URL from the grant's `allowed_hosts`; do not broaden the grant without a new user approval.
 

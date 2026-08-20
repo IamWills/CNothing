@@ -32,6 +32,26 @@ export class ApprovalService {
     return approvalFromAccessRow(row);
   }
 
+  async createTransactionApproval(input: {
+    agent_id: string;
+    provider_slug: string;
+    requested_hosts: string[];
+    reason?: string;
+    user_hint?: string;
+    action: string;
+    resource: Record<string, unknown>;
+    context?: Record<string, unknown>;
+    grant_id: string;
+    ttl_seconds?: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<ApprovalRequest> {
+    const row = await createProxyAccessRequest({
+      ...input,
+      approval_type: "transaction",
+    });
+    return approvalFromAccessRow(row);
+  }
+
   async get(id: string): Promise<ApprovalRequest | null> {
     const row = await findProxyAccessRequest(id);
     return row ? approvalFromAccessRow(row) : null;

@@ -20,6 +20,10 @@ export type MandateConstraints = {
   hosts: string[];
   methods: string[];
   expires_at: string | null;
+  /** Opt-in: non-GET calls need a Transaction + ApprovalRequest. */
+  require_approval?: boolean;
+  /** Opt-in: only these methods need approval. Ignored unless present. */
+  approval_required_methods?: string[];
 };
 
 export type MandateStatus = "active" | "revoked";
@@ -76,11 +80,16 @@ export function buildMandateConstraints(input: {
   hosts: string[];
   methods: string[];
   expires_at?: string | null;
+  require_approval?: boolean;
+  approval_required_methods?: string[];
 }): MandateConstraints {
   return {
     hosts: input.hosts,
     methods: input.methods,
     expires_at: input.expires_at ?? null,
+    ...(input.require_approval === true ? { require_approval: true } : {}),
+    ...(input.approval_required_methods && input.approval_required_methods.length > 0
+      ? { approval_required_methods: input.approval_required_methods } : {}),
   };
 }
 
@@ -100,6 +109,13 @@ export function resolveMandateConstraints(row: GrantRow): MandateConstraints {
   const stored = isRecord(row.constraints) ? row.constraints : {};
   const hosts = asStringArray(stored.hosts);
   const methods = asStringArray(stored.methods);
+  const extras: Partial<MandateConstraints> = {};
+  if (stored.require_approval === true) {
+    extras.require_approval = true;
+  }
+  if (Array.isArray(stored.approval_required_methods)) {
+    extras.approval_required_methods = stored.approval_required_methods.map(String);
+  }
   return {
     hosts: hosts.length > 0 ? hosts : row.allowed_hosts,
     methods: methods.length > 0 ? methods : row.allowed_methods,
@@ -109,6 +125,7 @@ export function resolveMandateConstraints(row: GrantRow): MandateConstraints {
           ? stored.expires_at
           : null
         : row.expires_at,
+    ...extras,
   };
 }
 

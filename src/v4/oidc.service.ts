@@ -125,7 +125,8 @@ export class OidcService {
       default_scopes: scopes,
       supported_scopes: scopes,
       login_enabled: true,
-      metadata: { registration_method: "manual", login_provider: true },
+      source: "discovered",
+      metadata: { login_provider: true },
     });
     return { ok: true as const, provider: toPublicView(provider) };
   }

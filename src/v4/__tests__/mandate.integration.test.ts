@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import { givenAgent, givenConnection, givenProvider } from "../../__tests__/helpers/fixtures";
+import { givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
 import { pool } from "../../db";
 import { proxyService } from "../proxy.service";
 import { findProxyGrantById } from "../proxy.repository";
@@ -25,13 +25,13 @@ describeWithDb("grant is stored as a mandate", () => {
     });
 
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    const approved = await proxyService.approveAccess({
+    const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
       connectionId: connection.id,
       allowedMethods: ["GET", "POST"],
       expiresAt,
-    });
+    }));
 
     expect(approved.grant.principal).toEqual({ type: "user", id: USER_ID });
     expect(approved.grant.constraints).toEqual({
@@ -91,11 +91,11 @@ describeWithDb("grant is stored as a mandate", () => {
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
     });
-    const approved = await proxyService.approveAccess({
+    const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
       connectionId: connection.id,
-    });
+    }));
 
     await proxyService.revokeGrant({ grantId: approved.grant.id, userId: USER_ID });
     const stored = await findProxyGrantById(approved.grant.id);
@@ -112,12 +112,12 @@ describeWithDb("grant is stored as a mandate", () => {
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
     });
-    const approved = await proxyService.approveAccess({
+    const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
       connectionId: connection.id,
       allowedMethods: ["GET"],
-    });
+    }));
 
     await pool.query(`UPDATE proxy_grants SET constraints = '{}'::jsonb WHERE id = $1`, [
       approved.grant.id,

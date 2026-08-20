@@ -134,22 +134,31 @@ export async function createProxyAccessRequest(input: {
   callback_url?: string;
   ttl_seconds?: number;
   metadata?: JsonObject;
+  approval_type?: "delegation" | "action" | "transaction";
+  action?: string;
+  resource?: JsonObject;
+  context?: JsonObject;
+  grant_id?: string;
 }): Promise<ProxyAccessRequestRecord> {
   const id = randomUUID();
   const principalId = input.user_hint?.trim() || null;
-  const resource = buildDelegationResource({
-    provider: input.provider_slug,
-    hosts: input.requested_hosts,
-  });
+  const approvalType = input.approval_type ?? "delegation";
+  const action = input.action ?? (approvalType === "delegation" ? "delegate" : null);
+  const resource =
+    input.resource ??
+    buildDelegationResource({
+      provider: input.provider_slug,
+      hosts: input.requested_hosts,
+    });
   const result = await pool.query(
     `
       INSERT INTO proxy_access_requests (
         id, agent_id, provider_slug, requested_hosts, reason, user_hint, callback_url,
-        expires_at, metadata,
-        approval_type, principal_type, principal_id, action, resource
+        expires_at, metadata, grant_id,
+        approval_type, principal_type, principal_id, action, resource, context
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval,$9,
-        'delegation','user',$10,'delegate',$11::jsonb
+        $1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' seconds')::interval,$9,$10,
+        $11,'user',$12,$13,$14::jsonb,$15::jsonb
       )
       RETURNING *
     `,
@@ -163,8 +172,12 @@ export async function createProxyAccessRequest(input: {
       input.callback_url ?? null,
       String(input.ttl_seconds ?? 3600),
       JSON.stringify(input.metadata ?? {}),
+      input.grant_id ?? null,
+      approvalType,
       principalId,
+      action,
       JSON.stringify(resource),
+      JSON.stringify(input.context ?? {}),
     ],
   );
   return mapAccessRequestRow(result.rows[0]!);
@@ -266,6 +279,7 @@ export async function approveAccessRequestWithGrant(input: {
   allowed_methods: string[];
   expires_at?: string | null;
   metadata?: JsonObject;
+  require_approval?: boolean;
 }): Promise<ProxyGrantRecord | null> {
   return withTransaction(async (client) => {
     const claimed = await client.query(
@@ -289,6 +303,7 @@ export async function approveAccessRequestWithGrant(input: {
       hosts: input.allowed_hosts,
       methods: input.allowed_methods,
       expires_at: input.expires_at ?? null,
+      require_approval: input.require_approval,
     });
     const grant = await client.query(
       `
@@ -386,13 +401,17 @@ export async function writeProxyRequestAudit(input: {
   success: boolean;
   error_code?: string | null;
   duration_ms?: number | null;
+  transaction_id?: string | null;
+  approval_request_id?: string | null;
+  policy_decision?: string | null;
 }): Promise<void> {
   await pool.query(
     `
       INSERT INTO proxy_request_audit (
         id, grant_id, agent_id, connection_id, method, url_host, url_path,
-        status_code, success, error_code, duration_ms
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        status_code, success, error_code, duration_ms,
+        transaction_id, approval_request_id, policy_decision
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `,
     [
       randomUUID(),
@@ -406,6 +425,9 @@ export async function writeProxyRequestAudit(input: {
       input.success,
       input.error_code ?? null,
       input.duration_ms ?? null,
+      input.transaction_id ?? null,
+      input.approval_request_id ?? null,
+      input.policy_decision ?? null,
     ],
   );
 }

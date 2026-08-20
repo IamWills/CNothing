@@ -136,19 +136,31 @@ async function executeTool(name: McpToolName, args: Record<string, unknown>, age
       const response = await proxyService.getAccessStatus(requiredString(args, "access_request_id"), agent);
       return decorateStatus(response as unknown as Record<string, unknown>);
     }
-    case "proxy_request":
-      return {
-        ...(await proxyService.proxy({
-          agent,
-          grantId: requiredString(args, "grant_id"),
-          method: requiredString(args, "method"),
-          url: requiredString(args, "url"),
-          headers: objectArgs(args.headers),
-          body: args.body,
-        })),
-        status: "ok",
-        next_action: "none",
-      };
+    case "proxy_request": {
+      const response = await proxyService.proxy({
+        agent,
+        grantId: requiredString(args, "grant_id"),
+        method: requiredString(args, "method"),
+        url: requiredString(args, "url"),
+        headers: objectArgs(args.headers),
+        body: args.body,
+        idempotencyKey: typeof args.idempotency_key === "string" ? args.idempotency_key : undefined,
+        apiBaseUrl: config.publicBaseUrl.replace(/\/+$/, ""),
+      });
+      if (response.status === "approval_required") {
+        return {
+          ...response,
+          user_action: {
+            message: "Approve this action from the CNothing iOS notification, or open this approval link.",
+            approval_url: response.approval_url,
+          },
+        };
+      }
+      if (response.status === "denied") {
+        return { ...response, next_action: "none" };
+      }
+      return { ...response, status: "ok", http_status: response.status, next_action: "none" };
+    }
   }
 }
 

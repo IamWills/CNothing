@@ -11,8 +11,18 @@ import type {
   OAuthConnectStateRecord,
   OAuthProviderPublic,
   OAuthProviderRecord,
+  OAuthProviderSource,
   OAuthProviderStatus,
 } from "./oauth.entity";
+import {
+  parseProviderSource,
+  registryMetaFromMetadata,
+  registrationMethodFor,
+  registryStatusFor,
+  type ProviderRegistryStatus,
+  type ProviderRegistrationMethod,
+  type ProviderValidationResult,
+} from "./provider-registry";
 import {
   exchangeConnectionTokensInVault,
   readConnectionAccessToken,
@@ -82,6 +92,8 @@ function mapProviderRow(row: Record<string, unknown>): OAuthProviderRecord {
     status: String(row.status) as OAuthProviderStatus,
     is_builtin: Boolean(row.is_builtin),
     login_enabled: Boolean(row.login_enabled),
+    source: parseProviderSource(row.source),
+    reviewed_at: row.reviewed_at ? asIso(row.reviewed_at) : null,
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
@@ -147,6 +159,11 @@ export type OAuthProviderAdminView = OAuthProviderPublic & {
   pkce_required: boolean;
   token_auth_method: OAuthProviderRecord["token_auth_method"];
   login_enabled: boolean;
+  source: OAuthProviderRecord["source"];
+  reviewed_at: string | null;
+  registry_status: ProviderRegistryStatus;
+  registration_method: ProviderRegistrationMethod;
+  validation: ProviderValidationResult | null;
 };
 
 export function toProviderAdmin(provider: OAuthProviderRecord): OAuthProviderAdminView {
@@ -166,6 +183,11 @@ export function toProviderAdmin(provider: OAuthProviderRecord): OAuthProviderAdm
     pkce_required: provider.pkce_required,
     token_auth_method: provider.token_auth_method,
     login_enabled: provider.login_enabled,
+    source: provider.source,
+    reviewed_at: provider.reviewed_at,
+    registry_status: registryStatusFor(provider),
+    registration_method: registrationMethodFor(provider),
+    validation: registryMetaFromMetadata(provider.metadata)?.validation ?? null,
   };
 }
 
@@ -181,6 +203,22 @@ export async function findOAuthProviderById(id: string): Promise<OAuthProviderRe
 
 export async function findOAuthProviderBySlug(slug: string): Promise<OAuthProviderRecord | null> {
   const result = await pool.query(`SELECT * FROM cap_oauth_providers WHERE slug = $1`, [slug]);
+  const row = result.rows[0];
+  return row ? mapProviderRow(row) : null;
+}
+
+export async function findOAuthProviderByIssuer(issuer: string): Promise<OAuthProviderRecord | null> {
+  const normalized = issuer.trim().replace(/\/+$/, "");
+  if (!normalized) {
+    return null;
+  }
+  const result = await pool.query(
+    `SELECT * FROM cap_oauth_providers
+     WHERE issuer IS NOT NULL
+       AND rtrim(issuer, '/') = $1
+     LIMIT 1`,
+    [normalized],
+  );
   const row = result.rows[0];
   return row ? mapProviderRow(row) : null;
 }
@@ -239,6 +277,7 @@ export async function createOAuthProvider(input: {
   pkce_required?: boolean;
   token_auth_method?: OAuthProviderRecord["token_auth_method"];
   login_enabled?: boolean;
+  source?: OAuthProviderSource;
   metadata?: JsonObject;
 }): Promise<OAuthProviderRecord> {
   const id = randomUUID();
@@ -265,9 +304,9 @@ export async function createOAuthProvider(input: {
         authorization_url, token_url, userinfo_url, revoke_url, jwks_url,
         client_id, encrypted_client_secret, client_secret_vault_id,
         default_scopes, supported_scopes, pkce_required, token_auth_method,
-        status, is_builtin, login_enabled, metadata
+        status, is_builtin, login_enabled, source, metadata
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,FALSE,$20,$21
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,FALSE,$20,$21,$22
       )
     `,
     [
@@ -291,6 +330,7 @@ export async function createOAuthProvider(input: {
       tokenAuthMethod,
       status,
       input.login_enabled ?? false,
+      input.source ?? "manual",
       JSON.stringify(input.metadata ?? {}),
     ],
   );
@@ -335,35 +375,71 @@ export async function updateOAuthProviderCredentials(input: {
 /** Refresh the OAuth/OIDC endpoints of an existing provider; omitted fields are left as-is. */
 export async function updateOAuthProviderEndpoints(input: {
   id: string;
+  display_name?: string;
   issuer?: string | null;
+  discovery_url?: string | null;
   authorization_url?: string | null;
   token_url?: string | null;
   userinfo_url?: string | null;
+  revoke_url?: string | null;
   jwks_url?: string | null;
   default_scopes?: string[];
+  supported_scopes?: string[];
+  metadata?: JsonObject;
 }): Promise<OAuthProviderRecord | null> {
   const result = await pool.query(
     `
       UPDATE cap_oauth_providers
-      SET issuer = COALESCE($2, issuer),
-          authorization_url = COALESCE($3, authorization_url),
-          token_url = COALESCE($4, token_url),
-          userinfo_url = COALESCE($5, userinfo_url),
-          jwks_url = COALESCE($6, jwks_url),
-          default_scopes = COALESCE($7::jsonb, default_scopes),
+      SET display_name = COALESCE($2, display_name),
+          issuer = COALESCE($3, issuer),
+          discovery_url = COALESCE($4, discovery_url),
+          authorization_url = COALESCE($5, authorization_url),
+          token_url = COALESCE($6, token_url),
+          userinfo_url = COALESCE($7, userinfo_url),
+          revoke_url = COALESCE($8, revoke_url),
+          jwks_url = COALESCE($9, jwks_url),
+          default_scopes = COALESCE($10::jsonb, default_scopes),
+          supported_scopes = COALESCE($11::jsonb, supported_scopes),
+          metadata = COALESCE($12::jsonb, metadata),
           updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
     [
       input.id,
+      input.display_name ?? null,
       input.issuer ?? null,
+      input.discovery_url ?? null,
       input.authorization_url ?? null,
       input.token_url ?? null,
       input.userinfo_url ?? null,
+      input.revoke_url ?? null,
       input.jwks_url ?? null,
       input.default_scopes ? JSON.stringify(input.default_scopes) : null,
+      input.supported_scopes ? JSON.stringify(input.supported_scopes) : null,
+      input.metadata ? JSON.stringify(input.metadata) : null,
     ],
+  );
+  const row = result.rows[0];
+  return row ? mapProviderRow(row) : null;
+}
+
+export async function setOAuthProviderStatus(
+  id: string,
+  status: OAuthProviderStatus,
+): Promise<OAuthProviderRecord | null> {
+  const result = await pool.query(
+    `UPDATE cap_oauth_providers SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [id, status],
+  );
+  const row = result.rows[0];
+  return row ? mapProviderRow(row) : null;
+}
+
+export async function markOAuthProviderReviewed(id: string): Promise<OAuthProviderRecord | null> {
+  const result = await pool.query(
+    `UPDATE cap_oauth_providers SET reviewed_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [id],
   );
   const row = result.rows[0];
   return row ? mapProviderRow(row) : null;

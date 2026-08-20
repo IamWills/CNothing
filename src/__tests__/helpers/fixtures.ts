@@ -81,3 +81,26 @@ export function stubUpstreamFetch(
     },
   };
 }
+
+export function asMandateApproval<T extends { grant?: unknown }>(
+  result: T,
+): T & { grant: NonNullable<T["grant"]> } {
+  if (!("grant" in result) || result.grant == null) {
+    throw new Error("expected a mandate to be minted");
+  }
+  return result as T & { grant: NonNullable<T["grant"]> };
+}
+
+export function asExecutedProxy<T extends { status: unknown }>(
+  result: T,
+): T & { status: number; headers: Record<string, string>; body: unknown; truncated: boolean } {
+  if (typeof result.status !== "number" || !("headers" in result)) {
+    throw new Error("expected an executed proxy response");
+  }
+  return result as T & {
+    status: number;
+    headers: Record<string, string>;
+    body: unknown;
+    truncated: boolean;
+  };
+}

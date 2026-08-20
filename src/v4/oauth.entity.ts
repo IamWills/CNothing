@@ -2,6 +2,7 @@ import type { JsonObject } from "./platform.entity";
 
 export type OAuthAuthType = "oauth2" | "oidc" | "api_key" | "custom";
 export type OAuthProviderStatus = "active" | "unconfigured" | "disabled";
+export type OAuthProviderSource = "manual" | "discovered" | "imported";
 export type OAuthConnectionStatus = "active" | "expired" | "reconnect_required" | "revoked";
 export type OAuthTokenAuthMethod = "client_secret_basic" | "client_secret_post" | "none";
 
@@ -29,6 +30,8 @@ export type OAuthProviderRecord = {
   is_builtin: boolean;
   /** Provider may also be used as a console login identity provider. */
   login_enabled: boolean;
+  source: OAuthProviderSource;
+  reviewed_at: string | null;
   metadata: JsonObject;
   created_at: string;
   updated_at: string;

@@ -49,6 +49,24 @@ describe("provider discovery treats metadata as untrusted input", () => {
     expect(upstream.calls[0]!.url).toBe(`${ISSUER}/.well-known/openid-configuration`);
   });
 
+  test("falls back to OAuth authorization-server metadata when OIDC discovery is missing", async () => {
+    upstream.restore();
+    upstream = stubUpstreamFetch((url) => {
+      if (url.includes("openid-configuration")) {
+        return new Response("missing", { status: 404 });
+      }
+      return Response.json(discoveryDocument());
+    });
+
+    const discovered = await discoverOAuthProvider({ issuer: ISSUER });
+    expect(discovered.discovery_url).toBe(`${ISSUER}/.well-known/oauth-authorization-server`);
+    expect(discovered.authorization_url).toBe(`${ISSUER}/authorize`);
+    expect(upstream.calls.map((call) => call.url)).toEqual([
+      `${ISSUER}/.well-known/openid-configuration`,
+      `${ISSUER}/.well-known/oauth-authorization-server`,
+    ]);
+  });
+
   test("never follows a redirect away from the validated host", async () => {
     await discoverOAuthProvider({ issuer: ISSUER });
     expect(upstream.calls[0]!.init.redirect).toBe("error");

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { PRIVATE_TEST_HOST } from "../../__tests__/helpers/dns-mock";
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
 import {
+  asExecutedProxy,
+  asMandateApproval,
   givenAgent,
   givenConnection,
   givenProvider,
@@ -29,14 +31,14 @@ async function givenActiveGrant(options: { allowedHosts?: string[]; allowedMetho
     provider: provider.slug,
     apiBaseUrl: API_BASE_URL,
   });
-  const approved = await proxyService.approveAccess({
+  const approved = asMandateApproval(await proxyService.approveAccess({
     accessRequestId: request.access_request_id,
     userId: USER_ID,
     connectionId: connection.id,
     ...(options.allowedHosts ? { allowedHosts: options.allowedHosts } : {}),
     ...(options.allowedMethods ? { allowedMethods: options.allowedMethods } : {}),
     ...(options.expiresAt ? { expiresAt: options.expiresAt } : {}),
-  });
+  }));
   return { agent, provider, connection, grantId: approved.grant.id };
 }
 
@@ -57,12 +59,12 @@ describeWithDb("v4 credential-injecting proxy", () => {
   test("injects the vaulted credential and returns the upstream response", async () => {
     const { agent, grantId } = await givenActiveGrant();
 
-    const result = await proxyService.proxy({
+    const result = asExecutedProxy(await proxyService.proxy({
       agent,
       grantId,
       method: "GET",
       url: "https://api.github.com/user/repos",
-    });
+    }));
 
     expect(result.status).toBe(200);
     expect(result.headers["x-ratelimit-remaining"]).toBe("42");
@@ -104,12 +106,12 @@ describeWithDb("v4 credential-injecting proxy", () => {
     );
     const { agent, grantId } = await givenActiveGrant();
 
-    const result = await proxyService.proxy({
+    const result = asExecutedProxy(await proxyService.proxy({
       agent,
       grantId,
       method: "GET",
       url: "https://api.github.com/user",
-    });
+    }));
 
     expect(JSON.stringify(result)).not.toContain(ACCESS_TOKEN);
     expect(result.headers["x-echo-token"]).toBe("[REDACTED]");
@@ -130,12 +132,12 @@ describeWithDb("v4 credential-injecting proxy", () => {
     );
     const { agent, grantId } = await givenActiveGrant();
 
-    const result = await proxyService.proxy({
+    const result = asExecutedProxy(await proxyService.proxy({
       agent,
       grantId,
       method: "GET",
       url: "https://api.github.com/user",
-    });
+    }));
 
     expect(result.headers["set-cookie"]).toBeUndefined();
     expect(result.headers["www-authenticate"]).toBeUndefined();

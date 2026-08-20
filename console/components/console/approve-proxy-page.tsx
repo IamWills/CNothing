@@ -110,19 +110,28 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
   );
 
   async function handleApprove() {
-    if (!selectedConnectionId) {
+    const isTransaction = request?.type === "transaction";
+    if (!isTransaction && !selectedConnectionId) {
       setErrorMessage("Select an OAuth connection first.");
       return;
     }
     setErrorMessage("");
     try {
-      const result = await approveV4AccessRequest(connection, accessRequestId, {
-        connection_id: selectedConnectionId,
-      });
-      setRequest((prev) => (prev ? { ...prev, status: "approved" } : prev));
-      setStatusMessage(
-        `Proxy access granted (grant ${result.grant.id}). The agent can now call ${result.grant.allowed_hosts.join(", ")} without ever seeing tokens.`,
+      const result = await approveV4AccessRequest(
+        connection,
+        accessRequestId,
+        isTransaction ? {} : { connection_id: selectedConnectionId },
       );
+      setRequest((prev) => (prev ? { ...prev, status: "approved" } : prev));
+      if (result.grant) {
+        setStatusMessage(
+          `Proxy access granted (grant ${result.grant.id}). The agent can now call ${result.grant.allowed_hosts.join(", ")} without ever seeing tokens.`,
+        );
+      } else {
+        setStatusMessage(
+          `Transaction authorized${result.transaction_id ? ` (${result.transaction_id})` : ""}. The agent can retry the same request; tokens still never leave CNothing.`,
+        );
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Approval failed.");
     }
@@ -141,8 +150,12 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
 
   return (
     <PageFrame
-      title="Approve Proxy Access"
-      description="Grant an agent connection-level API access. Tokens stay on CNothing and are never shown to the agent."
+      title={request?.type === "transaction" ? "Approve Action" : "Approve Proxy Access"}
+      description={
+        request?.type === "transaction"
+          ? "Authorize this one-time action. Tokens stay on CNothing and are never shown to the agent."
+          : "Grant an agent connection-level API access. Tokens stay on CNothing and are never shown to the agent."
+      }
     >
       {!authReady || loading ? (
         <Card className="mb-4 p-5 text-sm text-slate-600">Loading approval request…</Card>
@@ -204,16 +217,49 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
                 <span className="font-medium">Reason:</span> {request.reason}
               </p>
             ) : null}
+            {request.type === "transaction" ? (
+              <>
+                <p>
+                  <span className="font-medium">Action:</span> {request.action ?? "transaction"}
+                </p>
+                {request.resource?.url ? (
+                  <p>
+                    <span className="font-medium">Request:</span> {request.resource.method}{" "}
+                    {request.resource.url}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
           </div>
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            This grants the agent access to every API on the listed hosts through your connection.
-            Approve only if you trust this agent.
+          {request.type === "transaction" ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              This authorizes one side-effecting call through your existing mandate. The agent still
+              never sees tokens.
+            </div>
+          ) : (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              This grants the agent access to every API on the listed hosts through your connection.
+              Approve only if you trust this agent.
+            </div>
+          )}
+        </Card>
+      ) : null}
+
+      {isLoggedIn && request?.status === "pending" && request.type === "transaction" ? (
+        <Card className="mb-4 space-y-4 border-[color:var(--brand)]/30 p-5">
+          <h3 className="font-semibold">Authorize this action</h3>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void handleApprove()}>Approve Action</Button>
+            <Button variant="outline" onClick={() => void handleDeny()}>
+              Deny
+            </Button>
           </div>
         </Card>
       ) : null}
 
-      {isLoggedIn && request?.status === "pending" ? (
+      {isLoggedIn && request?.status === "pending" && request.type !== "transaction" ? (
         matchingConnections.length > 0 ? (
           <Card className="mb-4 space-y-4 border-[color:var(--brand)]/30 p-5">
             <div>
@@ -274,7 +320,9 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
           This request is already <strong>{request.status}</strong>. No further action is needed
           here.
           {request.status === "approved"
-            ? " The agent can use its grant_id with POST /v4/proxy."
+            ? request.type === "transaction"
+              ? " The agent can retry the same proxy_request; tokens still never leave CNothing."
+              : " The agent can use its grant_id with POST /v4/proxy."
             : null}
         </Card>
       ) : null}

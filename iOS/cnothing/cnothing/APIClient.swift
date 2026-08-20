@@ -229,16 +229,19 @@ final class APIClient: ObservableObject {
         return response.items
     }
 
-    func approve(requestId: String, connectionId: String) async throws -> ApproveResponse {
+    func approve(requestId: String, connectionId: String? = nil) async throws -> ApproveResponse {
         let proof = try await signedChallenge(requestId: requestId, verdict: "approved")
+        var body: [String: Any] = [
+            "challenge_id": proof.challengeId,
+            "signature": proof.signature,
+        ]
+        if let connectionId, !connectionId.isEmpty {
+            body["connection_id"] = connectionId
+        }
         return try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/approve",
-            body: [
-                "connection_id": connectionId,
-                "challenge_id": proof.challengeId,
-                "signature": proof.signature,
-            ]
+            body: body
         )
     }
 

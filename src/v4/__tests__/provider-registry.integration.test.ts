@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import "../../__tests__/helpers/dns-mock";
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import { givenProvider, stubUpstreamFetch } from "../../__tests__/helpers/fixtures";
+import { givenAgent, givenProvider, stubUpstreamFetch } from "../../__tests__/helpers/fixtures";
 import { pool } from "../../db";
 
 const { listAuthProviders } = await import("../auth-providers.service");
@@ -10,6 +10,7 @@ const { oidcService } = await import("../oidc.service");
 const { resolveGitHubLoginProviderId } = await import("../login-provider.service");
 const { findOAuthProviderBySlug, listOAuthProviders, updateOAuthProviderCredentials, toProviderPublic } = await import("../oauth.repository");
 const { oauthProviderService } = await import("../oauth-connection.service");
+const { proxyService } = await import("../proxy.service");
 const { upsertUserIdentity } = await import("../platform.repository");
 
 const API_BASE = "https://cnothing.example.com";
@@ -274,5 +275,59 @@ describeWithDb("unified provider registry", () => {
       oauthProviderService.proposeProvider({ issuer: "https://127.0.0.1" }),
     ).rejects.toThrow(/blocked/i);
     expect(await countProviders()).toBe(0);
+  });
+
+  test("RFC 7591 registration stores credentials without activating", async () => {
+    upstream.restore();
+    upstream = stubUpstreamFetch((url, init) => {
+      if (url.endsWith("/register")) {
+        expect(String(init.method ?? "GET").toUpperCase()).toBe("POST");
+        expect(init.redirect).toBe("error");
+        const body = JSON.parse(String(init.body ?? "{}")) as { redirect_uris?: string[] };
+        expect(body.redirect_uris?.[0]).toContain("/v4/oauth/callback/issuer-example-com");
+        return Response.json(
+          { client_id: "dyn-client", client_secret: "dyn-secret", token_endpoint_auth_method: "client_secret_post" },
+          { status: 201 },
+        );
+      }
+      return Response.json({
+        ...discoveryDocument(),
+        registration_endpoint: `${ISSUER}/register`,
+      });
+    });
+
+    const proposed = await oauthProviderService.proposeProvider({ issuer: ISSUER });
+    expect(proposed).toMatchObject({
+      status: "unconfigured",
+      registry_status: "discovered",
+      client_id: "dyn-client",
+      has_client_secret: true,
+      connectable: false,
+    });
+    expect(proposed.validation?.dynamic_client_registration).toMatchObject({
+      attempted: true,
+      ok: true,
+    });
+
+    const activated = await oauthProviderService.setProviderStatus(proposed.id, "active");
+    expect(activated).toMatchObject({ status: "active", connectable: true });
+  });
+
+  test("request_access proposes an unknown issuer instead of 404", async () => {
+    const { agent } = await givenAgent();
+    const result = await proxyService.requestAccess({
+      agent,
+      provider: ISSUER,
+      reason: "Need this IdP",
+      apiBaseUrl: API_BASE,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      status: "provider_review_required",
+      provider: "issuer-example-com",
+      next_action: "wait_for_operator",
+    });
+    expect("approval_url" in result).toBe(false);
+    expect(await countProviders()).toBe(1);
   });
 });

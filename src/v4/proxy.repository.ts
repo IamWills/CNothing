@@ -370,6 +370,23 @@ export async function listProxyGrantsForUser(userId: string): Promise<ProxyGrant
   return result.rows.map(mapGrantRow);
 }
 
+export async function updateProxyGrantConstraints(
+  id: string,
+  constraints: ReturnType<typeof buildMandateConstraints>,
+): Promise<ProxyGrantRecord | null> {
+  const result = await pool.query(
+    `
+      UPDATE proxy_grants
+      SET constraints = $2::jsonb, updated_at = NOW()
+      WHERE id = $1 AND status = 'active'
+      RETURNING *
+    `,
+    [id, JSON.stringify(constraints)],
+  );
+  const row = result.rows[0];
+  return row ? mapGrantRow(row) : null;
+}
+
 export async function revokeProxyGrant(id: string, userId: string): Promise<boolean> {
   const result = await pool.query(
     `

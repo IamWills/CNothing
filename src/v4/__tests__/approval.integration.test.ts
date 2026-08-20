@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import { givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
+import { asPendingAccess, givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
+
 import { approvalService } from "../approval.service";
 import { proxyService } from "../proxy.service";
 import { findProxyAccessRequest } from "../proxy.repository";
@@ -17,13 +18,13 @@ describeWithDb("access request is stored as an approval request", () => {
   test("request_access writes a delegation approval", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
-    const result = await proxyService.requestAccess({
+    const result = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       reason: "Create an issue",
       userId: USER_ID,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     const stored = await findProxyAccessRequest(result.access_request_id);
     expect(stored).toMatchObject({
@@ -43,12 +44,12 @@ describeWithDb("access request is stored as an approval request", () => {
   test("pending list and status expose the approval envelope without dropping v4 fields", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
-    const created = await proxyService.requestAccess({
+    const created = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       userId: USER_ID,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     const pending = await proxyService.listPendingForUser(USER_ID);
     expect(pending[0]).toMatchObject({
@@ -69,12 +70,12 @@ describeWithDb("access request is stored as an approval request", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const created = await proxyService.requestAccess({
+    const created = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       userId: USER_ID,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: created.access_request_id,
@@ -99,12 +100,12 @@ describeWithDb("access request is stored as an approval request", () => {
   test("a device challenge is refused once the approval is no longer pending", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
-    const created = await proxyService.requestAccess({
+    const created = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       userId: USER_ID,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     await proxyService.denyAccess({
       accessRequestId: created.access_request_id,
       userId: USER_ID,
@@ -118,12 +119,12 @@ describeWithDb("access request is stored as an approval request", () => {
   test("another principal cannot decide a targeted approval", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
-    const created = await proxyService.requestAccess({
+    const created = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       userId: USER_ID,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     await expect(
       proxyService.denyAccess({

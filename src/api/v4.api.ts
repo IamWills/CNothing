@@ -133,9 +133,12 @@ export async function handleV4Request(request: Request): Promise<Response> {
       ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
       ...(userHintRaw ? { userId: userHintRaw } : {}),
       ...(typeof body.callback_url === "string" ? { callbackUrl: body.callback_url } : {}),
+      ...(typeof body.issuer === "string" ? { issuer: body.issuer } : {}),
+      ...(typeof body.discovery_url === "string" ? { discoveryUrl: body.discovery_url } : {}),
       apiBaseUrl: inferBaseUrl(request),
     });
-    return Response.json(result, { status: 201 });
+    const created = "status" in result && result.status === "pending";
+    return Response.json(result, { status: created ? 201 : 200 });
   }
 
   // Pending approvals for the signed-in user (iOS authenticator polling).
@@ -280,6 +283,23 @@ export async function handleV4Request(request: Request): Promise<Response> {
       userId: session.user_id,
     });
     return Response.json(result);
+  }
+
+  if (request.method === "PATCH" && segments.length === 3 && segments[1] === "grants") {
+    const session = await requireUserSession(request);
+    const body = await parseJsonBody(request);
+    if (typeof body.require_approval !== "boolean") {
+      throw new ValidationError("require_approval must be a boolean", {
+        error_code: "missing_field",
+        field: "require_approval",
+      });
+    }
+    const grant = await proxyService.updateGrant({
+      grantId: decodeURIComponent(segments[2] ?? ""),
+      userId: session.user_id,
+      requireApproval: body.require_approval,
+    });
+    return Response.json({ ok: true, grant });
   }
 
   // --- Discovery ---

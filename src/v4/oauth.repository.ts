@@ -279,15 +279,17 @@ export async function createOAuthProvider(input: {
   login_enabled?: boolean;
   source?: OAuthProviderSource;
   metadata?: JsonObject;
+  status?: OAuthProviderStatus;
 }): Promise<OAuthProviderRecord> {
   const id = randomUUID();
   const tokenAuthMethod = input.token_auth_method ?? "client_secret_post";
   const hasSecretOrPublic =
     tokenAuthMethod === "none" || Boolean(input.client_secret?.trim());
-  const status =
+  const computedStatus =
     input.client_id?.trim() && (tokenAuthMethod === "none" || hasSecretOrPublic)
       ? "active"
       : "unconfigured";
+  const status = input.status ?? computedStatus;
 
   let clientSecretVaultId: string | null = null;
   if (input.client_secret?.trim()) {
@@ -342,6 +344,7 @@ export async function updateOAuthProviderCredentials(input: {
   id: string;
   client_id: string;
   client_secret?: string;
+  activate?: boolean;
 }): Promise<OAuthProviderRecord | null> {
   let clientSecretVaultId: string | null = null;
   if (input.client_secret?.trim()) {
@@ -355,18 +358,22 @@ export async function updateOAuthProviderCredentials(input: {
     }
   }
 
+  const activate = input.activate !== false;
   const result = await pool.query(
     `
       UPDATE cap_oauth_providers
       SET client_id = $2::text,
           encrypted_client_secret = NULL,
           client_secret_vault_id = COALESCE($3, client_secret_vault_id),
-          status = CASE WHEN $2::text IS NOT NULL AND $2::text <> '' THEN 'active' ELSE status END,
+          status = CASE
+            WHEN $4::boolean AND $2::text IS NOT NULL AND $2::text <> '' THEN 'active'
+            ELSE status
+          END,
           updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
-    [input.id, input.client_id, clientSecretVaultId],
+    [input.id, input.client_id, clientSecretVaultId, activate],
   );
   const row = result.rows[0];
   return row ? mapProviderRow(row) : null;

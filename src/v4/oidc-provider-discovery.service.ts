@@ -11,6 +11,7 @@ export type DiscoveredOAuthProvider = {
   userinfo_url: string | null;
   jwks_url: string | null;
   revoke_url: string | null;
+  registration_url: string | null;
   scopes_supported: string[];
 };
 
@@ -21,6 +22,7 @@ type OpenIdDiscoveryDocument = {
   userinfo_endpoint?: string;
   jwks_uri?: string;
   revocation_endpoint?: string;
+  registration_endpoint?: string;
   scopes_supported?: string[];
 };
 
@@ -127,6 +129,13 @@ async function fetchDiscoveryDocument(
 
   await assertSafeMetadataUrl(issuer, "issuer");
 
+  let registrationUrl: string | null = null;
+  try {
+    registrationUrl = await assertSafeEndpoint(doc.registration_endpoint, "registration_endpoint");
+  } catch {
+    registrationUrl = null;
+  }
+
   return {
     issuer,
     discovery_url: discoveryEndpoint,
@@ -135,6 +144,7 @@ async function fetchDiscoveryDocument(
     userinfo_url: await assertSafeEndpoint(doc.userinfo_endpoint, "userinfo_url"),
     jwks_url: await assertSafeEndpoint(doc.jwks_uri, "jwks_url"),
     revoke_url: await assertSafeEndpoint(doc.revocation_endpoint, "revoke_url"),
+    registration_url: registrationUrl,
     scopes_supported: Array.isArray(doc.scopes_supported)
       ? doc.scopes_supported.map(String)
       : [],
@@ -204,6 +214,7 @@ export async function mergeDiscoveredProviderInput(input: {
   userinfo_url?: string;
   revoke_url?: string;
   jwks_url?: string;
+  registration_url?: string | null;
   client_id?: string;
   client_secret?: string;
   default_scopes?: string[];
@@ -245,6 +256,7 @@ export async function mergeDiscoveredProviderInput(input: {
     userinfo_url: input.userinfo_url ?? discovered.userinfo_url ?? undefined,
     revoke_url: input.revoke_url ?? discovered.revoke_url ?? undefined,
     jwks_url: input.jwks_url ?? discovered.jwks_url ?? undefined,
+    registration_url: discovered.registration_url,
     client_id: input.client_id,
     client_secret: input.client_secret,
     default_scopes: input.default_scopes,

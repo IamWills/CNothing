@@ -4,7 +4,7 @@ CNothing 是面向 AI Agent 的认证基础设施。用户连接 OAuth Provider 
 
 Grant 是 Mandate 的当前表示：由 principal（现阶段为 User）授予 Agent 的委托权限，约束为 hosts、methods 和过期时间。Agent 继续调用 `list_grants` 和 `proxy_request`，不必理解 Mandate 这个名字。
 
-AccessRequest 是 ApprovalRequest 的当前表示。Delegation 会铸造 Mandate。当 Mandate 显式设置 `constraints.require_approval` 时，有副作用的 `proxy_request`（例如创建 GitHub Issue）会变成 Transaction Intent：Agent 仍然调用 `proxy_request`，收到带 `approval_url` 的 `approval_required`，用户批准后再重试同一请求。GET 不会被闸门拦住。Token 始终不离开 CNothing。
+AccessRequest 是 ApprovalRequest 的当前表示。Delegation 会铸造 Mandate。当 Mandate 显式设置 `constraints.require_approval`（控制台审批勾选、Grants 页开关，或批准 API）时，有副作用的 `proxy_request`（例如创建 GitHub Issue）会变成 Transaction Intent：Agent 仍然调用 `proxy_request`，收到带 `approval_url` 的 `approval_required`，用户批准后再重试同一请求。GET 不会被闸门拦住。Token 始终不离开 CNothing。
 
 ## 唯一支持的流程
 

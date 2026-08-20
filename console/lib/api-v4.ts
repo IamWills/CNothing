@@ -39,6 +39,8 @@ export type V4OAuthProviderAdmin = V4OAuthProvider & {
     authorization_url?: string | null;
     token_url?: string | null;
     jwks_url?: string | null;
+    registration_endpoint?: string | null;
+    dynamic_client_registration?: { attempted: boolean; ok: boolean; error?: string };
   } | null;
 };
 
@@ -109,7 +111,13 @@ export type V4Grant = {
   last_used_at: string | null;
   created_at: string;
   principal?: { type: string; id: string };
-  constraints?: { hosts: string[]; methods: string[]; expires_at: string | null };
+  constraints?: {
+    hosts: string[];
+    methods: string[];
+    expires_at: string | null;
+    require_approval?: boolean;
+    approval_required_methods?: string[];
+  };
   actions?: string[];
   issued_at?: string;
   revoked_at?: string | null;
@@ -376,6 +384,7 @@ export async function approveV4AccessRequest(
     allowed_hosts?: string[];
     allowed_methods?: string[];
     expires_at?: string;
+    require_approval?: boolean;
   } = {},
 ) {
   return requestJson<{ ok: true; grant?: V4Grant; transaction_id?: string; mandate_id?: string }>(
@@ -395,6 +404,18 @@ export async function denyV4AccessRequest(connection: ConsoleConnection, id: str
 
 export async function fetchV4Grants(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V4Grant[] }>(connection, "/v4/grants");
+}
+
+export async function updateV4Grant(
+  connection: ConsoleConnection,
+  grantId: string,
+  payload: { require_approval: boolean },
+) {
+  return requestJson<{ ok: true; grant: V4Grant }>(
+    connection,
+    `/v4/grants/${encodeURIComponent(grantId)}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
 }
 
 export async function revokeV4Grant(connection: ConsoleConnection, grantId: string) {

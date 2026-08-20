@@ -11,7 +11,7 @@ Use CNothing when a task requires an API protected by a user's OAuth account.
 
 1. Call `list_grants` first.
 2. Reuse an active grant only when its provider and `allowed_hosts` cover the intended request.
-3. If no grant matches, call `list_providers` and select the exact provider slug.
+3. If no grant matches, call `list_providers` and select the exact provider slug. If it is missing, call `request_access` with `issuer` or pass an https issuer as `provider` to propose it; tell the user an operator must review it at the returned `console_url`, then retry.
 4. Call `request_access` with a short, task-specific reason.
 5. If the conversation already contains the user's CNothing ID, GitHub username, or `u_` share code, pass it as `user_id` so a paired iOS device can receive a push. If it is unknown, omit it and continue.
 6. Relay `user_action.message` and the exact `approval_url` unchanged. When `pushed_to_devices` is positive, also tell the user to check the CNothing iOS notification.
@@ -28,7 +28,7 @@ Do not add `Authorization` or `Cookie` to `proxy_request`; CNothing strips those
 ## Recovery
 
 - No matching grant: call `list_providers`, then `request_access`.
-- Provider missing or not connectable: tell the user an operator must configure it.
+- Provider missing or not connectable: call `request_access` with `issuer` or `discovery_url`. If status is `provider_review_required`, relay `user_action.message` and wait for the operator; do not invent a new tool.
 - Approval pending (delegation or a write that returned `approval_required`): wait for `retry_after_seconds`; keep the exact approval URL available; then retry the same `proxy_request`.
 - Grant revoked or expired: request access again.
 - Host not allowed: use a URL from the grant's `allowed_hosts`; do not broaden the grant without a new user approval.

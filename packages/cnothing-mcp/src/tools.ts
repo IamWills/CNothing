@@ -35,7 +35,7 @@ export const MCP_TOOLS = [
     name: "list_providers",
     title: "List available OAuth providers",
     description:
-      "List providers that CNothing is configured to connect. Use the exact returned slug in request_access. If the required provider is absent or not connectable, report that an operator must configure it.",
+      "List providers that CNothing is configured to connect. Use the exact returned slug in request_access. If the required provider is absent, call request_access with issuer or discovery_url (or pass an https issuer as provider) so CNothing can propose it for operator review.",
     inputSchema: emptyInput,
     outputSchema: standardOutput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -48,11 +48,13 @@ export const MCP_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        provider: { type: "string", minLength: 1, description: "Exact provider slug from list_providers." },
+        provider: { type: "string", minLength: 1, description: "Exact provider slug from list_providers, or an https issuer URL to propose an unknown provider." },
         reason: { type: "string", minLength: 1, maxLength: 500, description: "Short task-specific reason shown to the user." },
         user_id: { type: "string", minLength: 1, description: "Optional known CNothing ID, GitHub username, or u_ share code for iOS push routing." },
         hosts: { type: "array", items: { type: "string", minLength: 1 }, uniqueItems: true, description: "Optional narrower host allowlist. Omit to use provider defaults." },
         callback_url: { type: "string", format: "uri", description: "Optional HTTPS webhook for the approval decision." },
+        issuer: { type: "string", format: "uri", description: "Optional issuer URL. Required to propose a provider that is not yet in the registry." },
+        discovery_url: { type: "string", format: "uri", description: "Optional OIDC discovery or OAuth authorization-server metadata URL." },
       },
       required: ["provider", "reason"],
       additionalProperties: false,
@@ -100,7 +102,7 @@ export const MCP_TOOLS = [
 export const MCP_WORKFLOW_MARKDOWN = `# CNothing v4 agent workflow
 
 1. Call \`list_grants\` and reuse a matching active grant.
-2. If no grant matches, call \`list_providers\` and select the exact provider slug.
+2. If no grant matches, call \`list_providers\` and select the exact provider slug. If the provider is missing, call \`request_access\` with \`issuer\` or an https provider URL to propose it; tell the user an operator must review it at the returned console_url, then retry.
 3. Call \`request_access\` with a short reason. Include a known user ID only when it is already available; otherwise omit it.
 4. Relay \`user_action.message\` and \`approval_url\` exactly. A paired CNothing iOS device may also receive a push notification.
 5. Call \`get_access_status\` no faster than \`retry_after_seconds\` until approved.

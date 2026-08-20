@@ -73,6 +73,16 @@
             "type": "string",
             "format": "uri",
             "description": "Optional public HTTPS URL notified after approval or denial."
+          },
+          "issuer": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional. Propose an unknown provider from its issuer. You may also pass an https issuer as provider."
+          },
+          "discovery_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional OIDC discovery or RFC 8414 metadata URL used with a provider proposal."
           }
         }
       },
@@ -175,7 +185,7 @@
       "post": {
         "tags": ["Agent"],
         "summary": "Request a connection-level grant",
-        "description": "Use the returned approval_url exactly as provided. If user_id resolves to a paired user, CNothing also sends an iOS push. The agent must then poll GET /v4/access-requests/{id}; it must not browse, rewrite, or POST to the approval URL. The record is an ApprovalRequest of type delegation: the same iOS pairing, APNs, and P-256 challenge path will later carry action and transaction approvals.",
+        "description": "Use the returned approval_url exactly as provided. If user_id resolves to a paired user, CNothing also sends an iOS push. The agent must then poll GET /v4/access-requests/{id}; it must not browse, rewrite, or POST to the approval URL. If the provider is unknown, pass issuer or discovery_url (or an https issuer as provider) to create a registry proposal; the response status is then provider_review_required until an operator activates it.",
         "security": [{ "agentToken": [] }],
         "requestBody": {
           "required": true,
@@ -249,6 +259,28 @@
         "description": "A grant is the v4 representation of a Mandate: delegated authority from a principal to an agent. The response keeps allowed_hosts / allowed_methods and adds principal, constraints, actions, issued_at, and revoked_at.",
         "security": [{ "agentToken": [] }, { "userSession": [] }],
         "responses": { "200": { "description": "Agent grants or user-owned grants." } }
+      }
+    },
+    "/v4/grants/{id}": {
+      "patch": {
+        "tags": ["User"],
+        "summary": "Update mandate constraints on a grant",
+        "description": "The granting user can opt a live Mandate into require_approval so later writes become Transaction Intents. GET is never gated.",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["require_approval"],
+                "properties": { "require_approval": { "type": "boolean" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Updated grant." } }
       }
     },
     "/v4/grants/{id}/revoke": {

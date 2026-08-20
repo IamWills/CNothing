@@ -1,12 +1,13 @@
 import { ValidationError } from "../utils/errors";
+import config from "../config";
 import type { JsonObject } from "./platform.entity";
 import type { OAuthProviderRecord } from "./oauth.entity";
 import { mergeDiscoveredProviderInput } from "./oidc-provider-discovery.service";
 import type { ProviderRegistrationMethod, ProviderSource, ProviderValidationResult } from "./provider-registry";
+import { registerOAuthClient } from "./rfc7591";
 
 /**
  * Operator or agent input before a strategy prepares a registry row.
- * RFC 7591 client registration is intentionally not implemented here.
  */
 export type RegistrationInput = {
   slug: string;
@@ -46,15 +47,21 @@ export interface RegistrationStrategy {
 function validationFromPrepared(
   method: ProviderRegistrationMethod,
   provider: PreparedRegistration["provider"],
+  extra: Partial<ProviderValidationResult> = {},
 ): ProviderValidationResult {
   return {
-    ok: true,
+    ok: extra.ok !== false,
     checked_at: new Date().toISOString(),
     method,
     issuer: provider.issuer,
     authorization_url: provider.authorization_url ?? null,
     token_url: provider.token_url ?? null,
     jwks_url: provider.jwks_url ?? null,
+    registration_endpoint: extra.registration_endpoint ?? provider.registration_url ?? null,
+    ...(extra.error ? { error: extra.error } : {}),
+    ...(extra.dynamic_client_registration
+      ? { dynamic_client_registration: extra.dynamic_client_registration }
+      : {}),
   };
 }
 
@@ -76,8 +83,8 @@ export class ManualRegistrationStrategy implements RegistrationStrategy {
 }
 
 /**
- * OIDC Discovery and RFC 8414 Authorization Server Metadata.
- * Does not perform RFC 7591 Dynamic Client Registration.
+ * OIDC Discovery, RFC 8414 Authorization Server Metadata, and optional RFC 7591
+ * Dynamic Client Registration. DCR credentials never auto-activate a provider.
  */
 export class DynamicRegistrationStrategy implements RegistrationStrategy {
   readonly method = "dynamic" as const;
@@ -94,10 +101,42 @@ export class DynamicRegistrationStrategy implements RegistrationStrategy {
       auth_type: input.auth_type ?? "oidc",
     });
 
+    const registrationUrl = provider.registration_url?.trim();
+    let dynamicClientRegistration: ProviderValidationResult["dynamic_client_registration"] = {
+      attempted: false,
+      ok: false,
+    };
+    if (registrationUrl) {
+      const publicOrigin = config.publicBaseUrl.replace(/\/+$/, "");
+      const registered = await registerOAuthClient({
+        registrationUrl,
+        redirectUris: [`${publicOrigin}/v4/oauth/callback/${provider.slug}`],
+        clientName: "CNothing",
+        clientUri: publicOrigin,
+      });
+      dynamicClientRegistration = {
+        attempted: registered.attempted,
+        ok: registered.ok,
+        ...(registered.error ? { error: registered.error } : {}),
+      };
+      if (registered.ok && registered.client_id) {
+        provider.client_id = registered.client_id;
+        if (registered.client_secret) {
+          provider.client_secret = registered.client_secret;
+        }
+        if (registered.token_endpoint_auth_method) {
+          provider.token_auth_method = registered.token_endpoint_auth_method;
+        }
+      }
+    }
+
     return {
       method: this.method,
       source: "discovered",
-      validation: validationFromPrepared(this.method, provider),
+      validation: validationFromPrepared(this.method, provider, {
+        registration_endpoint: registrationUrl ?? null,
+        dynamic_client_registration: dynamicClientRegistration,
+      }),
       provider: { ...provider, login_enabled: input.login_enabled },
     };
   }

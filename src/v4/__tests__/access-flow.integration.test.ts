@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase, warmConnectionPool } from "../../__tests__/helpers/db";
-import { givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
+import { asPendingAccess, givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
+
 import { proxyService } from "../proxy.service";
 import {
   createProxyAccessRequest,
@@ -22,13 +23,13 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider({ apiHosts: ["api.github.com"] });
 
-    const result = await proxyService.requestAccess({
+    const result = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       reason: "Create an issue",
       userId: USER_ID,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     expect(result.status).toBe("pending");
     expect(result.requested_hosts).toEqual(["api.github.com"]);
@@ -52,11 +53,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
 
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
@@ -78,11 +79,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
@@ -105,11 +106,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     await warmConnectionPool();
 
     const outcomes = await Promise.allSettled([
@@ -133,11 +134,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: "github:mallory" });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     await expect(
       proxyService.approveAccess({
@@ -155,11 +156,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const requested = await givenProvider();
     const other = await givenProvider();
     const connection = await givenConnection({ providerId: other.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: requested.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     await expect(
       proxyService.approveAccess({
@@ -175,11 +176,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
     await revokeOAuthConnection(connection.id, USER_ID);
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     await expect(
       proxyService.approveAccess({
@@ -213,11 +214,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
   test("denial records the verdict without minting a grant", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     expect(await proxyService.denyAccess({
       accessRequestId: request.access_request_id,
@@ -234,11 +235,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const { agent } = await givenAgent();
     const { agent: intruder } = await givenAgent();
     const provider = await givenProvider();
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     await expect(
       proxyService.getAccessStatus(request.access_request_id, intruder),
@@ -249,11 +250,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
@@ -275,11 +276,11 @@ describeWithDb("v4 access request → grant lifecycle", () => {
   test("opening the approval page claims an unassigned request for the viewer", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     expect(request.resolved_user_id).toBeNull();
 
     const claimed = await proxyService.getAccessRequestForApproval(

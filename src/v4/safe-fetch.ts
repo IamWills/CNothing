@@ -70,3 +70,45 @@ export async function fetchPublicJsonDocument<T>(
     });
   }
 }
+
+/** POST to a public metadata endpoint (RFC 7591). Same SSRF rules as GET. */
+export async function postPublicJsonDocument<T>(
+  rawUrl: string,
+  body: unknown,
+  options: { label: string; timeoutMs?: number; maxBytes?: number },
+): Promise<{ status: number; json: T | null; text: string }> {
+  const url = await assertSafeMetadataUrl(rawUrl, options.label);
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+      redirect: "error",
+      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new ValidationError(
+      `Could not post ${options.label}: ${error instanceof Error ? error.message : String(error)}`,
+      { error_code: "metadata_unreachable", field: options.label },
+    );
+  }
+
+  const raw = Buffer.from(await response.arrayBuffer());
+  if (raw.byteLength > maxBytes) {
+    throw new ValidationError(`${options.label} document is too large`, {
+      error_code: "metadata_too_large",
+      field: options.label,
+    });
+  }
+  const text = raw.toString("utf8");
+  let json: T | null = null;
+  try {
+    json = JSON.parse(text) as T;
+  } catch {
+    json = null;
+  }
+  return { status: response.status, json, text };
+}

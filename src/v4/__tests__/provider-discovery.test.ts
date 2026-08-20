@@ -67,6 +67,19 @@ describe("provider discovery treats metadata as untrusted input", () => {
     ]);
   });
 
+  test("captures a public registration_endpoint for RFC 7591", async () => {
+    serve(discoveryDocument({ registration_endpoint: `${ISSUER}/register` }));
+    const discovered = await discoverOAuthProvider({ issuer: ISSUER });
+    expect(discovered.registration_url).toBe(`${ISSUER}/register`);
+  });
+
+  test("ignores an internal registration_endpoint instead of failing discovery", async () => {
+    serve(discoveryDocument({ registration_endpoint: "https://127.0.0.1/register" }));
+    const discovered = await discoverOAuthProvider({ issuer: ISSUER });
+    expect(discovered.registration_url).toBeNull();
+    expect(discovered.authorization_url).toBe(`${ISSUER}/authorize`);
+  });
+
   test("never follows a redirect away from the validated host", async () => {
     await discoverOAuthProvider({ issuer: ISSUER });
     expect(upstream.calls[0]!.init.redirect).toBe("error");

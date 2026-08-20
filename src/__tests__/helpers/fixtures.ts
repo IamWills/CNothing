@@ -82,6 +82,15 @@ export function stubUpstreamFetch(
   };
 }
 
+export function asPendingAccess<T extends { status?: unknown }>(
+  result: T,
+): T & { access_request_id: string; approval_url: string; status: "pending" } {
+  if (!("access_request_id" in result) || typeof (result as { access_request_id?: unknown }).access_request_id !== "string") {
+    throw new Error("expected a pending access request");
+  }
+  return result as T & { access_request_id: string; approval_url: string; status: "pending" };
+}
+
 export function asMandateApproval<T extends { grant?: unknown }>(
   result: T,
 ): T & { grant: NonNullable<T["grant"]> } {

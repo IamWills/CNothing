@@ -29,6 +29,7 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
   const [connections, setConnections] = React.useState<V4OAuthConnection[]>([]);
   const [authProviders, setAuthProviders] = React.useState<V4AuthProvider[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = React.useState("");
+  const [requireApproval, setRequireApproval] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
@@ -120,7 +121,7 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
       const result = await approveV4AccessRequest(
         connection,
         accessRequestId,
-        isTransaction ? {} : { connection_id: selectedConnectionId },
+        isTransaction ? {} : { connection_id: selectedConnectionId, require_approval: requireApproval },
       );
       setRequest((prev) => (prev ? { ...prev, status: "approved" } : prev));
       if (result.grant) {
@@ -279,6 +280,21 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
                 </option>
               ))}
             </select>
+            <label className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={requireApproval}
+                onChange={(event) => setRequireApproval(event.target.checked)}
+              />
+              <span>
+                <span className="font-medium">Require approval for writes</span>
+                <span className="mt-1 block text-slate-600">
+                  GET stays open. Side-effecting calls such as creating a GitHub issue wait for a
+                  one-time approval. Tokens still never leave CNothing.
+                </span>
+              </span>
+            </label>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void handleApprove()}>Approve Access</Button>
               <Button variant="outline" onClick={() => void handleDeny()}>

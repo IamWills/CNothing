@@ -471,6 +471,8 @@ function ProviderDetail(props: {
             </Badge>
             {provider.connectable ? (
               <Badge className="bg-emerald-100 text-emerald-800">Connectable</Badge>
+            ) : provider.client_id || provider.has_client_secret ? (
+              <Badge className="bg-amber-100 text-amber-800">Needs activation</Badge>
             ) : (
               <Badge className="bg-amber-100 text-amber-800">Needs credentials</Badge>
             )}
@@ -496,9 +498,27 @@ function ProviderDetail(props: {
       <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
         {validation ? (
           validation.ok ? (
-            <p>
-              Validation passed at {validation.checked_at} ({validation.method}).
-            </p>
+            <div className="space-y-1">
+              <p>
+                Validation passed at {validation.checked_at} ({validation.method}).
+              </p>
+              {validation.dynamic_client_registration?.ok ? (
+                <p>
+                  RFC 7591 registered a client. Review, then Activate — you do not need to paste a
+                  secret.
+                </p>
+              ) : null}
+              {validation.dynamic_client_registration?.attempted &&
+              !validation.dynamic_client_registration.ok ? (
+                <p className="text-amber-800">
+                  RFC 7591 registration failed
+                  {validation.dynamic_client_registration.error
+                    ? `: ${validation.dynamic_client_registration.error}`
+                    : ""}
+                  . Paste client credentials below if this provider requires them.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="text-amber-800">
               Validation failed: {validation.error ?? "unknown error"}

@@ -2,7 +2,8 @@ import { createSign, generateKeyPairSync, randomBytes, randomUUID } from "node:c
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import { givenAgent, givenProvider } from "../../__tests__/helpers/fixtures";
+import { asPendingAccess, givenAgent, givenProvider } from "../../__tests__/helpers/fixtures";
+
 import { buildApprovalSignaturePayload, deviceService } from "../device.service";
 import { createApprovalChallenge } from "../device.repository";
 import { proxyService } from "../proxy.service";
@@ -37,12 +38,12 @@ async function pairFreshDevice() {
 async function givenPendingAccessRequest(): Promise<string> {
   const { agent } = await givenAgent();
   const provider = await givenProvider();
-  const request = await proxyService.requestAccess({
+  const request = asPendingAccess(await proxyService.requestAccess({
     agent,
     provider: provider.slug,
     userId: USER_ID,
     apiBaseUrl: API_BASE_URL,
-  });
+  }));
   return request.access_request_id;
 }
 

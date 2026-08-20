@@ -30,6 +30,12 @@ export type ProviderValidationResult = {
   authorization_url?: string | null;
   token_url?: string | null;
   jwks_url?: string | null;
+  registration_endpoint?: string | null;
+  dynamic_client_registration?: {
+    attempted: boolean;
+    ok: boolean;
+    error?: string;
+  };
 };
 
 export type ProviderRegistryMeta = {
@@ -70,7 +76,19 @@ export function registryMetaFromMetadata(metadata: JsonObject): ProviderRegistry
         : {}),
       ...(v.token_url === null || typeof v.token_url === "string" ? { token_url: v.token_url } : {}),
       ...(v.jwks_url === null || typeof v.jwks_url === "string" ? { jwks_url: v.jwks_url } : {}),
+      ...(v.registration_endpoint === null || typeof v.registration_endpoint === "string"
+        ? { registration_endpoint: v.registration_endpoint }
+        : {}),
     };
+    const dcrRaw = v.dynamic_client_registration;
+    if (dcrRaw && typeof dcrRaw === "object" && !Array.isArray(dcrRaw)) {
+      const dcr = dcrRaw as Record<string, unknown>;
+      validation.dynamic_client_registration = {
+        attempted: dcr.attempted === true,
+        ok: dcr.ok === true,
+        ...(typeof dcr.error === "string" ? { error: dcr.error } : {}),
+      };
+    }
   }
   return { method, ...(validation ? { validation } : {}) };
 }

@@ -4,7 +4,7 @@ CNothing is authentication infrastructure for AI agents. A user connects an OAut
 
 A Grant is the current representation of a Mandate: delegated authority from a principal (today, a User) to an agent, constrained to hosts, methods, and an expiry. Agents keep calling `list_grants` and `proxy_request`; they do not need to know the Mandate name.
 
-An AccessRequest is the current representation of an ApprovalRequest. Delegation mints a Mandate. When a Mandate opts into `constraints.require_approval`, a side-effecting `proxy_request` (for example creating a GitHub issue) becomes a Transaction Intent: the agent still calls `proxy_request`, receives `approval_required` with an `approval_url`, and retries the same call after the principal approves. GET traffic is never gated. Tokens never leave CNothing.
+An AccessRequest is the current representation of an ApprovalRequest. Delegation mints a Mandate. When a Mandate opts into `constraints.require_approval` — from the Console approval checkbox, the Grants page toggle, or the approve API — a side-effecting `proxy_request` (for example creating a GitHub issue) becomes a Transaction Intent: the agent still calls `proxy_request`, receives `approval_required` with an `approval_url`, and retries the same call after the principal approves. GET traffic is never gated. Tokens never leave CNothing.
 
 ## Supported workflow
 

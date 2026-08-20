@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useUserSession } from "@/hooks/use-user-session";
-import { fetchV4Grants, revokeV4Grant, type V4Grant } from "@/lib/api-v4";
+import { fetchV4Grants, revokeV4Grant, updateV4Grant, type V4Grant } from "@/lib/api-v4";
 import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
@@ -39,6 +39,22 @@ export function GrantsPage() {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  async function handleRequireApproval(grant: V4Grant, requireApproval: boolean) {
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      await updateV4Grant(connection, grant.id, { require_approval: requireApproval });
+      setStatusMessage(
+        requireApproval
+          ? "Writes on this grant now require a one-time approval. GET is unchanged."
+          : "This grant is back to direct proxy for writes.",
+      );
+      await refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Update failed.");
+    }
+  }
 
   async function handleRevoke(grantId: string) {
     setErrorMessage("");
@@ -102,6 +118,9 @@ export function GrantsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-mono text-sm text-slate-900">{grant.id}</p>
                     <Badge variant={grant.status === "active" ? "default" : "secondary"}>{grant.status}</Badge>
+                    {grant.constraints?.require_approval ? (
+                      <Badge className="bg-amber-100 text-amber-900">Writes need approval</Badge>
+                    ) : null}
                   </div>
                   <p className="mt-1 text-sm text-slate-600">
                     Agent: <span className="font-mono">{grant.agent_id}</span>
@@ -114,16 +133,28 @@ export function GrantsPage() {
                     {grant.last_used_at ? ` · Last used ${formatDate(grant.last_used_at)}` : ""}
                   </p>
                 </div>
-                <div className="flex items-start">
+                <div className="flex flex-col items-stretch gap-2 sm:items-end">
                   {grant.status === "active" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleRevoke(grant.id)}
-                    >
-                      <XCircle className="mr-1 h-4 w-4" />
-                      Revoke
-                    </Button>
+                    <>
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={grant.constraints?.require_approval === true}
+                          onChange={(event) =>
+                            void handleRequireApproval(grant, event.target.checked)
+                          }
+                        />
+                        Require approval for writes
+                      </label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleRevoke(grant.id)}
+                      >
+                        <XCircle className="mr-1 h-4 w-4" />
+                        Revoke
+                      </Button>
+                    </>
                   ) : null}
                 </div>
               </div>

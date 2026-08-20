@@ -7,11 +7,15 @@ import type { OAuthConnectionRecord } from "./oauth.entity";
 import {
   findOAuthConnectionById,
   findOAuthProviderById,
+  findOAuthProviderByIssuer,
   findOAuthProviderBySlug,
   getConnectionAccessToken,
+  isOAuthProviderAvailable,
+  toProviderAdmin,
   touchOAuthConnection,
+  type OAuthProviderAdminView,
 } from "./oauth.repository";
-import { oauthConnectionService } from "./oauth-connection.service";
+import { oauthConnectionService, oauthProviderService } from "./oauth-connection.service";
 import { approvalService } from "./approval.service";
 import { toAccessRequestPublic } from "./approval";
 import {
@@ -21,6 +25,7 @@ import {
   listProxyGrantsForUser,
   revokeProxyGrant,
   touchProxyGrant,
+  updateProxyGrantConstraints,
   writeProxyRequestAudit,
   type ProxyGrantRecord,
 } from "./proxy.repository";
@@ -28,8 +33,9 @@ import { sendApprovalPush } from "./apns.service";
 import { dispatchAccessRequestCallback, validateCallbackUrl } from "./callback.service";
 import { listActivePushDevices } from "./device.repository";
 import { resolveAgentUserHint } from "./share-code.service";
-import { evaluateMandateForRequest, mandateFromGrantRow, mandateIsRevokedOrExpired, toGrantPublic } from "./mandate";
+import { evaluateMandateForRequest, mandateFromGrantRow, mandateIsRevokedOrExpired, toGrantPublic, buildMandateConstraints } from "./mandate";
 import { evaluatePolicy } from "./policy";
+import { slugFromIssuerOrHost } from "./provider-registry";
 import {
   transactionIntentService,
   type ApprovalRequiredEnvelope,
@@ -48,6 +54,81 @@ import {
 const PROXY_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_BODY_BYTES = 1 * 1024 * 1024;
+
+function looksLikeHttpsUrl(value: string): boolean {
+  return /^https:\/\//i.test(value.trim());
+}
+
+function providerReviewRequired(
+  provider: OAuthProviderAdminView,
+  apiBaseUrl: string,
+) {
+  const consoleBase = config.consoleUrl?.replace(/\/+$/, "") ?? apiBaseUrl.replace(/\/+$/, "");
+  const hasCredentials = Boolean(provider.client_id?.trim()) || provider.has_client_secret;
+  const dcr = provider.validation?.dynamic_client_registration;
+  let message = `Provider "${provider.slug}" is in the registry as ${provider.registry_status} and is not connectable yet. Ask the operator to open ${consoleBase}/providers, review it, add credentials if needed, then Activate. Then retry request_access with provider="${provider.slug}".`;
+  if (dcr?.ok) {
+    message = `Provider "${provider.slug}" was discovered and RFC 7591 registered a client. Ask the operator to review and Activate it at ${consoleBase}/providers, then retry request_access with provider="${provider.slug}".`;
+  } else if (dcr?.attempted && dcr.error) {
+    message = `Provider "${provider.slug}" was discovered, but automatic client registration failed (${dcr.error}). Ask the operator to paste client credentials at ${consoleBase}/providers, Activate, then retry request_access.`;
+  } else if (!hasCredentials) {
+    message = `Provider "${provider.slug}" was proposed and needs operator review at ${consoleBase}/providers. After it is Active, retry request_access with provider="${provider.slug}".`;
+  }
+  return {
+    ok: true as const,
+    status: "provider_review_required" as const,
+    provider: provider.slug,
+    provider_id: provider.id,
+    registry_status: provider.registry_status,
+    connectable: provider.connectable,
+    has_client_credentials: hasCredentials,
+    dynamic_client_registration: dcr ?? null,
+    console_url: `${consoleBase}/providers`,
+    next_action: "wait_for_operator" as const,
+    human_instruction: message,
+  };
+}
+
+async function resolveOrProposeProvider(input: {
+  provider: string;
+  issuer?: string;
+  discoveryUrl?: string;
+}): Promise<
+  | { kind: "available"; provider: Awaited<ReturnType<typeof findOAuthProviderBySlug>> & {} }
+  | { kind: "review"; view: OAuthProviderAdminView }
+  | { kind: "missing" }
+> {
+  const raw = input.provider.trim();
+  let slug = raw.toLowerCase();
+  let issuer = input.issuer?.trim();
+  const discoveryUrl = input.discoveryUrl?.trim();
+  if (!issuer && looksLikeHttpsUrl(raw)) {
+    issuer = raw.replace(/\/+$/, "");
+    slug = slugFromIssuerOrHost(issuer);
+  }
+
+  const bySlug = slug ? await findOAuthProviderBySlug(slug) : null;
+  const byIssuer = !bySlug && issuer ? await findOAuthProviderByIssuer(issuer) : null;
+  const existing = bySlug ?? byIssuer;
+  if (existing) {
+    if (isOAuthProviderAvailable(existing)) {
+      return { kind: "available", provider: existing };
+    }
+    return { kind: "review", view: toProviderAdmin(existing) };
+  }
+
+  if (!issuer && !discoveryUrl) {
+    return { kind: "missing" };
+  }
+
+  const proposed = await oauthProviderService.proposeProvider({
+    slug,
+    display_name: slug,
+    issuer,
+    discovery_url: discoveryUrl,
+  });
+  return { kind: "review", view: proposed };
+}
 
 function providerDefaultHosts(provider: {
   metadata: Record<string, unknown>;
@@ -104,9 +185,24 @@ export class ProxyService {
     reason?: string;
     userId?: string;
     callbackUrl?: string;
+    issuer?: string;
+    discoveryUrl?: string;
     apiBaseUrl: string;
   }) {
-    const provider = await findOAuthProviderBySlug(input.provider.trim().toLowerCase());
+    const resolvedProvider = await resolveOrProposeProvider({
+      provider: input.provider,
+      issuer: input.issuer,
+      discoveryUrl: input.discoveryUrl,
+    });
+    if (resolvedProvider.kind === "missing") {
+      throw new NotFoundError(
+        `OAuth provider not found: ${input.provider}. Pass issuer or discovery_url to propose it for operator review.`,
+      );
+    }
+    if (resolvedProvider.kind === "review") {
+      return providerReviewRequired(resolvedProvider.view, input.apiBaseUrl);
+    }
+    const provider = resolvedProvider.provider;
     if (!provider) {
       throw new NotFoundError(`OAuth provider not found: ${input.provider}`);
     }
@@ -391,6 +487,31 @@ export class ProxyService {
       throw new NotFoundError("Grant not found or already revoked");
     }
     return { ok: true as const, status: "revoked" as const };
+  }
+
+  async updateGrant(input: { grantId: string; userId: string; requireApproval: boolean }) {
+    const grant = await findProxyGrantById(input.grantId);
+    if (!grant || grant.user_id !== input.userId) {
+      throw new NotFoundError("Grant not found");
+    }
+    if (grant.status !== "active") {
+      throw new ValidationError("Only an active grant can be updated", {
+        error_code: "grant_not_active",
+      });
+    }
+    const mandate = mandateFromGrantRow(grant);
+    const constraints = buildMandateConstraints({
+      hosts: mandate.hosts,
+      methods: mandate.methods,
+      expires_at: mandate.expires_at,
+      require_approval: input.requireApproval,
+      approval_required_methods: mandate.constraints.approval_required_methods,
+    });
+    const updated = await updateProxyGrantConstraints(grant.id, constraints);
+    if (!updated) {
+      throw new NotFoundError("Grant not found");
+    }
+    return toGrantPublic(mandateFromGrantRow(updated));
   }
 
   private async requireActiveGrant(input: {

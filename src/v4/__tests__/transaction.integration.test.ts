@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import {
-  givenAgent,
-  givenConnection,
-  givenProvider,
-  stubUpstreamFetch,
-} from "../../__tests__/helpers/fixtures";
+import { asPendingAccess, givenAgent, givenConnection, givenProvider, stubUpstreamFetch } from "../../__tests__/helpers/fixtures";
+
 import { pool } from "../../db";
 
 const { proxyService } = await import("../proxy.service");
@@ -25,11 +21,11 @@ async function givenOptInGrant() {
     userId: USER_ID,
     accessToken: ACCESS_TOKEN,
   });
-  const request = await proxyService.requestAccess({
+  const request = asPendingAccess(await proxyService.requestAccess({
     agent,
     provider: provider.slug,
     apiBaseUrl: API_BASE_URL,
-  });
+  }));
   const approved = await proxyService.approveAccess({
     accessRequestId: request.access_request_id,
     userId: USER_ID,
@@ -200,11 +196,11 @@ describeWithDb("transaction intent via proxy_request", () => {
       userId: USER_ID,
       accessToken: ACCESS_TOKEN,
     });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     const approved = await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,

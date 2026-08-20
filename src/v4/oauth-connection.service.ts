@@ -676,7 +676,7 @@ export class OAuthProviderService {
   async listPublicProviders() {
     const { listOAuthProviders, toProviderPublic } = await import("./oauth.repository");
     const providers = await listOAuthProviders();
-    return providers.map(toProviderPublic);
+    return providers.filter((provider) => toProviderPublic(provider).connectable).map(toProviderPublic);
   }
 
   async getProvider(id: string) {
@@ -748,6 +748,7 @@ export class OAuthProviderService {
       findOAuthProviderByIssuer,
       findOAuthProviderBySlug,
       toProviderAdmin,
+      updateOAuthProviderCredentials,
       updateOAuthProviderEndpoints,
     } = await import("./oauth.repository");
 
@@ -797,7 +798,16 @@ export class OAuthProviderService {
             supported_scopes: prepared.provider.supported_scopes,
             metadata,
           });
-          return toProviderAdmin(updated ?? existing);
+          if (prepared.provider.client_id?.trim()) {
+            await updateOAuthProviderCredentials({
+              id: existing.id,
+              client_id: prepared.provider.client_id,
+              client_secret: prepared.provider.client_secret,
+              activate: false,
+            });
+          }
+          const latest = await findOAuthProviderBySlug(slug);
+          return toProviderAdmin(latest ?? updated ?? existing);
         }
         return toProviderAdmin(existing);
       }
@@ -805,6 +815,7 @@ export class OAuthProviderService {
       const provider = await createOAuthProvider({
         ...prepared.provider,
         source: "discovered",
+        status: "unconfigured",
         metadata,
       });
       return toProviderAdmin(provider);

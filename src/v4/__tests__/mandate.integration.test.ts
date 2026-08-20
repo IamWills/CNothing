@@ -1,7 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import { givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
+import { asPendingAccess, givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
+
 import { pool } from "../../db";
 import { proxyService } from "../proxy.service";
 import { findProxyGrantById } from "../proxy.repository";
@@ -18,11 +19,11 @@ describeWithDb("grant is stored as a mandate", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
 
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const approved = asMandateApproval(await proxyService.approveAccess({
@@ -52,15 +53,49 @@ describeWithDb("grant is stored as a mandate", () => {
     });
   });
 
+  test("the granting user can opt a mandate into require_approval later", async () => {
+    const { agent } = await givenAgent();
+    const provider = await givenProvider();
+    const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
+    const request = asPendingAccess(await proxyService.requestAccess({
+      agent,
+      provider: provider.slug,
+      apiBaseUrl: API_BASE_URL,
+    }));
+    const approved = asMandateApproval(
+      await proxyService.approveAccess({
+        accessRequestId: request.access_request_id,
+        userId: USER_ID,
+        connectionId: connection.id,
+      }),
+    );
+    expect(approved.grant.constraints.require_approval).toBeUndefined();
+
+    const updated = await proxyService.updateGrant({
+      grantId: approved.grant.id,
+      userId: USER_ID,
+      requireApproval: true,
+    });
+    expect(updated.constraints.require_approval).toBe(true);
+
+    await expect(
+      proxyService.updateGrant({
+        grantId: approved.grant.id,
+        userId: "github:mallory",
+        requireApproval: false,
+      }),
+    ).rejects.toThrow(/not found/i);
+  });
+
   test("list_grants keeps the v4 fields and adds the mandate envelope", async () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
@@ -86,11 +121,11 @@ describeWithDb("grant is stored as a mandate", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,
@@ -107,11 +142,11 @@ describeWithDb("grant is stored as a mandate", () => {
     const { agent } = await givenAgent();
     const provider = await givenProvider();
     const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
-    const request = await proxyService.requestAccess({
+    const request = asPendingAccess(await proxyService.requestAccess({
       agent,
       provider: provider.slug,
       apiBaseUrl: API_BASE_URL,
-    });
+    }));
     const approved = asMandateApproval(await proxyService.approveAccess({
       accessRequestId: request.access_request_id,
       userId: USER_ID,

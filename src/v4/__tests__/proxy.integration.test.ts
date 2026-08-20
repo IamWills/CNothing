@@ -2,14 +2,8 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { PRIVATE_TEST_HOST } from "../../__tests__/helpers/dns-mock";
 import { describeWithDb, resetDatabase } from "../../__tests__/helpers/db";
-import {
-  asExecutedProxy,
-  asMandateApproval,
-  givenAgent,
-  givenConnection,
-  givenProvider,
-  stubUpstreamFetch,
-} from "../../__tests__/helpers/fixtures";
+import { asPendingAccess, asExecutedProxy, asMandateApproval, givenAgent, givenConnection, givenProvider, stubUpstreamFetch } from "../../__tests__/helpers/fixtures";
+
 import { pool } from "../../db";
 
 const { proxyService } = await import("../proxy.service");
@@ -26,11 +20,11 @@ async function givenActiveGrant(options: { allowedHosts?: string[]; allowedMetho
     userId: USER_ID,
     accessToken: ACCESS_TOKEN,
   });
-  const request = await proxyService.requestAccess({
+  const request = asPendingAccess(await proxyService.requestAccess({
     agent,
     provider: provider.slug,
     apiBaseUrl: API_BASE_URL,
-  });
+  }));
   const approved = asMandateApproval(await proxyService.approveAccess({
     accessRequestId: request.access_request_id,
     userId: USER_ID,

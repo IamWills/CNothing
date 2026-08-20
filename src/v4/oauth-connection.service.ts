@@ -15,7 +15,6 @@ import {
   markConnectionReconnectRequired,
   writeOAuthAudit,
 } from "./oauth.repository";
-import { ensureOAuthIdentityProvider } from "./oauth-identity.provider";
 import { buildUserSessionCookie } from "./session-cookie";
 import { createUserSession, upsertUserIdentity } from "./platform.repository";
 import { generateUserSessionToken, hashSessionToken } from "./user-session";
@@ -281,10 +280,9 @@ export class OAuthConnectionService {
           ? profile.metadata.login.trim()
           : profile.accountId;
       userId = `${provider.slug}:${subjectKey}`;
-      const identityProviderId = await ensureOAuthIdentityProvider(provider);
       await upsertUserIdentity({
         user_id: userId,
-        provider_id: identityProviderId,
+        provider_id: provider.id,
         subject: profile.accountId,
         email: typeof profile.metadata.email === "string" ? profile.metadata.email : null,
         metadata: {

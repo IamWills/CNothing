@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { pool } from "../db";
+import { pool, withTransaction } from "../db";
+import { buildMandateConstraints } from "./mandate";
 import type { JsonObject } from "./platform.entity";
 
 export type ProxyAccessRequestStatus = "pending" | "approved" | "denied" | "expired";
@@ -24,6 +25,7 @@ export type ProxyAccessRequestRecord = {
 
 export type ProxyGrantStatus = "active" | "revoked";
 
+/** Persistence of a Mandate. The v4 API still calls this a Grant. */
 export type ProxyGrantRecord = {
   id: string;
   agent_id: string;
@@ -38,6 +40,11 @@ export type ProxyGrantRecord = {
   metadata: JsonObject;
   created_at: string;
   updated_at: string;
+  principal_type: string;
+  principal_id: string;
+  constraints: JsonObject;
+  actions: string[];
+  revoked_at: string | null;
 };
 
 function asIso(value: unknown): string {
@@ -89,6 +96,11 @@ function mapGrantRow(row: Record<string, unknown>): ProxyGrantRecord {
     metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
+    principal_type: String(row.principal_type ?? "user"),
+    principal_id: String(row.principal_id ?? row.user_id),
+    constraints: normalizeMetadata(row.constraints),
+    actions: asStringArray(row.actions),
+    revoked_at: row.revoked_at ? asIso(row.revoked_at) : null,
   };
 }
 
@@ -186,8 +198,16 @@ export async function decideProxyAccessRequest(input: {
   return row ? mapAccessRequestRow(row) : null;
 }
 
-export async function createProxyGrant(input: {
-  agent_id: string;
+/**
+ * Claims a pending access request and mints its grant in one transaction.
+ *
+ * The claim is the atomic gate: two concurrent approvals of the same request
+ * used to pass the pending check independently and each create a grant, leaving
+ * an orphaned second grant that the user never saw and could not revoke from
+ * the request. Returns null when the request was already decided or expired.
+ */
+export async function approveAccessRequestWithGrant(input: {
+  access_request_id: string;
   user_id: string;
   connection_id: string;
   provider_id: string;
@@ -195,29 +215,59 @@ export async function createProxyGrant(input: {
   allowed_methods: string[];
   expires_at?: string | null;
   metadata?: JsonObject;
-}): Promise<ProxyGrantRecord> {
-  const id = randomUUID();
-  const result = await pool.query(
-    `
-      INSERT INTO proxy_grants (
-        id, agent_id, user_id, connection_id, provider_id,
-        allowed_hosts, allowed_methods, expires_at, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      RETURNING *
-    `,
-    [
-      id,
-      input.agent_id,
-      input.user_id,
-      input.connection_id,
-      input.provider_id,
-      JSON.stringify(input.allowed_hosts),
-      JSON.stringify(input.allowed_methods),
-      input.expires_at ?? null,
-      JSON.stringify(input.metadata ?? {}),
-    ],
-  );
-  return mapGrantRow(result.rows[0]!);
+}): Promise<ProxyGrantRecord | null> {
+  return withTransaction(async (client) => {
+    const claimed = await client.query(
+      `
+        UPDATE proxy_access_requests
+        SET status = 'approved', user_id = $2, connection_id = $3,
+            decided_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'pending' AND expires_at > NOW()
+        RETURNING agent_id
+      `,
+      [input.access_request_id, input.user_id, input.connection_id],
+    );
+    const claim = claimed.rows[0];
+    if (!claim) {
+      return null;
+    }
+
+    const grantId = randomUUID();
+    const constraints = buildMandateConstraints({
+      hosts: input.allowed_hosts,
+      methods: input.allowed_methods,
+      expires_at: input.expires_at ?? null,
+    });
+    const grant = await client.query(
+      `
+        INSERT INTO proxy_grants (
+          id, agent_id, user_id, connection_id, provider_id,
+          allowed_hosts, allowed_methods, expires_at, metadata,
+          principal_type, principal_id, constraints, actions
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'user',$3,$10,'[]'::jsonb)
+        RETURNING *
+      `,
+      [
+        grantId,
+        String(claim.agent_id),
+        input.user_id,
+        input.connection_id,
+        input.provider_id,
+        JSON.stringify(input.allowed_hosts),
+        JSON.stringify(input.allowed_methods),
+        input.expires_at ?? null,
+        JSON.stringify(input.metadata ?? {}),
+        JSON.stringify(constraints),
+      ],
+    );
+
+    await client.query(`UPDATE proxy_access_requests SET grant_id = $2 WHERE id = $1`, [
+      input.access_request_id,
+      grantId,
+    ]);
+
+    return mapGrantRow(grant.rows[0]!);
+  });
 }
 
 export async function findProxyGrantById(id: string): Promise<ProxyGrantRecord | null> {
@@ -246,7 +296,7 @@ export async function revokeProxyGrant(id: string, userId: string): Promise<bool
   const result = await pool.query(
     `
       UPDATE proxy_grants
-      SET status = 'revoked', updated_at = NOW()
+      SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
       WHERE id = $1 AND user_id = $2 AND status = 'active'
       RETURNING id
     `,

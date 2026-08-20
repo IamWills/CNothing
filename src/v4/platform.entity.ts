@@ -25,28 +25,6 @@ export type UserSessionRecord = {
   updated_at: string;
 };
 
-export type OidcProviderRecord = {
-  id: string;
-  name: string;
-  display_name: string;
-  issuer: string;
-  client_id: string;
-  client_secret_encrypted: Buffer;
-  scopes: string;
-  enabled: boolean;
-  metadata: JsonObject;
-  created_at: string;
-  updated_at: string;
-};
-
-export type OidcProviderPublic = {
-  id: string;
-  name: string;
-  display_name: string;
-  issuer: string;
-  scopes: string;
-};
-
 export type UserIdentityRecord = {
   id: string;
   user_id: string;

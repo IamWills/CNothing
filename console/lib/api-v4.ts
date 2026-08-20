@@ -22,6 +22,7 @@ export type V4OAuthProviderAdmin = V4OAuthProvider & {
   client_id: string | null;
   has_client_secret: boolean;
   pkce_required: boolean;
+  login_enabled: boolean;
 };
 
 export type V4OAuthConnection = {
@@ -79,6 +80,11 @@ export type V4Grant = {
   expires_at: string | null;
   last_used_at: string | null;
   created_at: string;
+  principal?: { type: string; id: string };
+  constraints?: { hosts: string[]; methods: string[]; expires_at: string | null };
+  actions?: string[];
+  issued_at?: string;
+  revoked_at?: string | null;
 };
 
 // --- Transport ---

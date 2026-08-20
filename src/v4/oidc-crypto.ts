@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, createVerify, randomBytes } from "node:crypto";
-import config from "../config";
 import { encodeBase64Url } from "../crypto/base64url";
-import { decryptWithAes256Gcm, encryptWithAes256Gcm } from "../crypto/master-key";
+import { ValidationError } from "../utils/errors";
+import { assertSafeMetadataUrl, fetchPublicJsonDocument } from "./safe-fetch";
 
 type OpenIdConfiguration = {
   issuer: string;
@@ -27,19 +27,29 @@ function decodeBase64UrlToBuffer(input: string): Buffer {
 
 export async function fetchOpenIdConfiguration(issuer: string): Promise<OpenIdConfiguration> {
   const normalizedIssuer = issuer.replace(/\/+$/, "");
-  const response = await fetch(`${normalizedIssuer}/.well-known/openid-configuration`);
-  if (!response.ok) {
-    throw new Error(`OIDC discovery failed for ${issuer}: ${response.status}`);
+  const document = await fetchPublicJsonDocument<OpenIdConfiguration>(
+    `${normalizedIssuer}/.well-known/openid-configuration`,
+    { label: "issuer" },
+  );
+
+  if (document.issuer?.replace(/\/+$/, "") !== normalizedIssuer) {
+    throw new ValidationError("Discovery document issuer does not match the configured issuer", {
+      error_code: "discovery_issuer_mismatch",
+    });
   }
-  return (await response.json()) as OpenIdConfiguration;
+  // jwks_uri decides which keys can sign an accepted id_token, so it must be
+  // validated before it is ever fetched.
+  await assertSafeMetadataUrl(document.jwks_uri, "jwks_uri");
+  await assertSafeMetadataUrl(document.authorization_endpoint, "authorization_endpoint");
+  await assertSafeMetadataUrl(document.token_endpoint, "token_endpoint");
+
+  return document;
 }
 
 export async function fetchJwks(jwksUri: string): Promise<JwkKey[]> {
-  const response = await fetch(jwksUri);
-  if (!response.ok) {
-    throw new Error(`JWKS fetch failed: ${response.status}`);
-  }
-  const payload = (await response.json()) as { keys?: JwkKey[] };
+  const payload = await fetchPublicJsonDocument<{ keys?: JwkKey[] }>(jwksUri, {
+    label: "jwks_uri",
+  });
   return payload.keys ?? [];
 }
 
@@ -115,26 +125,6 @@ export async function verifyOidcIdToken(input: {
   }
 
   return payload;
-}
-
-export function encryptOidcClientSecret(secret: string): Buffer {
-  const encrypted = encryptWithAes256Gcm({
-    plaintext: Buffer.from(secret, "utf8"),
-    key: config.masterKey,
-  });
-  return Buffer.concat([encrypted.iv, encrypted.tag, encrypted.ciphertext]);
-}
-
-export function decryptOidcClientSecret(payload: Buffer): string {
-  const iv = payload.subarray(0, 12);
-  const tag = payload.subarray(12, 28);
-  const ciphertext = payload.subarray(28);
-  return decryptWithAes256Gcm({
-    ciphertext,
-    iv,
-    tag,
-    key: config.masterKey,
-  }).toString("utf8");
 }
 
 export function generateOidcState(): string {

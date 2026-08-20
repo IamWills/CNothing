@@ -138,8 +138,8 @@ export function ProvidersPage() {
 
   return (
     <PageFrame
-      title="OAuth Providers"
-      description={`${brand.tagline}. Register third-party OAuth providers; tokens stay in the encrypted vault.`}
+      title="Provider Registry"
+      description={`${brand.tagline}. One registry for every provider agents connect to and users sign in with; tokens stay in the encrypted vault.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -285,6 +285,9 @@ export function ProvidersPage() {
                     ) : (
                       <Badge className="bg-amber-100 text-amber-800">Needs credentials</Badge>
                     )}
+                    {provider.login_enabled ? (
+                      <Badge className="bg-sky-100 text-sky-800">Console login</Badge>
+                    ) : null}
                   </div>
                   <p className="mt-2 text-sm text-slate-600">
                     {provider.authorization_url ?? "No authorization URL configured"}

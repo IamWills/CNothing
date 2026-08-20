@@ -227,6 +227,7 @@
       "get": {
         "tags": ["Agent", "User"],
         "summary": "List grants visible to the current principal",
+        "description": "A grant is the v4 representation of a Mandate: delegated authority from a principal to an agent. The response keeps allowed_hosts / allowed_methods and adds principal, constraints, actions, issued_at, and revoked_at.",
         "security": [{ "agentToken": [] }, { "userSession": [] }],
         "responses": { "200": { "description": "Agent grants or user-owned grants." } }
       }
@@ -384,8 +385,8 @@
     "/v4/auth/oidc/providers": {
       "get": {
         "tags": ["Authentication"],
-        "summary": "List configured OIDC sign-in providers",
-        "responses": { "200": { "description": "Public OIDC provider list." } }
+        "summary": "List providers enabled for OIDC sign-in",
+        "responses": { "200": { "description": "Public login provider list." } }
       }
     },
     "/v4/auth/oidc/{name}/start": {
@@ -430,9 +431,10 @@
     "/v4/admin/oidc/providers": {
       "post": {
         "tags": ["Operator"],
-        "summary": "Register an OIDC browser sign-in provider",
+        "summary": "Enable a provider for browser sign-in",
+        "description": "Registers the provider in the provider registry (or upgrades the existing entry with the same slug) and marks it usable as a console login identity provider.",
         "security": [{ "adminToken": [] }],
-        "responses": { "201": { "description": "OIDC provider registered." } }
+        "responses": { "201": { "description": "Login provider registered." } }
       }
     }
   }

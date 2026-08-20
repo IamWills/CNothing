@@ -55,7 +55,7 @@ export function GrantsPage() {
   return (
     <PageFrame
       title="Grants"
-      description="Connection-level grants you approved for agents. Each grant lets one agent call the allowed hosts through the v4 credential-injecting proxy — the agent never sees your tokens."
+      description="Delegated authority you approved for agents. Each grant is a mandate: one principal, one agent, one connection, and the host/method constraints the proxy will enforce. The agent never sees your tokens."
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />

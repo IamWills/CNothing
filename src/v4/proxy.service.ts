@@ -13,9 +13,9 @@ import {
 } from "./oauth.repository";
 import { oauthConnectionService } from "./oauth-connection.service";
 import {
+  approveAccessRequestWithGrant,
   claimProxyAccessRequestUserHint,
   createProxyAccessRequest,
-  createProxyGrant,
   decideProxyAccessRequest,
   findProxyAccessRequest,
   findProxyGrantById,
@@ -31,11 +31,11 @@ import { sendApprovalPush } from "./apns.service";
 import { dispatchAccessRequestCallback, validateCallbackUrl } from "./callback.service";
 import { listActivePushDevices } from "./device.repository";
 import { resolveAgentUserHint } from "./share-code.service";
+import { evaluateMandateForRequest, mandateFromGrantRow, mandateIsRevokedOrExpired, toGrantPublic } from "./mandate";
 
 import {
   DEFAULT_ALLOWED_METHODS,
   isBlockedResponseHeader,
-  matchAllowedHost,
   normalizeHosts,
   redactTokenOccurrences,
   sanitizeAgentHeaders,
@@ -90,6 +90,21 @@ async function resolveAccessToken(connection: OAuthConnectionRecord): Promise<{
   await touchOAuthConnection(current.id);
   const token = await getConnectionAccessToken(current);
   return { token, connection: current };
+}
+
+/**
+ * Describes why an atomic decide-claim failed: another approver already decided
+ * the request, or it expired between the pre-check and the claim.
+ */
+async function accessRequestNoLongerPending(requestId: string): Promise<ValidationError> {
+  const current = await findProxyAccessRequest(requestId);
+  const alreadyDecided = Boolean(current && current.status !== "pending");
+  return new ValidationError(
+    alreadyDecided ? `Access request is already ${current!.status}` : "Access request has expired",
+    {
+      error_code: alreadyDecided ? "access_request_not_pending" : "access_request_expired",
+    },
+  );
 }
 
 export class ProxyService {
@@ -315,8 +330,11 @@ export class ProxyService {
       ? input.allowedMethods.map((method) => String(method).toUpperCase()).filter(Boolean)
       : DEFAULT_ALLOWED_METHODS;
 
-    const grant = await createProxyGrant({
-      agent_id: request.agent_id,
+    // The checks above produce good error messages, but only this call decides:
+    // it claims the pending request and mints the grant atomically, so parallel
+    // approvals cannot each create one.
+    const grant = await approveAccessRequestWithGrant({
+      access_request_id: request.id,
       user_id: input.userId,
       connection_id: connection.id,
       provider_id: provider.id,
@@ -325,14 +343,9 @@ export class ProxyService {
       expires_at: input.expiresAt ?? null,
       metadata: { access_request_id: request.id },
     });
-
-    await decideProxyAccessRequest({
-      id: request.id,
-      status: "approved",
-      user_id: input.userId,
-      connection_id: connection.id,
-      grant_id: grant.id,
-    });
+    if (!grant) {
+      throw await accessRequestNoLongerPending(request.id);
+    }
 
     if (request.callback_url) {
       dispatchAccessRequestCallback({
@@ -348,14 +361,8 @@ export class ProxyService {
     return {
       ok: true as const,
       grant: {
-        id: grant.id,
-        agent_id: grant.agent_id,
-        connection_id: grant.connection_id,
+        ...toGrantPublic(mandateFromGrantRow(grant)),
         provider: provider.slug,
-        allowed_hosts: grant.allowed_hosts,
-        allowed_methods: grant.allowed_methods,
-        expires_at: grant.expires_at,
-        status: grant.status,
       },
     };
   }
@@ -370,11 +377,14 @@ export class ProxyService {
         error_code: "access_request_not_pending",
       });
     }
-    await decideProxyAccessRequest({
+    const decided = await decideProxyAccessRequest({
       id: request.id,
       status: "denied",
       user_id: input.userId,
     });
+    if (!decided) {
+      throw await accessRequestNoLongerPending(request.id);
+    }
 
     if (request.callback_url) {
       dispatchAccessRequestCallback({
@@ -395,18 +405,7 @@ export class ProxyService {
       : input.userId
         ? await listProxyGrantsForUser(input.userId)
         : [];
-    return grants.map((grant) => ({
-      id: grant.id,
-      agent_id: grant.agent_id,
-      connection_id: grant.connection_id,
-      provider_id: grant.provider_id,
-      allowed_hosts: grant.allowed_hosts,
-      allowed_methods: grant.allowed_methods,
-      status: grant.status,
-      expires_at: grant.expires_at,
-      last_used_at: grant.last_used_at,
-      created_at: grant.created_at,
-    }));
+    return grants.map((grant) => toGrantPublic(mandateFromGrantRow(grant)));
   }
 
   async revokeGrant(input: { grantId: string; userId: string }) {
@@ -425,11 +424,10 @@ export class ProxyService {
     if (!grant || grant.agent_id !== input.agent.id) {
       throw new NotFoundError("Grant not found");
     }
-    if (grant.status !== "active") {
-      throw new ForbiddenError("Grant has been revoked", { error_code: "grant_revoked" });
-    }
-    if (grant.expires_at && new Date(grant.expires_at).getTime() < Date.now()) {
-      throw new ForbiddenError("Grant has expired", { error_code: "grant_expired" });
+    const mandate = mandateFromGrantRow(grant);
+    const inactive = mandateIsRevokedOrExpired(mandate);
+    if (inactive) {
+      throw new ForbiddenError(inactive.reason, { error_code: inactive.error_code });
     }
     return grant;
   }
@@ -444,25 +442,26 @@ export class ProxyService {
   }) {
     const startedAt = Date.now();
     const grant = await this.requireActiveGrant({ agent: input.agent, grantId: input.grantId });
+    const mandate = mandateFromGrantRow(grant);
 
     const method = input.method.trim().toUpperCase();
-    if (!grant.allowed_methods.includes(method)) {
-      throw new ForbiddenError(`Method not allowed by grant: ${method}`, {
-        error_code: "method_not_allowed",
-        allowed_methods: grant.allowed_methods,
-      });
-    }
-
     const parsedUrl = await assertSafePublicUrlWithDns(input.url, "url");
     if (parsedUrl.protocol !== "https:") {
       throw new ValidationError("Only https URLs are allowed", {
         error_code: "https_required",
       });
     }
-    if (!matchAllowedHost(parsedUrl.hostname, grant.allowed_hosts)) {
-      throw new ForbiddenError(`Host not allowed by grant: ${parsedUrl.hostname}`, {
-        error_code: "host_not_allowed",
-        allowed_hosts: grant.allowed_hosts,
+
+    const decision = evaluateMandateForRequest({
+      mandate,
+      method,
+      host: parsedUrl.hostname,
+    });
+    if (!decision.allowed) {
+      throw new ForbiddenError(decision.reason, {
+        error_code: decision.error_code,
+        ...(decision.allowed_hosts ? { allowed_hosts: decision.allowed_hosts } : {}),
+        ...(decision.allowed_methods ? { allowed_methods: decision.allowed_methods } : {}),
       });
     }
 

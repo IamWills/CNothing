@@ -1,3 +1,5 @@
+import { ValidationError } from "../utils/errors";
+import { assertSafeMetadataUrl, fetchPublicJsonDocument } from "./safe-fetch";
 import type { JsonObject } from "./platform.entity";
 import type { OAuthProviderRecord } from "./oauth.entity";
 
@@ -37,39 +39,102 @@ function normalizeDiscoveryUrl(input: { discovery_url?: string; issuer?: string 
   return `${issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`;
 }
 
+function sameIssuer(left: string, right: string): boolean {
+  return left.replace(/\/+$/, "") === right.replace(/\/+$/, "");
+}
+
+/**
+ * Every endpoint in the response is attacker-controlled if the issuer is
+ * hostile, so each one is re-validated before it can be persisted and used.
+ */
+async function assertSafeEndpoint(value: string | undefined, label: string): Promise<string | null> {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  await assertSafeMetadataUrl(trimmed, label);
+  return trimmed;
+}
+
 export async function discoverOAuthProvider(input: {
   discovery_url?: string;
   issuer?: string;
 }): Promise<DiscoveredOAuthProvider> {
   const discoveryEndpoint = normalizeDiscoveryUrl(input);
-  const response = await fetch(discoveryEndpoint);
-  if (!response.ok) {
-    throw new Error(`OIDC discovery failed (${response.status}) for ${discoveryEndpoint}`);
-  }
+  const doc = await fetchPublicJsonDocument<OpenIdDiscoveryDocument>(discoveryEndpoint, {
+    label: "discovery_url",
+  });
 
-  const doc = (await response.json()) as OpenIdDiscoveryDocument;
   const issuer = String(doc.issuer ?? input.issuer ?? "").trim();
   const authorizationUrl = String(doc.authorization_endpoint ?? "").trim();
   const tokenUrl = String(doc.token_endpoint ?? "").trim();
 
   if (!issuer || !authorizationUrl || !tokenUrl) {
-    throw new Error("OIDC discovery document missing issuer, authorization_endpoint, or token_endpoint");
+    throw new ValidationError(
+      "Discovery document is missing issuer, authorization_endpoint, or token_endpoint",
+      { error_code: "discovery_document_incomplete" },
+    );
   }
+
+  // OpenID Connect Discovery requires the advertised issuer to match the one
+  // that was looked up; otherwise a provider could impersonate another.
+  const requestedIssuer = input.issuer?.trim();
+  if (requestedIssuer && !sameIssuer(issuer, requestedIssuer)) {
+    throw new ValidationError("Discovery document issuer does not match the requested issuer", {
+      error_code: "discovery_issuer_mismatch",
+    });
+  }
+
+  await assertSafeMetadataUrl(issuer, "issuer");
 
   return {
     issuer,
-    authorization_url: authorizationUrl,
-    token_url: tokenUrl,
-    userinfo_url: doc.userinfo_endpoint ? String(doc.userinfo_endpoint) : null,
-    jwks_url: doc.jwks_uri ? String(doc.jwks_uri) : null,
-    revoke_url: doc.revocation_endpoint ? String(doc.revocation_endpoint) : null,
+    authorization_url: (await assertSafeEndpoint(authorizationUrl, "authorization_url"))!,
+    token_url: (await assertSafeEndpoint(tokenUrl, "token_url"))!,
+    userinfo_url: await assertSafeEndpoint(doc.userinfo_endpoint, "userinfo_url"),
+    jwks_url: await assertSafeEndpoint(doc.jwks_uri, "jwks_url"),
+    revoke_url: await assertSafeEndpoint(doc.revocation_endpoint, "revoke_url"),
     scopes_supported: Array.isArray(doc.scopes_supported)
       ? doc.scopes_supported.map(String)
       : [],
   };
 }
 
-export function mergeDiscoveredProviderInput(input: {
+/**
+ * Manually entered endpoints get the same treatment as discovered ones: an
+ * operator typo (or a hostile tenant admin) must not be able to point the
+ * broker at a loopback or metadata address.
+ */
+async function assertSafeProviderEndpoints<
+  T extends {
+    issuer?: string | null;
+    discovery_url?: string | null;
+    authorization_url?: string;
+    token_url?: string;
+    userinfo_url?: string;
+    revoke_url?: string;
+    jwks_url?: string;
+  },
+>(provider: T): Promise<T> {
+  const fields: Array<[string, string | null | undefined]> = [
+    ["issuer", provider.issuer],
+    ["discovery_url", provider.discovery_url],
+    ["authorization_url", provider.authorization_url],
+    ["token_url", provider.token_url],
+    ["userinfo_url", provider.userinfo_url],
+    ["revoke_url", provider.revoke_url],
+    ["jwks_url", provider.jwks_url],
+  ];
+
+  for (const [label, value] of fields) {
+    if (value?.trim()) {
+      await assertSafeMetadataUrl(value, label);
+    }
+  }
+  return provider;
+}
+
+export async function mergeDiscoveredProviderInput(input: {
   slug: string;
   display_name: string;
   auth_type?: "oauth2" | "oidc";
@@ -108,7 +173,7 @@ export function mergeDiscoveredProviderInput(input: {
 }> {
   const hasDiscovery = Boolean(input.discovery_url?.trim() || input.issuer?.trim());
   if (!hasDiscovery) {
-    return Promise.resolve({
+    return assertSafeProviderEndpoints({
       ...input,
       auth_type: input.auth_type ?? "oauth2",
       issuer: input.issuer ?? null,
@@ -116,37 +181,39 @@ export function mergeDiscoveredProviderInput(input: {
     });
   }
 
-  return discoverOAuthProvider({
+  const discovered = await discoverOAuthProvider({
     discovery_url: input.discovery_url,
     issuer: input.issuer,
-  }).then((discovered) => {
-    const discoveryUrl = input.discovery_url?.trim()
-      ? normalizeDiscoveryUrl({ discovery_url: input.discovery_url })
-      : normalizeDiscoveryUrl({ issuer: discovered.issuer });
+  });
 
-    const supportedScopes =
-      input.supported_scopes && input.supported_scopes.length > 0
-        ? input.supported_scopes
-        : discovered.scopes_supported;
+  const discoveryUrl = input.discovery_url?.trim()
+    ? normalizeDiscoveryUrl({ discovery_url: input.discovery_url })
+    : normalizeDiscoveryUrl({ issuer: discovered.issuer });
 
-    return {
-      slug: input.slug,
-      display_name: input.display_name,
-      auth_type: input.auth_type ?? "oidc",
-      issuer: discovered.issuer,
-      discovery_url: discoveryUrl,
-      authorization_url: input.authorization_url ?? discovered.authorization_url,
-      token_url: input.token_url ?? discovered.token_url,
-      userinfo_url: input.userinfo_url ?? discovered.userinfo_url ?? undefined,
-      revoke_url: input.revoke_url ?? discovered.revoke_url ?? undefined,
-      jwks_url: input.jwks_url ?? discovered.jwks_url ?? undefined,
-      client_id: input.client_id,
-      client_secret: input.client_secret,
-      default_scopes: input.default_scopes,
-      supported_scopes: supportedScopes,
-      pkce_required: input.pkce_required,
-      token_auth_method: input.token_auth_method,
-      metadata: input.metadata,
-    };
+  const supportedScopes =
+    input.supported_scopes && input.supported_scopes.length > 0
+      ? input.supported_scopes
+      : discovered.scopes_supported;
+
+  // Operator-supplied endpoints win over discovered ones, so the merged result is
+  // validated again rather than trusting the discovery pass alone.
+  return assertSafeProviderEndpoints({
+    slug: input.slug,
+    display_name: input.display_name,
+    auth_type: input.auth_type ?? "oidc",
+    issuer: discovered.issuer,
+    discovery_url: discoveryUrl,
+    authorization_url: input.authorization_url ?? discovered.authorization_url,
+    token_url: input.token_url ?? discovered.token_url,
+    userinfo_url: input.userinfo_url ?? discovered.userinfo_url ?? undefined,
+    revoke_url: input.revoke_url ?? discovered.revoke_url ?? undefined,
+    jwks_url: input.jwks_url ?? discovered.jwks_url ?? undefined,
+    client_id: input.client_id,
+    client_secret: input.client_secret,
+    default_scopes: input.default_scopes,
+    supported_scopes: supportedScopes,
+    pkce_required: input.pkce_required,
+    token_auth_method: input.token_auth_method,
+    metadata: input.metadata,
   });
 }

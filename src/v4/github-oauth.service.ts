@@ -11,7 +11,7 @@ import {
   generateUserSessionToken,
   hashSessionToken,
 } from "./user-session";
-import { ensureGitHubIdentityProvider } from "./github-identity.provider";
+import { resolveGitHubLoginProviderId } from "./login-provider.service";
 import { buildUserSessionCookie } from "./session-cookie";
 
 const GITHUB_OAUTH_SCOPES = "read:user user:email";
@@ -22,7 +22,7 @@ const GITHUB_USER_URL = "https://api.github.com/user";
 const GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
 
 export type AuthProviderDescriptor = {
-  /** github = env GitHub login; oidc = cap_oidc_providers; oauth = cap_oauth_providers login */
+  /** github = env-configured GitHub login; oidc = id_token login; oauth = broker login */
   type: "github" | "oidc" | "oauth";
   name: string;
   display_name: string;
@@ -128,7 +128,7 @@ export class GitHubOAuthService {
     const profile = await this.fetchGitHubProfile(tokenPayload.access_token);
     const userId = `github:${profile.login}`;
 
-    const providerId = await ensureGitHubIdentityProvider();
+    const providerId = await resolveGitHubLoginProviderId();
     await upsertUserIdentity({
       user_id: userId,
       provider_id: providerId,

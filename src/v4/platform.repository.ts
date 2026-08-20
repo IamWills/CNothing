@@ -3,8 +3,6 @@ import { pool } from "../db";
 import type {
   AgentRecord,
   JsonObject,
-  OidcProviderPublic,
-  OidcProviderRecord,
   UserIdentityRecord,
   UserSessionRecord,
 } from "./platform.entity";
@@ -145,47 +143,6 @@ export async function revokeUserSession(hash: string): Promise<UserSessionRecord
   return result.rows[0] ? mapUserSessionRow(result.rows[0]) : null;
 }
 
-function mapOidcProviderRow(row: Record<string, unknown>): OidcProviderRecord {
-  return {
-    id: String(row.id), name: String(row.name), display_name: String(row.display_name),
-    issuer: String(row.issuer), client_id: String(row.client_id),
-    client_secret_encrypted: row.client_secret_encrypted as Buffer,
-    scopes: String(row.scopes ?? "openid profile email"), enabled: Boolean(row.enabled),
-    metadata: normalizeMetadata(row.metadata), created_at: asIso(row.created_at), updated_at: asIso(row.updated_at),
-  };
-}
-
-export async function createOidcProvider(input: {
-  name: string; display_name: string; issuer: string; client_id: string;
-  client_secret_encrypted: Buffer; scopes?: string; metadata?: JsonObject;
-}): Promise<OidcProviderRecord> {
-  const result = await pool.query(
-    `INSERT INTO cap_oidc_providers
-       (id, name, display_name, issuer, client_id, client_secret_encrypted, scopes, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING *`,
-    [randomUUID(), input.name, input.display_name, input.issuer.replace(/\/+$/, ""), input.client_id,
-      input.client_secret_encrypted, input.scopes ?? "openid profile email", JSON.stringify(input.metadata ?? {})],
-  );
-  return mapOidcProviderRow(result.rows[0]);
-}
-
-export async function listOidcProviders(includeDisabled = false): Promise<OidcProviderRecord[]> {
-  const result = await pool.query(
-    `SELECT * FROM cap_oidc_providers ${includeDisabled ? "" : "WHERE enabled = TRUE"} ORDER BY display_name ASC`,
-  );
-  return result.rows.map(mapOidcProviderRow);
-}
-
-export async function findOidcProviderByName(name: string): Promise<OidcProviderRecord | null> {
-  const result = await pool.query(`SELECT * FROM cap_oidc_providers WHERE name = $1 AND enabled = TRUE`, [name]);
-  return result.rows[0] ? mapOidcProviderRow(result.rows[0]) : null;
-}
-
-export async function findOidcProviderById(id: string): Promise<OidcProviderRecord | null> {
-  const result = await pool.query(`SELECT * FROM cap_oidc_providers WHERE id = $1 AND enabled = TRUE`, [id]);
-  return result.rows[0] ? mapOidcProviderRow(result.rows[0]) : null;
-}
-
 export async function createOidcState(input: {
   provider_id: string; state: string; nonce: string; redirect_after?: string; ttl_seconds?: number;
 }): Promise<void> {
@@ -222,8 +179,4 @@ export async function upsertUserIdentity(input: {
   return { id: String(row.id), user_id: String(row.user_id), provider_id: String(row.provider_id), subject: String(row.subject),
     email: row.email ? String(row.email) : null, metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at), updated_at: asIso(row.updated_at) };
-}
-
-export function toPublicOidcProvider(provider: OidcProviderRecord): OidcProviderPublic {
-  return { id: provider.id, name: provider.name, display_name: provider.display_name, issuer: provider.issuer, scopes: provider.scopes };
 }

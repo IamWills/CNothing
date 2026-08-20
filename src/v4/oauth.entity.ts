@@ -27,6 +27,8 @@ export type OAuthProviderRecord = {
   token_auth_method: OAuthTokenAuthMethod;
   status: OAuthProviderStatus;
   is_builtin: boolean;
+  /** Provider may also be used as a console login identity provider. */
+  login_enabled: boolean;
   metadata: JsonObject;
   created_at: string;
   updated_at: string;

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useConsoleAuth } from "@/hooks/use-console-auth";
+import { sessionAccountLabel } from "@/hooks/use-user-session";
 import {
   createV4Provider,
   fetchV4ProvidersAdmin,
@@ -262,7 +263,7 @@ export function ProvidersPage() {
         </Card>
       ) : !isAdmin ? (
         <Card className="p-4 text-sm text-slate-600">
-          Signed in as {session?.userId}. Provider registry changes are limited to administrators.
+          Signed in as {sessionAccountLabel(session)}. Provider registry changes are limited to administrators.
         </Card>
       ) : null}
 

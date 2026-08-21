@@ -474,7 +474,7 @@
       "get": {
         "tags": ["User"],
         "summary": "Inspect the current user session",
-        "description": "Returns the signed-in Human user_id and the server-side role (user or admin). Role is never taken from the client.",
+        "description": "Returns the signed-in Human user_id, role, and the email/display name from the current identity when available. Role is never taken from the client.",
         "security": [{ "userSession": [] }],
         "responses": { "200": { "description": "Authentication status, user ID, and role." } }
       }

@@ -19,6 +19,7 @@ import {
   fetchV4AuthMe,
   fetchV4Devices,
   revokeV4Device,
+  sessionFromMe,
   type V4Device,
 } from "@/lib/api-v4";
 import { consoleTabs } from "@/lib/v4-channel-tabs";
@@ -45,7 +46,7 @@ export function DevicesPage() {
     try {
       try {
         const me = await fetchV4AuthMe(connection);
-        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at, role: me.role });
+        syncSessionFromServer(sessionFromMe(me));
       } catch {
         // not signed in
       }

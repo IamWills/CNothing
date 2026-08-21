@@ -162,14 +162,47 @@ async function requestJson<T>(
 
 // --- Auth / sessions ---
 
+export type V4AuthMe = {
+  ok: true;
+  user_id: string;
+  role: "user" | "admin";
+  email: string | null;
+  display_name: string | null;
+  expires_at: string;
+  session_id: string;
+};
+
+export function sessionFromMe(me: V4AuthMe): {
+  userId: string;
+  expiresAt: string;
+  role: "user" | "admin";
+  email: string | null;
+  displayName: string | null;
+} {
+  return {
+    userId: me.user_id,
+    expiresAt: me.expires_at,
+    role: me.role,
+    email: me.email,
+    displayName: me.display_name,
+  };
+}
+
+export function accountLabel(input: {
+  userId: string;
+  email?: string | null;
+  displayName?: string | null;
+}): string {
+  const name = input.displayName?.trim();
+  const email = input.email?.trim();
+  if (name && email && name !== email) {
+    return `${name} · ${email}`;
+  }
+  return email || name || input.userId;
+}
+
 export async function fetchV4AuthMe(connection: ConsoleConnection, userSessionToken?: string) {
-  return requestJson<{
-    ok: true;
-    user_id: string;
-    role: "user" | "admin";
-    expires_at: string;
-    session_id: string;
-  }>(connection, "/v4/auth/me", userSessionToken ? { userSessionToken } : undefined);
+  return requestJson<V4AuthMe>(connection, "/v4/auth/me", userSessionToken ? { userSessionToken } : undefined);
 }
 
 export async function fetchV4AuthProviders(connection: ConsoleConnection) {

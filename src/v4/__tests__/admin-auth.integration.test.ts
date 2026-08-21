@@ -51,7 +51,7 @@ describeWithDb("human admin identity and bootstrap", () => {
     const response = await dispatch(sessionRequest("/v4/auth/me", token));
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toMatchObject({ ok: true, user_id: user.id, role: "user" });
+    expect(body).toMatchObject({ ok: true, user_id: user.id, role: "user", email: null, display_name: null });
   });
 
   test("authenticated admin can access admin APIs", async () => {

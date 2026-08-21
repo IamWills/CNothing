@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { useUserSession } from "@/hooks/use-user-session";
+import { sessionAccountLabel, useUserSession } from "@/hooks/use-user-session";
 import {
   approveV4AccessRequest,
   buildV4AuthProviderStartUrl,
@@ -16,6 +16,7 @@ import {
   fetchV4AuthMe,
   fetchV4AuthProviders,
   fetchV4Connections,
+  sessionFromMe,
   type V4AccessRequest,
   type V4AuthProvider,
   type V4OAuthConnection,
@@ -47,11 +48,7 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
     void fetchV4AuthMe(connection)
       .then((response) => {
         if (cancelled) return;
-        syncSessionFromServer({
-          userId: response.user_id,
-          expiresAt: response.expires_at,
-          role: response.role,
-        });
+        syncSessionFromServer(sessionFromMe(response));
       })
       .catch(() => {
         // Not signed in (or cookie missing) — keep local session if any.
@@ -196,7 +193,7 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
 
       {isLoggedIn && session?.userId ? (
         <Card className="mb-4 p-4 text-sm text-slate-600">
-          Signed in as <span className="font-medium text-slate-900">{session.userId}</span>
+          Signed in as <span className="font-medium text-slate-900">{sessionAccountLabel(session)}</span>
         </Card>
       ) : null}
 

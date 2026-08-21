@@ -5,13 +5,15 @@ import { LogIn, ShieldCheck } from "lucide-react";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useUserSession } from "@/hooks/use-user-session";
+import { sessionAccountLabel, useUserSession } from "@/hooks/use-user-session";
 import { sameOriginConnection } from "@/lib/api";
 import {
+  accountLabel,
   buildV4AuthProviderStartUrl,
   fetchV4AuthMe,
   fetchV4AuthProviders,
   logoutV4User,
+  sessionFromMe,
   type V4AuthProvider,
 } from "@/lib/api-v4";
 
@@ -26,10 +28,10 @@ export function LoginPage() {
     const live = sameOriginConnection();
     void Promise.all([fetchV4AuthMe(live), fetchV4AuthProviders(live)])
       .then(([me, available]) => {
-        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at, role: me.role });
+        syncSessionFromServer(sessionFromMe(me));
         setProviders(available.items);
         setProvidersLoaded(true);
-        setStatusMessage(`Signed in as ${me.user_id}${me.role === "admin" ? " (admin)" : ""}.`);
+        setStatusMessage(`Signed in as ${accountLabel({ userId: me.user_id, email: me.email, displayName: me.display_name })}${me.role === "admin" ? " (admin)" : ""}.`);
       })
       .catch(() => {
         void fetchV4AuthProviders(live)
@@ -110,7 +112,7 @@ export function LoginPage() {
           {isLoggedIn && session ? (
             <>
               <p className="text-sm">
-                Signed in as <strong>{session.userId}</strong>
+                Signed in as <strong>{sessionAccountLabel(session)}</strong>
               </p>
               <p className="text-sm text-slate-600">Role: {role ?? "user"}</p>
               <p className="text-sm text-slate-600">Expires: {session.expiresAt}</p>

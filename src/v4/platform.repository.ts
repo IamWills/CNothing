@@ -190,6 +190,38 @@ export async function upsertUserIdentity(input: {
     created_at: asIso(row.created_at), updated_at: asIso(row.updated_at) };
 }
 
+function mapIdentityRow(row: Record<string, unknown>): UserIdentityRecord {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    provider_id: String(row.provider_id),
+    subject: String(row.subject),
+    email: row.email ? String(row.email) : null,
+    metadata: normalizeMetadata(row.metadata),
+    created_at: asIso(row.created_at),
+    updated_at: asIso(row.updated_at),
+  };
+}
+
+export async function findIdentityByProviderSubject(
+  providerId: string,
+  subject: string,
+): Promise<UserIdentityRecord | null> {
+  const result = await pool.query(
+    `SELECT * FROM cap_user_identities WHERE provider_id = $1 AND subject = $2 LIMIT 1`,
+    [providerId, subject],
+  );
+  return result.rows[0] ? mapIdentityRow(result.rows[0]) : null;
+}
+
+export async function findLatestIdentityForUser(userId: string): Promise<UserIdentityRecord | null> {
+  const result = await pool.query(
+    `SELECT * FROM cap_user_identities WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] ? mapIdentityRow(result.rows[0]) : null;
+}
+
 function parseUserRole(value: unknown): UserRole {
   return value === "admin" ? "admin" : "user";
 }

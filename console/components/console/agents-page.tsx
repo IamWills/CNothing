@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
 import { useConsoleAuth } from "@/hooks/use-console-auth";
+import { sessionAccountLabel } from "@/hooks/use-user-session";
 import { fetchV4Agents, registerV4Agent, revokeV4Agent, type V4Agent } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
 import { consoleTabs } from "@/lib/v4-channel-tabs";
@@ -96,7 +97,7 @@ export function AgentsPage() {
         </Card>
       ) : !isAdmin ? (
         <Card className="p-4 text-sm text-slate-600">
-          Signed in as {session?.userId}. Agent enrollment is limited to administrators.
+          Signed in as {sessionAccountLabel(session)}. Agent enrollment is limited to administrators.
         </Card>
       ) : null}
 

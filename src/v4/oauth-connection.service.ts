@@ -16,7 +16,7 @@ import {
   writeOAuthAudit,
 } from "./oauth.repository";
 import { buildUserSessionCookie } from "./session-cookie";
-import { createUserSession, ensureUser, upsertUserIdentity } from "./platform.repository";
+import { createUserSession, ensureUser, findIdentityByProviderSubject, upsertUserIdentity } from "./platform.repository";
 import { generateUserSessionToken, hashSessionToken } from "./user-session";
 import type { OAuthProviderRecord, OAuthTokenAuthMethod } from "./oauth.entity";
 
@@ -286,11 +286,14 @@ export class OAuthConnectionService {
 
     let sessionCookie: string | undefined;
     if (isLogin) {
-      const subjectKey =
-        typeof profile.metadata.login === "string" && profile.metadata.login.trim()
-          ? profile.metadata.login.trim()
-          : profile.accountId;
-      userId = `${provider.slug}:${subjectKey}`;
+      const email =
+        typeof profile.metadata.email === "string" ? profile.metadata.email.trim().toLowerCase() : "";
+      const login =
+        typeof profile.metadata.login === "string" ? profile.metadata.login.trim() : "";
+      const existing = await findIdentityByProviderSubject(provider.id, profile.accountId);
+      userId =
+        existing?.user_id ??
+        `${provider.slug}:${login || email || profile.accountId}`;
       await ensureUser(userId);
       await upsertUserIdentity({
         user_id: userId,

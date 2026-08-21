@@ -10,6 +10,8 @@ type StoredUserSession = {
   sessionToken: string;
   userId: string;
   expiresAt: string;
+  email?: string | null;
+  displayName?: string | null;
 };
 
 type SyncSessionInput = {
@@ -17,6 +19,8 @@ type SyncSessionInput = {
   expiresAt: string;
   sessionToken?: string;
   role?: UserRole;
+  email?: string | null;
+  displayName?: string | null;
 };
 
 export function useUserSession() {
@@ -48,6 +52,8 @@ export function useUserSession() {
       userId: input.userId,
       expiresAt: input.expiresAt,
       sessionToken: input.sessionToken ?? "cookie",
+      email: input.email ?? null,
+      displayName: input.displayName ?? null,
     });
     if (input.role) {
       setRole(input.role);
@@ -69,6 +75,16 @@ export function useUserSession() {
     isLoggedIn: Boolean(session?.userId),
     isAdmin: role === "admin",
   };
+}
+
+export function sessionAccountLabel(session: StoredUserSession | null): string {
+  if (!session) return "";
+  const name = session.displayName?.trim();
+  const email = session.email?.trim();
+  if (name && email && name !== email) {
+    return `${name} · ${email}`;
+  }
+  return email || name || session.userId;
 }
 
 export type { StoredUserSession };

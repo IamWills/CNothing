@@ -16,6 +16,8 @@ export function useConsoleAuth() {
         userId: me.user_id,
         expiresAt: me.expires_at,
         role: me.role,
+        email: me.email,
+        displayName: me.display_name,
       });
       return me;
     } catch {

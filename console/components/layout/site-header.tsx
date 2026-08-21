@@ -6,6 +6,7 @@ import { ExternalLink, Github, LayoutGrid, LogIn, Shield, Smartphone } from "luc
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { useConsoleAuth } from "@/hooks/use-console-auth";
+import { sessionAccountLabel } from "@/hooks/use-user-session";
 import { brand } from "@/lib/brand";
 
 const userNavigation: Array<{
@@ -85,7 +86,7 @@ export function SiteHeader() {
           <div className="flex flex-wrap items-center gap-2">
             {isLoggedIn && session ? (
               <span className="rounded-full border border-[color:var(--border)] bg-white px-4 py-2 text-sm text-slate-700">
-                {session.userId}
+                {sessionAccountLabel(session)}
                 {isAdmin ? " · admin" : ""}
               </span>
             ) : null}

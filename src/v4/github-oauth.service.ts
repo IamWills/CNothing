@@ -71,7 +71,7 @@ export class GitHubOAuthService {
       redirect_after: input.redirectAfter,
     });
 
-    const redirectUri = `${input.apiBaseUrl.replace(/\/+$/, "")}/v4/auth/github/callback`;
+    const redirectUri = config.githubOAuth.redirectUri;
     const params = new URLSearchParams({
       client_id: config.githubOAuth.clientId,
       redirect_uri: redirectUri,
@@ -96,7 +96,7 @@ export class GitHubOAuthService {
       throw new ValidationError("Invalid or expired OAuth state", { error_code: "invalid_oauth_state" });
     }
 
-    const redirectUri = `${input.apiBaseUrl.replace(/\/+$/, "")}/v4/auth/github/callback`;
+    const redirectUri = config.githubOAuth.redirectUri;
     const tokenResponse = await fetch(GITHUB_TOKEN_URL, {
       method: "POST",
       headers: {

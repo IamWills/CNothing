@@ -86,4 +86,4 @@ bun run console:typecheck
 
 集成测试需要 Postgres。测试会自行创建并迁移独立数据库（默认 `cnothing_test`，可用 `TEST_DATABASE_URL` 覆盖）；连不上 Postgres 时这些用例会被跳过，因此 CI 应设置 `CNOTHING_REQUIRE_DB_TESTS=1`，让数据库不可用直接判定失败。
 
-生产 OAuth App 必须配置 `openapi-v4.json` 中列出的精确 v4 callback URL。
+生产 OAuth App 必须配置 `openapi-v4.json` 中列出的精确 v4 callback URL。GitHub 控制台登录另支持已登记的旧地址 `https://cnothing.com/v2/auth/github/callback`（用 `KEYSERVICE_GITHUB_OAUTH_REDIRECT_URI` 对齐 GitHub OAuth App 上的 Authorization callback URL）。

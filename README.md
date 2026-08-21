@@ -86,4 +86,4 @@ bun run console:typecheck
 
 The integration suites need Postgres. They create and migrate their own database, `cnothing_test` by default; override with `TEST_DATABASE_URL`. Without a reachable Postgres they are skipped, so set `CNOTHING_REQUIRE_DB_TESTS=1` in CI to make an unavailable database a failure instead.
 
-Production OAuth callback URLs must use the exact v4 paths documented in `openapi-v4.json`.
+Production OAuth callback URLs must use the exact v4 paths documented in `openapi-v4.json`. GitHub Console login also accepts the historically registered `https://cnothing.com/v2/auth/github/callback`; set `KEYSERVICE_GITHUB_OAUTH_REDIRECT_URI` to the Authorization callback URL on the GitHub OAuth App.

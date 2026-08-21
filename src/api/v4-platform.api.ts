@@ -64,7 +64,10 @@ export async function handleOAuthCallbackRequest(request: Request): Promise<Resp
     return Response.redirect(result.redirect_url, 302);
   }
 
-  const githubLoginMatch = path === "/v4/auth/github/callback";
+  const githubLoginMatch =
+    path === "/v4/auth/github/callback" ||
+    path === "/v3/auth/github/callback" ||
+    path === "/v2/auth/github/callback";
   if (request.method === "GET" && githubLoginMatch) {
     const code = url.searchParams.get("code")?.trim();
     const state = url.searchParams.get("state")?.trim();

@@ -10,7 +10,7 @@ export interface AppConfig {
   masterKey: Buffer;
   bearerToken: string;
   userSessionTtlSeconds: number;
-  githubOAuth?: { clientId: string; clientSecret: string };
+  githubOAuth?: { clientId: string; clientSecret: string; redirectUri: string };
   apns?: { keyPem: string; keyId: string; teamId: string; bundleId: string };
 }
 
@@ -86,7 +86,12 @@ const publicBaseUrl = (() => {
 const githubOAuth = (() => {
   const clientId = process.env.KEYSERVICE_GITHUB_OAUTH_CLIENT_ID?.trim();
   const clientSecret = process.env.KEYSERVICE_GITHUB_OAUTH_CLIENT_SECRET?.trim();
-  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
+  if (!clientId || !clientSecret) return undefined;
+  const explicitRedirect = process.env.KEYSERVICE_GITHUB_OAUTH_REDIRECT_URI?.trim();
+  const redirectUri = explicitRedirect
+    ? configuredHttpUrl("KEYSERVICE_GITHUB_OAUTH_REDIRECT_URI", explicitRedirect)
+    : `${publicBaseUrl}/v4/auth/github/callback`;
+  return { clientId, clientSecret, redirectUri };
 })();
 
 const apns = (() => {

@@ -8,7 +8,7 @@ import { pool } from "../../db";
 const { listAuthProviders } = await import("../auth-providers.service");
 const { oidcService } = await import("../oidc.service");
 const { resolveGitHubLoginProviderId } = await import("../login-provider.service");
-const { findOAuthProviderBySlug, listOAuthProviders, updateOAuthProviderCredentials, toProviderPublic } = await import("../oauth.repository");
+const { findOAuthProviderBySlug, listOAuthProviders, updateOAuthProviderCredentials, toProviderPublic, createOAuthProvider } = await import("../oauth.repository");
 const { oauthProviderService } = await import("../oauth-connection.service");
 const { proxyService } = await import("../proxy.service");
 const { upsertUserIdentity } = await import("../platform.repository");
@@ -220,6 +220,29 @@ describeWithDb("unified provider registry", () => {
       client_secret: "acme-secret",
     });
     expect(updated).toMatchObject({ status: "active", client_id: "acme-client" });
+  });
+
+  test("saving a client secret promotes a public client to client_secret_post", async () => {
+    const provider = await createOAuthProvider({
+      slug: "google-like",
+      display_name: "Google-like",
+      auth_type: "oidc",
+      issuer: "https://accounts.example.com",
+      authorization_url: "https://accounts.example.com/o/oauth2/v2/auth",
+      token_url: "https://oauth.example.com/token",
+      client_id: "web-client",
+      pkce_required: true,
+      token_auth_method: "none",
+    });
+    expect(provider.token_auth_method).toBe("none");
+
+    const updated = await updateOAuthProviderCredentials({
+      id: provider.id,
+      client_id: "web-client",
+      client_secret: "web-secret",
+    });
+    expect(updated?.token_auth_method).toBe("client_secret_post");
+    expect(updated?.status).toBe("active");
   });
 
   test("a discovered proposal stays unconfigured until credentials and activation", async () => {

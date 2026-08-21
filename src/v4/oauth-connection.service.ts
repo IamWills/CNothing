@@ -18,7 +18,18 @@ import {
 import { buildUserSessionCookie } from "./session-cookie";
 import { createUserSession, ensureUser, upsertUserIdentity } from "./platform.repository";
 import { generateUserSessionToken, hashSessionToken } from "./user-session";
-import type { OAuthProviderRecord } from "./oauth.entity";
+import type { OAuthProviderRecord, OAuthTokenAuthMethod } from "./oauth.entity";
+
+/** A stored client_secret means a confidential client, even if the row still says `none`. */
+function resolveTokenAuthMethod(
+  method: OAuthTokenAuthMethod,
+  clientSecret: string | null | undefined,
+): OAuthTokenAuthMethod {
+  if (clientSecret && method === "none") {
+    return "client_secret_post";
+  }
+  return method;
+}
 
 function generatePkcePair(): { verifier: string; challenge: string } {
   const verifier = encodeBase64Url(randomBytes(32));
@@ -253,8 +264,8 @@ export class OAuthConnectionService {
     }
 
     const clientSecret = await getProviderClientSecret(provider);
-    const usesPublicClient = provider.token_auth_method === "none";
-    if (!usesPublicClient && !clientSecret) {
+    const tokenAuthMethod = resolveTokenAuthMethod(provider.token_auth_method, clientSecret);
+    if (tokenAuthMethod !== "none" && !clientSecret) {
       throw new ForbiddenError("OAuth provider client secret not configured");
     }
 
@@ -373,7 +384,8 @@ export class OAuthConnectionService {
       client_id: input.provider.client_id!,
     });
 
-    if (input.provider.token_auth_method !== "none") {
+    const tokenAuthMethod = resolveTokenAuthMethod(input.provider.token_auth_method, input.clientSecret);
+    if (tokenAuthMethod !== "none") {
       body.set("client_secret", input.clientSecret);
     }
 
@@ -386,7 +398,7 @@ export class OAuthConnectionService {
       "content-type": "application/x-www-form-urlencoded",
     };
 
-    if (input.provider.token_auth_method === "client_secret_basic" && input.clientSecret) {
+    if (tokenAuthMethod === "client_secret_basic" && input.clientSecret) {
       const basic = Buffer.from(`${input.provider.client_id}:${input.clientSecret}`).toString("base64");
       headers.authorization = `Basic ${basic}`;
       body.delete("client_secret");
@@ -503,8 +515,8 @@ export class OAuthConnectionService {
     }
 
     const clientSecret = await getProviderClientSecret(provider);
-    const usesPublicClient = provider.token_auth_method === "none";
-    if (!usesPublicClient && !clientSecret) {
+    const refreshAuthMethod = resolveTokenAuthMethod(provider.token_auth_method, clientSecret);
+    if (refreshAuthMethod !== "none" && !clientSecret) {
       await markConnectionReconnectRequired(connectionId);
       return false;
     }
@@ -515,15 +527,16 @@ export class OAuthConnectionService {
         refresh_token: refreshToken,
         client_id: provider.client_id!,
       });
-      if (clientSecret && provider.token_auth_method !== "none") {
-        body.set("client_secret", clientSecret);
+      const tokenAuthMethod = resolveTokenAuthMethod(provider.token_auth_method, clientSecret);
+      if (tokenAuthMethod !== "none") {
+        body.set("client_secret", clientSecret!);
       }
 
       const headers: Record<string, string> = {
         accept: "application/json",
         "content-type": "application/x-www-form-urlencoded",
       };
-      if (provider.token_auth_method === "client_secret_basic" && clientSecret) {
+      if (tokenAuthMethod === "client_secret_basic" && clientSecret) {
         headers.authorization = `Basic ${Buffer.from(`${provider.client_id}:${clientSecret}`).toString("base64")}`;
         body.delete("client_secret");
       }

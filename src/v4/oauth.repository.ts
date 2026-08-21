@@ -347,9 +347,9 @@ export async function updateOAuthProviderCredentials(input: {
   client_secret?: string;
   activate?: boolean;
 }): Promise<OAuthProviderRecord | null> {
+  const existing = await findOAuthProviderById(input.id);
   let clientSecretVaultId: string | null = null;
   if (input.client_secret?.trim()) {
-    const existing = await findOAuthProviderById(input.id);
     const currentSecret = existing ? await readProviderClientSecret(existing) : null;
     if (currentSecret !== input.client_secret.trim()) {
       clientSecretVaultId = await storeProviderClientSecretInVault({
@@ -359,6 +359,9 @@ export async function updateOAuthProviderCredentials(input: {
     }
   }
 
+  const hasSecret = Boolean(
+    input.client_secret?.trim() || existing?.client_secret_vault_id || existing?.encrypted_client_secret,
+  );
   const activate = input.activate !== false;
   const result = await pool.query(
     `
@@ -366,6 +369,10 @@ export async function updateOAuthProviderCredentials(input: {
       SET client_id = $2::text,
           encrypted_client_secret = NULL,
           client_secret_vault_id = COALESCE($3, client_secret_vault_id),
+          token_auth_method = CASE
+            WHEN $5::boolean AND token_auth_method = 'none' THEN 'client_secret_post'
+            ELSE token_auth_method
+          END,
           status = CASE
             WHEN $4::boolean AND $2::text IS NOT NULL AND $2::text <> '' THEN 'active'
             ELSE status
@@ -374,7 +381,7 @@ export async function updateOAuthProviderCredentials(input: {
       WHERE id = $1
       RETURNING *
     `,
-    [input.id, input.client_id, clientSecretVaultId, activate],
+    [input.id, input.client_id, clientSecretVaultId, activate, hasSecret],
   );
   const row = result.rows[0];
   return row ? mapProviderRow(row) : null;

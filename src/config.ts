@@ -20,6 +20,13 @@ function required(name: string): string {
   return value;
 }
 
+/** Service/bootstrap credential. Prefer CN_SERVICE_TOKEN; KEYSERVICE_BEARER_TOKEN remains the deployment name. */
+function serviceCredential(): string {
+  const next = process.env.CN_SERVICE_TOKEN?.trim();
+  if (next) return next;
+  return required("KEYSERVICE_BEARER_TOKEN");
+}
+
 function boundedInteger(name: string, fallback: number, min: number, max: number): number {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isFinite(value) || value < min || value > max) {
@@ -108,7 +115,7 @@ const config: AppConfig = {
   consoleUrl,
   publicBaseUrl,
   masterKey: decodeMasterKey(),
-  bearerToken: required("KEYSERVICE_BEARER_TOKEN"),
+  bearerToken: serviceCredential(),
   userSessionTtlSeconds: boundedInteger("KEYSERVICE_USER_SESSION_TTL_SECONDS", 86400, 300, 604800),
   githubOAuth,
   apns,

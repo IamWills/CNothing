@@ -10,8 +10,9 @@
     { "name": "Agent", "description": "Bearer-authenticated operations used by an AI agent." },
     { "name": "User", "description": "Browser or iOS operations authenticated by a CNothing user session." },
     { "name": "iOS", "description": "Pairing, APNs registration, polling, and device-bound approval." },
-    { "name": "Operator", "description": "Administrative operations protected by KEYSERVICE_BEARER_TOKEN." },
-    { "name": "Authentication", "description": "GitHub and OIDC browser sign-in." }
+    { "name": "Operator", "description": "Human administrative operations. Require a signed-in CNothing user with role=admin. The service bearer token is not a Console login." },
+    { "name": "Service", "description": "Trusted machine operations authenticated by KEYSERVICE_BEARER_TOKEN (or CN_SERVICE_TOKEN). Bootstrap and recovery only." },
+    { "name": "Authentication", "description": "GitHub and OIDC browser sign-in. Admins and users share this login." }
   ],
   "components": {
     "securitySchemes": {
@@ -29,7 +30,12 @@
       "adminToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Operator token configured by KEYSERVICE_BEARER_TOKEN."
+        "description": "Deprecated name for the service credential configured by KEYSERVICE_BEARER_TOKEN or CN_SERVICE_TOKEN. Not a human Console login. Used for POST /v4/admin/bootstrap."
+      },
+      "serviceToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Service credential configured by KEYSERVICE_BEARER_TOKEN or CN_SERVICE_TOKEN. Bootstrap, recovery, and trusted automation only."
       }
     },
     "parameters": {
@@ -135,7 +141,7 @@
       "post": {
         "tags": ["Operator"],
         "summary": "Create an OAuth provider",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "responses": { "201": { "description": "Provider created." } }
       }
     },
@@ -144,7 +150,7 @@
         "tags": ["Operator"],
         "summary": "List the provider registry without exposing secrets",
         "description": "Each item includes stored status plus registry_status (discovered | unverified | reviewed | active | disabled), source, registration_method, and the last validation result.",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "responses": { "200": { "description": "Provider administration views." } }
       }
     },
@@ -153,7 +159,7 @@
         "tags": ["Agent", "Operator"],
         "summary": "Propose a provider from untrusted discovery metadata",
         "description": "Looks up the registry by slug or issuer. If missing, runs OIDC / OAuth authorization-server discovery through the same SSRF checks as the proxy and inserts an unconfigured row for operator review. Does not activate the provider. MCP tools are unchanged.",
-        "security": [{ "agentToken": [] }, { "adminToken": [] }],
+        "security": [{ "agentToken": [] }, { "userSession": [] }],
         "responses": { "201": { "description": "Existing or newly proposed provider." } }
       }
     },
@@ -167,7 +173,7 @@
       "patch": {
         "tags": ["Operator"],
         "summary": "Review, activate, disable, or update OAuth metadata",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "responses": { "200": { "description": "Updated registry view." } }
       }
@@ -176,7 +182,7 @@
       "patch": {
         "tags": ["Operator"],
         "summary": "Store provider client credentials in the Vault",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "responses": { "200": { "description": "Credentials updated; secret values are never returned." } }
       }
@@ -392,14 +398,14 @@
       "get": {
         "tags": ["Operator"],
         "summary": "List agents",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "responses": { "200": { "description": "Agents without token hashes." } }
       },
       "post": {
         "tags": ["Operator"],
         "summary": "Enroll an agent",
         "description": "Returns the agent token once. Store it in a secret manager; CNothing stores only its hash.",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "responses": { "201": { "description": "Agent and one-time plaintext access token." } }
       }
     },
@@ -407,7 +413,7 @@
       "delete": {
         "tags": ["Operator"],
         "summary": "Revoke an agent token",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "responses": { "200": { "description": "Agent revoked." } }
       }
@@ -468,7 +474,9 @@
       "get": {
         "tags": ["User"],
         "summary": "Inspect the current user session",
-        "responses": { "200": { "description": "Authentication status and user ID." } }
+        "description": "Returns the signed-in Human user_id and the server-side role (user or admin). Role is never taken from the client.",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "Authentication status, user ID, and role." } }
       }
     },
     "/v4/auth/logout": {
@@ -479,12 +487,43 @@
         "responses": { "200": { "description": "Logged out." } }
       }
     },
+    "/v4/admin/bootstrap": {
+      "post": {
+        "tags": ["Service"],
+        "summary": "Promote the first Human user to admin",
+        "description": "One-time bootstrap. Requires the service credential and a user that already exists. Disabled once any admin exists. Does not create a Human session.",
+        "security": [{ "serviceToken": [] }],
+        "responses": {
+          "200": { "description": "User promoted to admin." },
+          "401": { "description": "Invalid service credential." },
+          "404": { "description": "Target user does not exist." },
+          "409": { "description": "Bootstrap disabled because an admin already exists." }
+        }
+      }
+    },
+    "/v4/admin/users/promote": {
+      "post": {
+        "tags": ["Operator"],
+        "summary": "Grant admin role to an existing user",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "User is now admin." }, "403": { "description": "Caller is not an admin." } }
+      }
+    },
+    "/v4/admin/users/demote": {
+      "post": {
+        "tags": ["Operator"],
+        "summary": "Remove admin role from a user",
+        "description": "Refuses to remove the last remaining admin.",
+        "security": [{ "userSession": [] }],
+        "responses": { "200": { "description": "User is now a regular user." }, "409": { "description": "Cannot remove the last admin." } }
+      }
+    },
     "/v4/admin/oidc/providers": {
       "post": {
         "tags": ["Operator"],
         "summary": "Enable a provider for browser sign-in",
         "description": "Registers the provider in the provider registry (or upgrades the existing entry with the same slug) and marks it usable as a console login identity provider.",
-        "security": [{ "adminToken": [] }],
+        "security": [{ "userSession": [] }],
         "responses": { "201": { "description": "Login provider registered." } }
       }
     }

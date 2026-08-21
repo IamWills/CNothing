@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { useUserSession } from "@/hooks/use-user-session";
+import { useConsoleAuth } from "@/hooks/use-console-auth";
 import {
   createV4DevicePairingCode,
   createV4ShareCode,
@@ -21,12 +21,12 @@ import {
   revokeV4Device,
   type V4Device,
 } from "@/lib/api-v4";
-import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
+import { consoleTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function DevicesPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const { isLoggedIn, session, syncSessionFromServer } = useUserSession();
+  const { isLoggedIn, session, syncSessionFromServer, isAdmin } = useConsoleAuth();
   const [devices, setDevices] = React.useState<V4Device[]>([]);
   const [agentId, setAgentId] = React.useState("");
   const [shareCode, setShareCode] = React.useState("");
@@ -45,7 +45,7 @@ export function DevicesPage() {
     try {
       try {
         const me = await fetchV4AuthMe(connection);
-        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at });
+        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at, role: me.role });
       } catch {
         // not signed in
       }
@@ -127,7 +127,7 @@ export function DevicesPage() {
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={v4ChannelTabs} />
+          <ChannelRouteTabs items={consoleTabs(isAdmin)} />
         </>
       }
     >

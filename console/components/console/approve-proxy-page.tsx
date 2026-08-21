@@ -50,6 +50,7 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
         syncSessionFromServer({
           userId: response.user_id,
           expiresAt: response.expires_at,
+          role: response.role,
         });
       })
       .catch(() => {

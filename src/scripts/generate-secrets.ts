@@ -14,4 +14,4 @@ writeFileSync(
   { encoding: "utf8", mode: 0o600 },
 );
 
-console.log(`Generated CNothing v4 master and operator secrets in ${envPath}. Keep them secret and back them up securely.`);
+console.log(`Generated CNothing v4 master key and service credential in ${envPath}. KEYSERVICE_BEARER_TOKEN is a bootstrap/automation secret, not a human Console login. Keep it secret and back it up securely.`);

@@ -2,16 +2,18 @@
 
 import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { ExternalLink, Github, LayoutGrid, LogIn, Smartphone } from "lucide-react";
+import { ExternalLink, Github, LayoutGrid, LogIn, Shield, Smartphone } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
+import { useConsoleAuth } from "@/hooks/use-console-auth";
 import { brand } from "@/lib/brand";
 
-const navigation: Array<{
+const userNavigation: Array<{
   href: string;
   label: string;
   icon?: ComponentType<{ className?: string }>;
   matches: string[];
+  adminOnly?: boolean;
 }> = [
   { href: "/", label: "Home", matches: ["/", "/readme"] },
   {
@@ -30,19 +32,34 @@ const navigation: Array<{
     href: "/connect",
     label: "Console",
     icon: LayoutGrid,
-    matches: [
-      "/connect",
-      "/connections",
-      "/grants",
-      "/agents",
-      "/providers",
-      "/approve-proxy",
-    ],
+    matches: ["/connect", "/connections", "/grants", "/approve-proxy"],
+  },
+  {
+    href: "/agents",
+    label: "Agents",
+    icon: Shield,
+    matches: ["/agents"],
+    adminOnly: true,
+  },
+  {
+    href: "/providers",
+    label: "Providers",
+    icon: Shield,
+    matches: ["/providers"],
+    adminOnly: true,
   },
 ];
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const { isLoggedIn, isAdmin, session } = useConsoleAuth();
+
+  const navigation = userNavigation.filter((item) => {
+    if (item.href === "/login" && isLoggedIn) {
+      return true;
+    }
+    return !item.adminOnly || isAdmin;
+  });
 
   return (
     <header className="border-b border-[color:var(--border)]/70 bg-white/70 backdrop-blur-xl">
@@ -66,6 +83,12 @@ export function SiteHeader() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {isLoggedIn && session ? (
+              <span className="rounded-full border border-[color:var(--border)] bg-white px-4 py-2 text-sm text-slate-700">
+                {session.userId}
+                {isAdmin ? " · admin" : ""}
+              </span>
+            ) : null}
             <a
               href="https://github.com/IamWills/CNothing"
               target="_blank"
@@ -81,6 +104,8 @@ export function SiteHeader() {
 
         <nav className="flex flex-wrap gap-2">
           {navigation.map((item) => {
+            const href = item.href === "/login" && isLoggedIn ? "/login" : item.href;
+            const label = item.href === "/login" && isLoggedIn ? "Account" : item.label;
             const isActive = item.matches.some((prefix) =>
               prefix === "/"
                 ? pathname === "/"
@@ -91,7 +116,7 @@ export function SiteHeader() {
             return (
               <a
                 key={item.href}
-                href={item.href}
+                href={href}
                 className={`rounded-full border px-4 py-2 text-sm transition ${
                   isActive
                     ? "border-[color:var(--brand)] bg-[color:var(--brand)] text-white"
@@ -99,7 +124,7 @@ export function SiteHeader() {
                 }`}
               >
                 {Icon ? <Icon className="mr-2 inline h-4 w-4" /> : null}
-                {item.label}
+                {label}
               </a>
             );
           })}

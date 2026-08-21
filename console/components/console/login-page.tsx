@@ -18,7 +18,7 @@ import {
 
 export function LoginPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const { session, syncSessionFromServer, clearSession, isLoggedIn } = useUserSession();
+  const { session, syncSessionFromServer, clearSession, isLoggedIn, role } = useUserSession();
   const [providers, setProviders] = React.useState<V4AuthProvider[]>([]);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -26,9 +26,9 @@ export function LoginPage() {
   React.useEffect(() => {
     void Promise.all([fetchV4AuthMe(connection), fetchV4AuthProviders(connection)])
       .then(([me, available]) => {
-        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at });
+        syncSessionFromServer({ userId: me.user_id, expiresAt: me.expires_at, role: me.role });
         setProviders(available.items);
-        setStatusMessage(`Signed in as ${me.user_id}.`);
+        setStatusMessage(`Signed in as ${me.user_id}${me.role === "admin" ? " (admin)" : ""}.`);
       })
       .catch(() => {
         void fetchV4AuthProviders(connection)
@@ -99,6 +99,7 @@ export function LoginPage() {
           {isLoggedIn && session ? (
             <>
               <p className="text-sm">Signed in as <strong>{session.userId}</strong></p>
+              <p className="text-sm text-slate-600">Role: {role ?? "user"}</p>
               <p className="text-sm text-slate-600">Expires: {session.expiresAt}</p>
               <Button variant="secondary" onClick={() => void logout()}>Sign out</Button>
             </>

@@ -8,6 +8,7 @@ import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
+import { useConsoleAuth } from "@/hooks/use-console-auth";
 import { fetchV4Grants, fetchV4Providers } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
 import { homeChannelTabs } from "@/lib/channel-tabs";
@@ -22,6 +23,8 @@ const sections = [
 
 export function HomePage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
+  const { isAdmin } = useConsoleAuth();
+  const visibleSections = sections.filter((section) => section.href !== "/agents" || isAdmin);
   const [providerCount, setProviderCount] = React.useState(0);
   const [grantCount, setGrantCount] = React.useState(0);
   const [errorMessage, setErrorMessage] = React.useState("");
@@ -64,7 +67,7 @@ export function HomePage() {
         </ol>
       </Card>
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {sections.map(({ href, title, description, icon: Icon }) => (
+        {visibleSections.map(({ href, title, description, icon: Icon }) => (
           <a key={href} href={href} className="group rounded-[24px] border border-slate-200 bg-white p-5 transition hover:border-slate-400">
             <div className="flex items-center justify-between"><Icon className="h-5 w-5" /><ArrowRight className="h-4 w-4 text-slate-400" /></div>
             <h3 className="mt-4 font-semibold">{title}</h3><p className="mt-2 text-sm text-slate-600">{description}</p>

@@ -1,18 +1,20 @@
-import { requireAdminAccess } from "../v4/operator-auth";
-import { NotFoundError, UnauthorizedError, ValidationError } from "../utils/errors";
+import { requireServiceCredential } from "../v4/operator-auth";
+import { NotFoundError, ValidationError } from "../utils/errors";
 import { parseJsonBody } from "../utils/http";
 import { readOptionalObject, readRequiredString, requireAgentFromRequest } from "../v4/agent-auth";
 import { listAuthProviders } from "../v4/auth-providers.service";
 import { githubOAuthService } from "../v4/github-oauth.service";
 import { oidcService } from "../v4/oidc.service";
 import { oauthConnectionService, oauthProviderService } from "../v4/oauth-connection.service";
-import { buildUserSessionCookie, clearUserSessionCookie } from "../v4/session-cookie";
+import { clearUserSessionCookie } from "../v4/session-cookie";
 import {
+  readUserSessionToken,
+  requireAdmin,
   requireUserSession,
   userSessionService,
 } from "../v4/user-session";
+import { bootstrapFirstAdmin, demoteUser, promoteUser, readAdminRequestId } from "../v4/admin.service";
 import { createAgent, listAgents, revokeAgent } from "../v4/platform.repository";
-import config from "../config";
 
 function inferBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
@@ -24,13 +26,9 @@ function inferBaseUrl(request: Request): string {
 }
 
 async function requireAdminOrAgent(request: Request) {
-  try {
-    requireAdminAccess(request);
-    return { actor: "admin" as const };
-  } catch (error) {
-    if (!(error instanceof UnauthorizedError)) {
-      throw error;
-    }
+  if (readUserSessionToken(request)) {
+    const { user } = await requireAdmin(request);
+    return { actor: "admin" as const, user };
   }
   const agent = await requireAgentFromRequest(request);
   return { actor: "agent" as const, agent };
@@ -117,6 +115,42 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     return Response.json(await userSessionService.me(request));
   }
 
+  if (request.method === "POST" && path === "/v4/admin/bootstrap") {
+    requireServiceCredential(request);
+    const body = await parseJsonBody(request);
+    const user = await bootstrapFirstAdmin({
+      userId: readRequiredString(body, "user_id"),
+      requestId: readAdminRequestId(request),
+    });
+    return Response.json({
+      ok: true,
+      user_id: user.id,
+      role: user.role,
+    });
+  }
+
+  if (request.method === "POST" && path === "/v4/admin/users/promote") {
+    const { user: actor } = await requireAdmin(request);
+    const body = await parseJsonBody(request);
+    const user = await promoteUser({
+      userId: readRequiredString(body, "user_id"),
+      actorUserId: actor.id,
+      requestId: readAdminRequestId(request),
+    });
+    return Response.json({ ok: true, user_id: user.id, role: user.role });
+  }
+
+  if (request.method === "POST" && path === "/v4/admin/users/demote") {
+    const { user: actor } = await requireAdmin(request);
+    const body = await parseJsonBody(request);
+    const user = await demoteUser({
+      userId: readRequiredString(body, "user_id"),
+      actorUserId: actor.id,
+      requestId: readAdminRequestId(request),
+    });
+    return Response.json({ ok: true, user_id: user.id, role: user.role });
+  }
+
   // --- Console login providers (GitHub / OIDC) ---
 
   if (request.method === "GET" && path === "/v4/auth/providers") {
@@ -167,7 +201,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
   }
 
   if (request.method === "POST" && path === "/v4/admin/oidc/providers") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request);
     return Response.json(
       await oidcService.registerProvider({
@@ -188,7 +222,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
   // attackers create unlimited identities and approval spam even when grants
   // still require user consent.
   if (request.method === "POST" && path === "/v4/agents") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request);
     const created = await createAgent({
       name: readRequiredString(body, "name"),
@@ -214,14 +248,14 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
   }
 
   if (request.method === "GET" && path === "/v4/agents") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const ownerUserId = url.searchParams.get("owner_user_id")?.trim() || undefined;
     const items = await listAgents({ owner_user_id: ownerUserId });
     return Response.json({ ok: true, items });
   }
 
   if (request.method === "DELETE" && segments.length === 3 && segments[1] === "agents") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const revoked = await revokeAgent({ id: decodeURIComponent(segments[2] ?? "") });
     if (!revoked) throw new NotFoundError("Agent not found or already revoked");
     return Response.json({ ok: true, revoked: true });
@@ -230,7 +264,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
   // --- OAuth providers (operator managed) ---
 
   if (request.method === "GET" && path === "/v4/providers/admin") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const items = await oauthProviderService.listAdminProviders();
     return Response.json({ ok: true, items });
   }
@@ -248,7 +282,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
   }
 
   if (request.method === "POST" && path === "/v4/providers") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request);
     const provider = await oauthProviderService.createProvider({
       slug: readRequiredString(body, "slug"),
@@ -275,7 +309,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     segments[1] === "providers" &&
     segments[3] === "credentials"
   ) {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request);
     const provider = await oauthProviderService.updateProviderCredentials({
       id: decodeURIComponent(segments[2] ?? ""),
@@ -286,7 +320,7 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
   }
 
   if (request.method === "PATCH" && segments.length === 3 && segments[1] === "providers") {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request);
     const provider = await oauthProviderService.updateProvider({
       id: decodeURIComponent(segments[2] ?? ""),

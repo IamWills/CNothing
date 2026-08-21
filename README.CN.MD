@@ -6,9 +6,40 @@ Grant 是 Mandate 的当前表示：由 principal（现阶段为 User）授予 A
 
 AccessRequest 是 ApprovalRequest 的当前表示。Delegation 会铸造 Mandate。当 Mandate 显式设置 `constraints.require_approval`（控制台审批勾选、Grants 页开关，或批准 API）时，有副作用的 `proxy_request`（例如创建 GitHub Issue）会变成 Transaction Intent：Agent 仍然调用 `proxy_request`，收到带 `approval_url` 的 `approval_required`，用户批准后再重试同一请求。GET 不会被闸门拦住。Token 始终不离开 CNothing。
 
+## 身份
+
+CNothing 有三类主体，凭证不可混用。
+
+| 主体 | 凭证 | 授权 |
+| --- | --- | --- |
+| Human | `/login` 之后的浏览器/iOS Session（GitHub / OIDC / 已配置 IdP） | 服务端用户行上的 `role=user` 或 `role=admin` |
+| Agent | 一次性 Agent token（`agent_…`） | Mandate / Grant / Policy / Approval / Transaction Intent |
+| Service | `KEYSERVICE_BEARER_TOKEN`（别名 `CN_SERVICE_TOKEN`） | Bootstrap、恢复、受信自动化 |
+
+管理员和普通用户使用同一个 `/login`。没有 `/admin/login`，也没有第二套密码。控制台会按角色隐藏管理页；所有管理写操作仍由服务端 `requireAdmin()` 执行。
+
+Service bearer token **不是**日常人类管理员登录凭证。全新部署后，先正常登录，再提升首位管理员：
+
+```bash
+curl -X POST "$CN_URL/v4/admin/bootstrap" \
+  -H "Authorization: Bearer $KEYSERVICE_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"github:your-login"}'
+```
+
+系统中一旦已有 admin，bootstrap 即被禁用。之后的提升/降级需要 Human admin session（`POST /v4/admin/users/promote` 与 `/demote`）。不允许移除最后一个 admin。
+
+### 从 Admin Bearer Token 升级
+
+1. 部署本版本并执行 `bun run migrate`（`007_user_roles.sql` 增加 `cap_users.role`，默认 `user`）。
+2. 在 `/login` 用现有身份提供方登录。既有 session 继续有效。
+3. 用 service token 调用 `POST /v4/admin/bootstrap`，`user_id` 来自 `/v4/auth/me`。
+4. 刷新控制台；Agents 和 Providers 仅对 `role=admin` 可见。
+5. 停止使用旧的 Console Admin Token 输入框。控制台不再保存或发送该 token。
+
 ## 唯一支持的流程
 
-1. 管理员在控制台创建 Agent，并把一次性展示的 Agent token 配置到 MCP 客户端环境。
+1. 具有 `role=admin` 的管理员在控制台创建 Agent，并把一次性展示的 Agent token 配置到 MCP 客户端环境。
 2. 用户在 `/login` 登录，在 `/connect` 连接第三方 Provider。
 3. Agent 首先调用 `list_grants`，优先复用符合 Provider 和 Host 范围的有效 Grant。
 4. 没有可用 Grant 时，调用 `list_providers`，再调用 `request_access`。
@@ -27,10 +58,10 @@ OpenAPI：`https://cnothing.com/openapi.json`
 
 ## 核心组件
 
-- `src/v4`：Agent 身份、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、Transaction Intent、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
+- `src/v4`：Agent 身份、Human 用户与角色、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、Transaction Intent、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
 - `src/mcp`：托管 MCP transport 与工具执行。
 - `packages/cnothing-mcp`：stdio MCP 适配器，从 `CNOTHING_AGENT_TOKEN` 环境变量读取 Agent 凭证。
-- `console`：用户登录、Provider 连接、Agent 创建、审批、Grant 和设备管理。
+- `console`：用户登录、Provider 连接、按角色显示的 Agent/Provider 管理、审批、Grant 和设备管理。
 - `iOS`：多账户配对、APNs 和 Secure Enclave 审批签名。
 
 ## 本地开发

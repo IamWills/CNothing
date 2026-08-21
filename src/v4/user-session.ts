@@ -1,23 +1,11 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import config from "../config";
-import { UnauthorizedError } from "../utils/errors";
-import type { UserSessionRecord } from "./platform.entity";
-import {
-  findUserSessionByToken,
-  revokeUserSession,
-} from "./platform.repository";
+import { ForbiddenError, UnauthorizedError } from "../utils/errors";
+import type { UserRecord, UserSessionRecord } from "./platform.entity";
+import { ensureUser, findUserById, findUserSessionByToken, revokeUserSession } from "./platform.repository";
 
 export function hashSessionToken(token: string): string {
   return createHmac("sha256", config.masterKey).update(`user-session:${token}`).digest("hex");
-}
-
-function safeEquals(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left, "utf8");
-  const rightBuffer = Buffer.from(right, "utf8");
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 export function generateUserSessionToken(): string {
@@ -57,6 +45,14 @@ export async function requireUserSession(request: Request): Promise<UserSessionR
   return session;
 }
 
+export async function requireUser(
+  request: Request,
+): Promise<{ session: UserSessionRecord; user: UserRecord }> {
+  const session = await requireUserSession(request);
+  const user = (await findUserById(session.user_id)) ?? (await ensureUser(session.user_id));
+  return { session, user };
+}
+
 export async function requireUserSessionForUser(request: Request, userId: string): Promise<UserSessionRecord> {
   const session = await requireUserSession(request);
   if (session.user_id !== userId) {
@@ -68,14 +64,17 @@ export async function requireUserSessionForUser(request: Request, userId: string
   return session;
 }
 
-export function isAdminRequest(request: Request): boolean {
-  const expected = config.bearerToken;
-  const authorization = request.headers.get("authorization") ?? "";
-  if (!authorization.startsWith("Bearer ")) {
-    return false;
+/** Human session plus server-side admin role. Role is always re-read from cap_users. */
+export async function requireAdmin(
+  request: Request,
+): Promise<{ session: UserSessionRecord; user: UserRecord }> {
+  const authenticated = await requireUser(request);
+  if (authenticated.user.role !== "admin") {
+    throw new ForbiddenError("Admin role required", {
+      error_code: "admin_required",
+    });
   }
-  const supplied = authorization.slice("Bearer ".length).trim();
-  return Boolean(supplied && safeEquals(supplied, expected));
+  return authenticated;
 }
 
 export class UserSessionService {
@@ -89,10 +88,11 @@ export class UserSessionService {
   }
 
   async me(request: Request) {
-    const session = await requireUserSession(request);
+    const { session, user } = await requireUser(request);
     return {
       ok: true as const,
       user_id: session.user_id,
+      role: user.role,
       expires_at: session.expires_at,
       session_id: session.id,
     };

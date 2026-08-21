@@ -1,5 +1,14 @@
 export type JsonObject = Record<string, unknown>;
 
+export type UserRole = "user" | "admin";
+
+export type UserRecord = {
+  id: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AgentStatus = "active" | "suspended" | "revoked";
 
 export type AgentRecord = {

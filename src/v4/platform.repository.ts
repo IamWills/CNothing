@@ -1,11 +1,20 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { pool } from "../db";
 import type {
   AgentRecord,
   JsonObject,
   UserIdentityRecord,
+  UserRecord,
+  UserRole,
   UserSessionRecord,
 } from "./platform.entity";
+
+type Queryable = Pick<typeof pool, "query"> | PoolClient;
+
+function asQueryable(client?: Queryable): Queryable {
+  return client ?? pool;
+}
 
 function normalizeMetadata(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -179,4 +188,59 @@ export async function upsertUserIdentity(input: {
   return { id: String(row.id), user_id: String(row.user_id), provider_id: String(row.provider_id), subject: String(row.subject),
     email: row.email ? String(row.email) : null, metadata: normalizeMetadata(row.metadata),
     created_at: asIso(row.created_at), updated_at: asIso(row.updated_at) };
+}
+
+function parseUserRole(value: unknown): UserRole {
+  return value === "admin" ? "admin" : "user";
+}
+
+function mapUserRow(row: Record<string, unknown>): UserRecord {
+  return {
+    id: String(row.id),
+    role: parseUserRole(row.role),
+    created_at: asIso(row.created_at),
+    updated_at: asIso(row.updated_at),
+  };
+}
+
+export async function findUserById(id: string, client?: Queryable): Promise<UserRecord | null> {
+  const result = await asQueryable(client).query(`SELECT id, role, created_at, updated_at FROM cap_users WHERE id = $1`, [
+    id,
+  ]);
+  return result.rows[0] ? mapUserRow(result.rows[0]) : null;
+}
+
+/** Inserts a Human user at least privilege. Never promotes, and never copies role from a client or IdP. */
+export async function ensureUser(id: string, client?: Queryable): Promise<UserRecord> {
+  const result = await asQueryable(client).query(
+    `INSERT INTO cap_users (id, role)
+     VALUES ($1, 'user')
+     ON CONFLICT (id) DO UPDATE SET updated_at = cap_users.updated_at
+     RETURNING id, role, created_at, updated_at`,
+    [id],
+  );
+  return mapUserRow(result.rows[0]);
+}
+
+export async function countAdmins(client?: Queryable): Promise<number> {
+  const result = await asQueryable(client).query(
+    `SELECT COUNT(*)::int AS n FROM cap_users WHERE role = 'admin'`,
+  );
+  return Number(result.rows[0]?.n ?? 0);
+}
+
+export async function setUserRole(
+  input: { id: string; role: UserRole },
+  client?: Queryable,
+): Promise<UserRecord> {
+  const result = await asQueryable(client).query(
+    `UPDATE cap_users SET role = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, role, created_at, updated_at`,
+    [input.id, input.role],
+  );
+  if (!result.rows[0]) {
+    throw new Error(`User not found: ${input.id}`);
+  }
+  return mapUserRow(result.rows[0]);
 }

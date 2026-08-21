@@ -26,6 +26,8 @@ export async function requireAgentFromRequest(request: Request) {
   return agent;
 }
 
+export const requireAgent = requireAgentFromRequest;
+
 export function readRequiredString(body: Record<string, unknown>, field: string): string {
   const value = body[field];
   if (typeof value !== "string" || !value.trim()) {

@@ -8,7 +8,6 @@ import type { ConsoleConnection } from "@/lib/api";
 
 type ConnectionDraft = {
   baseUrl: string;
-  adminToken: string;
 };
 
 export function ConnectionPanel({
@@ -34,11 +33,11 @@ export function ConnectionPanel({
         <div>
           <h2 className="text-lg font-semibold">Connection</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Point the console at any deployed CNothing instance and optionally provide the
-            admin bearer token.
+            Point the console at a CNothing instance. Human administrators sign in at /login;
+            the service bearer token is not used here.
           </p>
         </div>
-        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_auto] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
           <div className="space-y-2">
             <Label htmlFor="base-url">CNothing base URL</Label>
             <Input
@@ -49,31 +48,11 @@ export function ConnectionPanel({
               }
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-token">Admin bearer token</Label>
-            <Input
-              id="admin-token"
-              type="password"
-              value={draft.adminToken}
-              onChange={(event) =>
-                onDraftChange({ ...draft, adminToken: event.target.value })
-              }
-              placeholder="Optional unless KEYSERVICE_BEARER_TOKEN is configured"
-            />
-          </div>
           <Button onClick={onApply}>Apply connection</Button>
         </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-[20px] bg-[color:var(--surface-muted)]/70 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Active base URL</p>
-            <p className="mt-1 text-sm font-medium text-slate-700">{connection.baseUrl}</p>
-          </div>
-          <div className="rounded-[20px] bg-[color:var(--surface-muted)]/70 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin access</p>
-            <p className="mt-1 text-sm font-medium text-slate-700">
-              {connection.adminToken ? "Bearer token attached" : "Read-only until a token is set"}
-            </p>
-          </div>
+        <div className="rounded-[20px] bg-[color:var(--surface-muted)]/70 px-4 py-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Active base URL</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">{connection.baseUrl}</p>
         </div>
         {statusMessage ? (
           <p className="rounded-[20px] bg-slate-50 px-4 py-3 text-sm text-slate-600">

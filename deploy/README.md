@@ -11,6 +11,8 @@ After DNS is configured, export `DATABASE_URL`, `CERTBOT_EMAIL`, and `KEYSERVICE
 
 The setup script checks out that revision in detached-HEAD mode, installs locked dependencies, builds both applications, applies the idempotent V4 schema, installs the two systemd units, and installs the V4-only Nginx config. It does not configure unattended Git pulls. After installation, add OAuth and all required APNs settings to `.env` before restarting the API.
 
+`KEYSERVICE_BEARER_TOKEN` is a service/bootstrap credential, not a Console login. After the first Human signs in at `/login`, call `POST /v4/admin/bootstrap` with that token and the user's `user_id` to create the first admin. Later administrator access uses the Human session and `role=admin`.
+
 ## Controlled release
 
 Use an immutable revision or reviewed Git commit. Before a database change, take and verify a PostgreSQL backup.

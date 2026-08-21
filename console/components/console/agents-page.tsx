@@ -12,21 +12,33 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
+import { useConsoleAuth } from "@/hooks/use-console-auth";
 import { fetchV4Agents, registerV4Agent, revokeV4Agent, type V4Agent } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
-import { dashboardTabs } from "@/lib/v4-channel-tabs";
+import { consoleTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function AgentsPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
+  const { isLoggedIn, isAdmin, session } = useConsoleAuth();
   const [agents, setAgents] = React.useState<V4Agent[]>([]);
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", owner_user_id: "user123" });
+  const [form, setForm] = React.useState({ name: "", owner_user_id: "" });
+
+  React.useEffect(() => {
+    if (session?.userId && !form.owner_user_id) {
+      setForm((prev) => ({ ...prev, owner_user_id: session.userId }));
+    }
+  }, [session?.userId, form.owner_user_id]);
 
   const refresh = React.useCallback(async () => {
+    if (!isAdmin) {
+      setAgents([]);
+      return;
+    }
     setLoading(true);
     setErrorMessage("");
     try {
@@ -37,7 +49,7 @@ export function AgentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [connection]);
+  }, [connection, isAdmin]);
 
   React.useEffect(() => {
     void refresh();
@@ -65,7 +77,7 @@ export function AgentsPage() {
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={dashboardTabs} />
+          <ChannelRouteTabs items={consoleTabs(isAdmin)} />
         </>
       }
     >
@@ -77,6 +89,16 @@ export function AgentsPage() {
         statusMessage={statusMessage}
         errorMessage={errorMessage}
       />
+
+      {!isLoggedIn ? (
+        <Card className="p-4 text-sm text-slate-600">
+          Sign in at /login. Agent enrollment requires an admin role.
+        </Card>
+      ) : !isAdmin ? (
+        <Card className="p-4 text-sm text-slate-600">
+          Signed in as {session?.userId}. Agent enrollment is limited to administrators.
+        </Card>
+      ) : null}
 
       {errorMessage ? (
         <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</Card>
@@ -111,7 +133,7 @@ export function AgentsPage() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" disabled={!isAdmin}>
               Register agent
             </Button>
           </form>

@@ -5,6 +5,7 @@ import { encodeBase64Url } from "../crypto/base64url";
 import { consumeOAuth2State, createOAuth2State } from "./oauth2-state.repository";
 import {
   createUserSession,
+  ensureUser,
   upsertUserIdentity,
 } from "./platform.repository";
 import {
@@ -129,6 +130,7 @@ export class GitHubOAuthService {
     const userId = `github:${profile.login}`;
 
     const providerId = await resolveGitHubLoginProviderId();
+    await ensureUser(userId);
     await upsertUserIdentity({
       user_id: userId,
       provider_id: providerId,

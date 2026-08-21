@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { pool } from "../db";
 import config from "../config";
 import { encryptWithAes256Gcm, decryptWithAes256Gcm } from "../crypto/master-key";
@@ -709,16 +710,19 @@ export async function consumeOAuthConnectState(state: string): Promise<OAuthConn
   };
 }
 
-export async function writeOAuthAudit(input: {
-  user_id?: string;
-  provider_id?: string;
-  connection_id?: string;
-  action: string;
-  success?: boolean;
-  error_code?: string;
-  metadata?: JsonObject;
-}): Promise<void> {
-  await pool.query(
+export async function writeOAuthAudit(
+  input: {
+    user_id?: string;
+    provider_id?: string;
+    connection_id?: string;
+    action: string;
+    success?: boolean;
+    error_code?: string;
+    metadata?: JsonObject;
+  },
+  client?: Pick<typeof pool, "query"> | PoolClient,
+): Promise<void> {
+  await (client ?? pool).query(
     `
       INSERT INTO cap_oauth_audit (id, user_id, provider_id, connection_id, action, success, error_code, metadata)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)

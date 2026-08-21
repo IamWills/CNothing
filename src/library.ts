@@ -1,4 +1,4 @@
-export type { AgentRecord, JsonObject, UserSessionRecord } from "./v4/platform.entity";
+export type { AgentRecord, JsonObject, UserRecord, UserRole, UserSessionRecord } from "./v4/platform.entity";
 export type {
   OAuthConnectionPublic,
   OAuthConnectionRecord,

@@ -1,6 +1,7 @@
-import { createAgent } from "../../v4/platform.repository";
+import { createAgent, createUserSession, ensureUser, setUserRole } from "../../v4/platform.repository";
 import { createOAuthConnection, createOAuthProvider } from "../../v4/oauth.repository";
-import type { AgentRecord } from "../../v4/platform.entity";
+import { generateUserSessionToken, hashSessionToken } from "../../v4/user-session";
+import type { AgentRecord, UserRecord, UserRole } from "../../v4/platform.entity";
 import type { OAuthConnectionRecord, OAuthProviderRecord } from "../../v4/oauth.entity";
 
 let sequence = 0;
@@ -8,6 +9,29 @@ let sequence = 0;
 function unique(prefix: string): string {
   sequence += 1;
   return `${prefix}-${sequence}`;
+}
+
+export async function givenUser(
+  overrides: { user_id?: string; role?: UserRole } = {},
+): Promise<UserRecord> {
+  const user = await ensureUser(overrides.user_id ?? unique("github:user"));
+  if (overrides.role && overrides.role !== user.role) {
+    return setUserRole({ id: user.id, role: overrides.role });
+  }
+  return user;
+}
+
+export async function givenUserSession(
+  overrides: { user_id?: string; role?: UserRole } = {},
+): Promise<{ user: UserRecord; token: string }> {
+  const user = await givenUser(overrides);
+  const token = generateUserSessionToken();
+  await createUserSession({
+    user_id: user.id,
+    session_token_hash: hashSessionToken(token),
+    ttl_seconds: 3600,
+  });
+  return { user, token };
 }
 
 export async function givenAgent(

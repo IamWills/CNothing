@@ -16,7 +16,7 @@ import {
   writeOAuthAudit,
 } from "./oauth.repository";
 import { buildUserSessionCookie } from "./session-cookie";
-import { createUserSession, upsertUserIdentity } from "./platform.repository";
+import { createUserSession, ensureUser, upsertUserIdentity } from "./platform.repository";
 import { generateUserSessionToken, hashSessionToken } from "./user-session";
 import type { OAuthProviderRecord } from "./oauth.entity";
 
@@ -280,6 +280,7 @@ export class OAuthConnectionService {
           ? profile.metadata.login.trim()
           : profile.accountId;
       userId = `${provider.slug}:${subjectKey}`;
+      await ensureUser(userId);
       await upsertUserIdentity({
         user_id: userId,
         provider_id: provider.id,

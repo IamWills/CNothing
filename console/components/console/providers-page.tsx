@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
+import { useConsoleAuth } from "@/hooks/use-console-auth";
 import {
   createV4Provider,
   fetchV4ProvidersAdmin,
@@ -21,7 +22,7 @@ import {
   type V4OAuthProviderAdmin,
 } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
-import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
+import { consoleTabs } from "@/lib/v4-channel-tabs";
 
 const emptyCreateForm = {
   slug: "",
@@ -52,6 +53,7 @@ function registryLabel(provider: V4OAuthProviderAdmin): string {
 
 export function ProvidersPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
+  const { isLoggedIn, isAdmin, session } = useConsoleAuth();
   const [providers, setProviders] = React.useState<V4OAuthProviderAdmin[]>([]);
   const [createForm, setCreateForm] = React.useState(emptyCreateForm);
   const [proposeIssuer, setProposeIssuer] = React.useState("");
@@ -69,6 +71,10 @@ export function ProvidersPage() {
   const selected = providers.find((provider) => provider.id === selectedId) ?? null;
 
   const refresh = React.useCallback(async () => {
+    if (!isAdmin) {
+      setProviders([]);
+      return;
+    }
     setLoading(true);
     setErrorMessage("");
     try {
@@ -104,7 +110,7 @@ export function ProvidersPage() {
     } finally {
       setLoading(false);
     }
-  }, [connection]);
+  }, [connection, isAdmin]);
 
   React.useEffect(() => {
     void refresh();
@@ -237,7 +243,7 @@ export function ProvidersPage() {
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={v4ChannelTabs} />
+          <ChannelRouteTabs items={consoleTabs(isAdmin)} />
         </>
       }
     >
@@ -249,6 +255,16 @@ export function ProvidersPage() {
         statusMessage={statusMessage}
         errorMessage={errorMessage}
       />
+
+      {!isLoggedIn ? (
+        <Card className="p-4 text-sm text-slate-600">
+          Sign in at /login. Provider registry management requires an admin role.
+        </Card>
+      ) : !isAdmin ? (
+        <Card className="p-4 text-sm text-slate-600">
+          Signed in as {session?.userId}. Provider registry changes are limited to administrators.
+        </Card>
+      ) : null}
 
       {errorMessage ? (
         <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</Card>

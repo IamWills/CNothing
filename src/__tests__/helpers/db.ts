@@ -24,6 +24,7 @@ const MUTABLE_TABLES = [
   "cap_secret_vault",
   "vault_audit",
   "cap_agents",
+  "cap_users",
   "cap_user_sessions",
   "cap_user_identities",
   "cap_oidc_states",

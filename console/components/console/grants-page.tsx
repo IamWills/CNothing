@@ -10,14 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConsoleConnection } from "@/hooks/use-console-connection";
-import { useUserSession } from "@/hooks/use-user-session";
+import { useConsoleAuth } from "@/hooks/use-console-auth";
 import { fetchV4Grants, revokeV4Grant, updateV4Grant, type V4Grant } from "@/lib/api-v4";
-import { v4ChannelTabs } from "@/lib/v4-channel-tabs";
+import { consoleTabs } from "@/lib/v4-channel-tabs";
 import { formatDate } from "@/lib/console-utils";
 
 export function GrantsPage() {
   const { connection, draft, setDraft, saveDraft } = useConsoleConnection();
-  const { isLoggedIn } = useUserSession();
+  const { isLoggedIn, isAdmin } = useConsoleAuth();
   const [grants, setGrants] = React.useState<V4Grant[]>([]);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -75,7 +75,7 @@ export function GrantsPage() {
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
-          <ChannelRouteTabs items={v4ChannelTabs} />
+          <ChannelRouteTabs items={consoleTabs(isAdmin)} />
         </>
       }
     >

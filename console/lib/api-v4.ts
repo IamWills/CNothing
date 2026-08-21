@@ -132,7 +132,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 async function requestJson<T>(
   connection: ConsoleConnection,
   path: string,
-  init?: RequestInit & { admin?: boolean; userSessionToken?: string },
+  init?: RequestInit & { userSessionToken?: string },
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has("content-type") && init?.body) {
@@ -140,8 +140,6 @@ async function requestJson<T>(
   }
   if (init?.userSessionToken?.trim()) {
     headers.set("authorization", `Bearer ${init.userSessionToken.trim()}`);
-  } else if (init?.admin && connection.adminToken.trim()) {
-    headers.set("authorization", `Bearer ${connection.adminToken.trim()}`);
   }
 
   const response = await fetch(`${normalizeBaseUrl(connection.baseUrl)}${path}`, {
@@ -165,11 +163,13 @@ async function requestJson<T>(
 // --- Auth / sessions ---
 
 export async function fetchV4AuthMe(connection: ConsoleConnection, userSessionToken?: string) {
-  return requestJson<{ ok: true; user_id: string; expires_at: string; session_id: string }>(
-    connection,
-    "/v4/auth/me",
-    userSessionToken ? { userSessionToken } : undefined,
-  );
+  return requestJson<{
+    ok: true;
+    user_id: string;
+    role: "user" | "admin";
+    expires_at: string;
+    session_id: string;
+  }>(connection, "/v4/auth/me", userSessionToken ? { userSessionToken } : undefined);
 }
 
 export async function fetchV4AuthProviders(connection: ConsoleConnection) {
@@ -230,7 +230,6 @@ export async function fetchV4ProvidersAdmin(connection: ConsoleConnection) {
   return requestJson<{ ok: true; items: V4OAuthProviderAdmin[] }>(
     connection,
     "/v4/providers/admin",
-    { admin: true },
   );
 }
 
@@ -256,7 +255,6 @@ export async function createV4Provider(
   return requestJson<{ ok: true; provider: V4OAuthProviderAdmin }>(connection, "/v4/providers", {
     method: "POST",
     body: JSON.stringify(payload),
-    admin: true,
   });
 }
 
@@ -267,7 +265,7 @@ export async function proposeV4Provider(
   return requestJson<{ ok: true; provider: V4OAuthProviderAdmin }>(
     connection,
     "/v4/providers/proposals",
-    { method: "POST", body: JSON.stringify(payload), admin: true },
+    { method: "POST", body: JSON.stringify(payload) },
   );
 }
 
@@ -293,7 +291,7 @@ export async function updateV4Provider(
   return requestJson<{ ok: true; provider: V4OAuthProviderAdmin }>(
     connection,
     `/v4/providers/${encodeURIComponent(providerId)}`,
-    { method: "PATCH", body: JSON.stringify(payload), admin: true },
+    { method: "PATCH", body: JSON.stringify(payload) },
   );
 }
 
@@ -305,7 +303,7 @@ export async function updateV4ProviderCredentials(
   return requestJson<{ ok: true; provider: V4OAuthProviderAdmin }>(
     connection,
     `/v4/providers/${encodeURIComponent(providerId)}/credentials`,
-    { method: "PATCH", body: JSON.stringify(payload), admin: true },
+    { method: "PATCH", body: JSON.stringify(payload) },
   );
 }
 
@@ -343,9 +341,7 @@ export async function fetchV4Agents(
   const params = new URLSearchParams();
   if (filter?.owner_user_id) params.set("owner_user_id", filter.owner_user_id);
   const query = params.toString() ? `?${params.toString()}` : "";
-  return requestJson<{ ok: true; items: V4Agent[] }>(connection, `/v4/agents${query}`, {
-    admin: true,
-  });
+  return requestJson<{ ok: true; items: V4Agent[] }>(connection, `/v4/agents${query}`);
 }
 
 export async function registerV4Agent(
@@ -355,7 +351,7 @@ export async function registerV4Agent(
   return requestJson<{ ok: true; agent: V4Agent; access_token: string }>(
     connection,
     "/v4/agents",
-    { method: "POST", body: JSON.stringify(payload), admin: true },
+    { method: "POST", body: JSON.stringify(payload) },
   );
 }
 
@@ -363,7 +359,7 @@ export async function revokeV4Agent(connection: ConsoleConnection, agentId: stri
   return requestJson<{ ok: true; revoked: true }>(
     connection,
     `/v4/agents/${encodeURIComponent(agentId)}`,
-    { method: "DELETE", admin: true },
+    { method: "DELETE" },
   );
 }
 

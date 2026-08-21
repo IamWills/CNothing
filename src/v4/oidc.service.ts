@@ -3,6 +3,7 @@ import {
   createOidcState,
   createUserSession,
   consumeOidcState,
+  ensureUser,
   upsertUserIdentity,
 } from "./platform.repository";
 import {
@@ -236,6 +237,7 @@ export class OidcService {
     });
 
     const userId = deriveUserIdFromClaims(provider.slug, claims);
+    await ensureUser(userId);
     await upsertUserIdentity({
       user_id: userId,
       provider_id: provider.id,

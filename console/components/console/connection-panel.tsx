@@ -31,27 +31,20 @@ export function ConnectionPanel({
     <Card>
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">Connection</h2>
+          <h2 className="text-lg font-semibold">CNothing instance</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Point the console at a CNothing instance. Human administrators sign in at /login;
-            the service bearer token is not used here.
+            This console talks to the same origin. Sign in at /login with a Human session.
           </p>
         </div>
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
           <div className="space-y-2">
-            <Label htmlFor="base-url">CNothing base URL</Label>
-            <Input
-              id="base-url"
-              value={draft.baseUrl}
-              onChange={(event) =>
-                onDraftChange({ ...draft, baseUrl: event.target.value })
-              }
-            />
+            <Label htmlFor="base-url">Base URL</Label>
+            <Input id="base-url" value={draft.baseUrl} readOnly />
           </div>
-          <Button onClick={onApply}>Apply connection</Button>
+          <Button onClick={onApply}>Use this origin</Button>
         </div>
         <div className="rounded-[20px] bg-[color:var(--surface-muted)]/70 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Active base URL</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Active origin</p>
           <p className="mt-1 text-sm font-medium text-slate-700">{connection.baseUrl}</p>
         </div>
         {statusMessage ? (

@@ -2,51 +2,55 @@
 
 import * as React from "react";
 import type { ConsoleConnection } from "@/lib/api";
+import { sameOriginConnection } from "@/lib/api";
 
 const STORAGE_KEY = "keyservice-console-settings";
 
-type StoredSettings = {
-  baseUrl: string;
-  adminToken?: string;
-};
+function sameOriginBaseUrl(): string {
+  return window.location.origin;
+}
+
+/** Drop leftover Admin Token and any cross-origin API URL from older consoles. */
+function sanitizeStoredConnection(): ConsoleConnection {
+  const origin = sameOriginBaseUrl();
+  window.localStorage.removeItem("cnothing-admin-token");
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (!stored) {
+    const next = { baseUrl: origin };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }
+
+  try {
+    JSON.parse(stored) as { baseUrl?: string; adminToken?: string };
+  } catch {
+    window.localStorage.removeItem(STORAGE_KEY);
+    const next = { baseUrl: origin };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }
+
+  const next = { baseUrl: origin };
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
 
 export function useConsoleConnection() {
-  const initialBaseUrl =
-    typeof window === "undefined" ? "" : window.location.origin;
-
-  const [connection, setConnection] = React.useState<ConsoleConnection>({
-    baseUrl: initialBaseUrl,
-  });
-  const [draft, setDraft] = React.useState({ baseUrl: initialBaseUrl });
+  const initial = sameOriginConnection();
+  const [connection, setConnection] = React.useState<ConsoleConnection>(initial);
+  const [draft, setDraft] = React.useState({ baseUrl: initial.baseUrl });
 
   React.useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      const sameOriginConnection = { baseUrl: window.location.origin };
-      setConnection(sameOriginConnection);
-      setDraft(sameOriginConnection);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(stored) as StoredSettings;
-      const nextConnection = { baseUrl: parsed.baseUrl || window.location.origin };
-      // Drop any previously persisted service credential; it is not a Human login.
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextConnection));
-      setConnection(nextConnection);
-      setDraft(nextConnection);
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
-    }
+    const next = sanitizeStoredConnection();
+    setConnection(next);
+    setDraft(next);
   }, []);
 
   function saveDraft() {
-    const nextConnection = {
-      baseUrl: draft.baseUrl.trim() || window.location.origin,
-    };
-
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextConnection));
-    setConnection(nextConnection);
+    const next = { baseUrl: sameOriginBaseUrl() };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setConnection(next);
+    setDraft(next);
   }
 
   return {

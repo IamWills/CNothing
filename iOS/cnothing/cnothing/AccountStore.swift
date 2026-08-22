@@ -39,7 +39,13 @@ struct PairedAccount: Codable, Identifiable, Hashable {
         return platformDisplayName
     }
 
-    var identityLine: String { subtitleText }
+    /// Single-line identity for approvals: always Google/GitHub plus email (or login).
+    var identityLine: String {
+        if let email = accountEmail {
+            return "\(platformDisplayName) · \(email)"
+        }
+        return "\(platformDisplayName) · \(accountLogin)"
+    }
 
     var displayName: String { titleText }
 

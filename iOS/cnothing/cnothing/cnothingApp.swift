@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = PushRegistrar.shared
         if APIClient.shared.isPaired {
-            Task { await PushRegistrar.shared.requestAuthorizationAndRegister() }
+            Task {
+                await APIClient.shared.refreshAllAccountProfiles()
+                await PushRegistrar.shared.requestAuthorizationAndRegister()
+            }
         }
         return true
     }

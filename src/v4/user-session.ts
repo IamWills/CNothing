@@ -2,7 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import config from "../config";
 import { ForbiddenError, UnauthorizedError } from "../utils/errors";
 import type { UserRecord, UserSessionRecord } from "./platform.entity";
-import { ensureUser, findLatestIdentityForUser, findUserById, findUserSessionByToken, revokeUserSession } from "./platform.repository";
+import { ensureUser, findLatestIdentityForUser, findUserById, findUserSessionByToken, identityDisplayFields, revokeUserSession } from "./platform.repository";
 
 export function hashSessionToken(token: string): string {
   return createHmac("sha256", config.masterKey).update(`user-session:${token}`).digest("hex");
@@ -90,18 +90,13 @@ export class UserSessionService {
   async me(request: Request) {
     const { session, user } = await requireUser(request);
     const identity = await findLatestIdentityForUser(session.user_id);
-    const displayName =
-      typeof identity?.metadata.display_name === "string"
-        ? identity.metadata.display_name.trim()
-        : typeof identity?.metadata.name === "string"
-          ? identity.metadata.name.trim()
-          : "";
+    const { email, display_name } = identityDisplayFields(identity);
     return {
       ok: true as const,
       user_id: session.user_id,
       role: user.role,
-      email: identity?.email ?? null,
-      display_name: displayName || null,
+      email,
+      display_name,
       expires_at: session.expires_at,
       session_id: session.id,
     };

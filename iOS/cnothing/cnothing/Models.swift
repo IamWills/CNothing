@@ -6,11 +6,20 @@ struct PairDeviceResponse: Decodable {
         let user_id: String
         let platform: String
         let device_name: String
+        let email: String?
+        let display_name: String?
     }
 
     let ok: Bool
     let device: Device
     let session_token: String
+}
+
+struct AuthMeResponse: Decodable {
+    let ok: Bool
+    let user_id: String
+    let email: String?
+    let display_name: String?
 }
 
 struct PendingRequestsResponse: Decodable {

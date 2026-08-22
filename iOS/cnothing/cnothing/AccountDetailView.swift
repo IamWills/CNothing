@@ -21,7 +21,15 @@ struct AccountDetailView: View {
         List {
             Section("Account") {
                 LabeledContent("Platform", value: currentAccount.platformDisplayName)
-                LabeledContent("Account", value: currentAccount.accountLogin)
+                if let email = currentAccount.accountEmail {
+                    LabeledContent("Email", value: email)
+                }
+                if let name = currentAccount.personName, !name.isEmpty {
+                    LabeledContent("Name", value: name)
+                }
+                if currentAccount.accountEmail == nil {
+                    LabeledContent("Account", value: currentAccount.accountLogin)
+                }
                 LabeledContent("CNothing ID", value: currentAccount.userId)
                 LabeledContent("Device", value: currentAccount.deviceName)
             }
@@ -67,7 +75,7 @@ struct AccountDetailView: View {
                 Text("Unbinding stops this phone from approving requests for this account. Other paired accounts are unaffected.")
             }
         }
-        .navigationTitle(currentAccount.accountLogin)
+        .navigationTitle(currentAccount.titleText)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             "Unbind this account?",
@@ -80,7 +88,7 @@ struct AccountDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Stop approving requests for \(currentAccount.userId) on this phone.")
+            Text("Stop approving requests for \(currentAccount.identityLine) on this phone.")
         }
         .task(id: currentAccount.deviceId) {
             await loadConnections()

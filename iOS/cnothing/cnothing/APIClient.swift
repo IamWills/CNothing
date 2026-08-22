@@ -127,7 +127,14 @@ final class APIClient: ObservableObject {
             deviceName: response.device.device_name.isEmpty ? deviceName : response.device.device_name,
             baseURL: pairBase.absoluteString,
             sessionToken: response.session_token,
+            email: response.device.email,
+            personName: response.device.display_name,
             activate: true
+        )
+        await refreshAccountProfile(
+            deviceId: response.device.id,
+            baseURL: pairBase,
+            sessionToken: response.session_token
         )
         await MainActor.run {
             self.syncFromStore()
@@ -140,6 +147,37 @@ final class APIClient: ObservableObject {
         guard let target else { return }
         AccountStore.shared.removeAccount(deviceId: target)
         syncFromStore()
+    }
+
+    /// Pull email / display name for already-paired accounts (device sessions can call /v4/auth/me).
+    func refreshAllAccountProfiles() async {
+        let snapshot = AccountStore.shared.accounts
+        for account in snapshot {
+            guard let session = AccountStore.shared.sessionToken(for: account.deviceId),
+                  let base = URL(string: account.baseURL)
+            else { continue }
+            await refreshAccountProfile(deviceId: account.deviceId, baseURL: base, sessionToken: session)
+        }
+        await MainActor.run { syncFromStore() }
+    }
+
+    private func refreshAccountProfile(deviceId: String, baseURL: URL, sessionToken: String) async {
+        do {
+            let me: AuthMeResponse = try await request(
+                method: "GET",
+                path: "/v4/auth/me",
+                authenticated: true,
+                baseURLOverride: baseURL,
+                sessionTokenOverride: sessionToken
+            )
+            AccountStore.shared.updateProfile(
+                deviceId: deviceId,
+                email: me.email,
+                personName: me.display_name
+            )
+        } catch {
+            // Keep the locally stored identity if the profile fetch fails.
+        }
     }
 
     // MARK: - Push token

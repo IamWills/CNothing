@@ -222,6 +222,22 @@ export async function findLatestIdentityForUser(userId: string): Promise<UserIde
   return result.rows[0] ? mapIdentityRow(result.rows[0]) : null;
 }
 
+export function identityDisplayFields(identity: UserIdentityRecord | null): {
+  email: string | null;
+  display_name: string | null;
+} {
+  const displayName =
+    typeof identity?.metadata.display_name === "string"
+      ? identity.metadata.display_name.trim()
+      : typeof identity?.metadata.name === "string"
+        ? identity.metadata.name.trim()
+        : "";
+  return {
+    email: identity?.email ?? null,
+    display_name: displayName || null,
+  };
+}
+
 function parseUserRole(value: unknown): UserRole {
   return value === "admin" ? "admin" : "user";
 }

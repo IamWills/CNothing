@@ -32,6 +32,7 @@ async function pairFreshDevice() {
     deviceName: "Test iPhone",
     publicKeyJwk: key.publicKeyJwk,
   });
+  expect(paired.device).toMatchObject({ email: null, display_name: null });
   return { key, deviceId: paired.device.id, sessionToken: paired.session_token };
 }
 

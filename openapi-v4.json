@@ -347,7 +347,7 @@
       "post": {
         "tags": ["iOS"],
         "summary": "Pair an iOS authenticator",
-        "description": "Consumes the code, registers the device public key, and returns a device session token. No existing session is required.",
+        "description": "Consumes the code, registers the device public key, and returns a device session token plus the user's email and display name when known. No existing session is required.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PairDeviceInput" } } } },
         "responses": { "201": { "description": "Paired device and device session token." } }
       }

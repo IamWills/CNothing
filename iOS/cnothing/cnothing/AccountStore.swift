@@ -14,8 +14,34 @@ struct PairedAccount: Codable, Identifiable, Hashable {
     var deviceName: String
     var baseURL: String
     let createdAt: Date
+    /// Human email from the IdP identity, when CNothing has one.
+    var email: String?
+    /// Human display name from the IdP identity (e.g. Google profile name).
+    var personName: String?
 
-    var displayName: String { userId }
+    /// Email if known; otherwise the login/sub parsed from `user_id`.
+    var accountEmail: String? {
+        if let email, !email.isEmpty { return email }
+        return accountLogin.contains("@") ? accountLogin : nil
+    }
+
+    /// Primary row: name, else email, else the user_id login/sub.
+    var titleText: String {
+        if let personName, !personName.isEmpty { return personName }
+        return accountEmail ?? accountLogin
+    }
+
+    /// Always includes the IdP (Google/GitHub). Adds email when it is not already the title.
+    var subtitleText: String {
+        if let email = accountEmail, titleText != email {
+            return "\(platformDisplayName) · \(email)"
+        }
+        return platformDisplayName
+    }
+
+    var identityLine: String { subtitleText }
+
+    var displayName: String { titleText }
 
     /// `github:alice` → `github`
     var platformSlug: String {
@@ -90,6 +116,8 @@ final class AccountStore: ObservableObject {
         deviceName: String,
         baseURL: String,
         sessionToken: String,
+        email: String? = nil,
+        personName: String? = nil,
         activate: Bool = true
     ) -> PairedAccount {
         saveSessionToken(sessionToken, for: deviceId)
@@ -106,16 +134,21 @@ final class AccountStore: ObservableObject {
                 keyTag: keyTag,
                 deviceName: deviceName,
                 baseURL: baseURL,
-                createdAt: old.createdAt
+                createdAt: old.createdAt,
+                email: email ?? old.email,
+                personName: personName ?? old.personName
             )
         } else if let index = accounts.firstIndex(where: { $0.deviceId == deviceId }) {
+            let old = accounts[index]
             accounts[index] = PairedAccount(
                 deviceId: deviceId,
                 userId: userId,
                 keyTag: keyTag,
                 deviceName: deviceName,
                 baseURL: baseURL,
-                createdAt: accounts[index].createdAt
+                createdAt: old.createdAt,
+                email: email ?? old.email,
+                personName: personName ?? old.personName
             )
         } else {
             accounts.append(
@@ -125,7 +158,9 @@ final class AccountStore: ObservableObject {
                     keyTag: keyTag,
                     deviceName: deviceName,
                     baseURL: baseURL,
-                    createdAt: Date()
+                    createdAt: Date(),
+                    email: email,
+                    personName: personName
                 )
             )
         }
@@ -137,6 +172,19 @@ final class AccountStore: ObservableObject {
         }
         persist()
         return accounts.first(where: { $0.deviceId == deviceId })!
+    }
+
+    func updateProfile(deviceId: String, email: String?, personName: String?) {
+        guard let index = accounts.firstIndex(where: { $0.deviceId == deviceId }) else { return }
+        var account = accounts[index]
+        if let email, !email.isEmpty {
+            account.email = email
+        }
+        if let personName, !personName.isEmpty {
+            account.personName = personName
+        }
+        accounts[index] = account
+        persist()
     }
 
     func switchTo(deviceId: String) {

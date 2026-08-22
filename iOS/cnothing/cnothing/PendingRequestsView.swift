@@ -69,7 +69,7 @@ struct PendingRequestsView: View {
                                     Text(item.request.requested_hosts.joined(separator: ", "))
                                         .font(.system(.caption2, design: .monospaced))
                                         .foregroundStyle(.secondary)
-                                    Text(item.account.userId)
+                                    Text(item.account.identityLine)
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                 }

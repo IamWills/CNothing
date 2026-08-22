@@ -2,7 +2,7 @@ import { createHmac, createPublicKey, createVerify, randomBytes, randomUUID } fr
 
 import config from "../config";
 import { NotFoundError, UnauthorizedError, ValidationError } from "../utils/errors";
-import { createUserSession } from "./platform.repository";
+import { createUserSession, findLatestIdentityForUser, identityDisplayFields } from "./platform.repository";
 import { generateUserSessionToken, hashSessionToken } from "./user-session";
 import type { JsonObject } from "./platform.entity";
 import {
@@ -142,6 +142,7 @@ export class DeviceService {
       metadata: { device_id: device.id, kind: "device" },
     });
 
+    const { email, display_name } = identityDisplayFields(await findLatestIdentityForUser(device.user_id));
     return {
       ok: true as const,
       device: {
@@ -150,6 +151,8 @@ export class DeviceService {
         platform: device.platform,
         device_name: device.device_name,
         key_registered: true,
+        email,
+        display_name,
       },
       session_token: sessionToken,
     };

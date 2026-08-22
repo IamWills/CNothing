@@ -26,9 +26,9 @@ struct AccountsView: View {
                                         .font(.title2)
                                         .foregroundStyle(.tint)
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(account.accountLogin)
+                                        Text(account.titleText)
                                             .font(.body.weight(.semibold))
-                                        Text(account.platformDisplayName)
+                                        Text(account.subtitleText)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -56,6 +56,9 @@ struct AccountsView: View {
                 PairingView(isAddingAccount: true) {
                     showAddAccount = false
                 }
+            }
+            .task {
+                await api.refreshAllAccountProfiles()
             }
         }
     }

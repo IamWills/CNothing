@@ -17,34 +17,37 @@ import {
   type V4AuthProvider,
 } from "@/lib/api-v4";
 
-export function LoginPage() {
+export function LoginPage({ initialProviders = [] }: { initialProviders?: V4AuthProvider[] }) {
   const { session, syncSessionFromServer, clearSession, isLoggedIn, role } = useUserSession();
-  const [providers, setProviders] = React.useState<V4AuthProvider[]>([]);
-  const [providersLoaded, setProvidersLoaded] = React.useState(false);
+  const [providers, setProviders] = React.useState<V4AuthProvider[]>(initialProviders);
+  const [providersLoaded, setProvidersLoaded] = React.useState(initialProviders.length > 0);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
 
   React.useEffect(() => {
     const live = sameOriginConnection();
-    void Promise.all([fetchV4AuthMe(live), fetchV4AuthProviders(live)])
-      .then(([me, available]) => {
+    void fetchV4AuthMe(live)
+      .then((me) => {
         syncSessionFromServer(sessionFromMe(me));
-        setProviders(available.items);
-        setProvidersLoaded(true);
-        setStatusMessage(`Signed in as ${accountLabel({ userId: me.user_id, email: me.email, displayName: me.display_name })}${me.role === "admin" ? " (admin)" : ""}.`);
+        setStatusMessage(
+          `Signed in as ${accountLabel({ userId: me.user_id, email: me.email, displayName: me.display_name })}${me.role === "admin" ? " (admin)" : ""}.`,
+        );
       })
       .catch(() => {
-        void fetchV4AuthProviders(live)
-          .then((available) => {
-            setProviders(available.items);
-            setProvidersLoaded(true);
-          })
-          .catch((error) => {
-            setProvidersLoaded(true);
-            setErrorMessage(error instanceof Error ? error.message : "Unable to load sign-in providers.");
-          });
+        // Logged-out visitors get 401; that must not block the provider buttons.
       });
-  }, [syncSessionFromServer]);
+    void fetchV4AuthProviders(live)
+      .then((available) => {
+        setProviders(available.items);
+        setProvidersLoaded(true);
+      })
+      .catch((error) => {
+        setProvidersLoaded(true);
+        if (initialProviders.length === 0) {
+          setErrorMessage(error instanceof Error ? error.message : "Unable to load sign-in providers.");
+        }
+      });
+  }, [initialProviders.length, syncSessionFromServer]);
 
   async function logout() {
     setErrorMessage("");

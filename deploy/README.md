@@ -3,7 +3,7 @@
 The production deployment has two required services:
 
 - `keyservice.service`: V4 API, hosted MCP, OAuth callbacks, Vault proxy, and APNs delivery on port 3021.
-- `cnothing-console.service`: browser login, approvals, device pairing, and the fallback UI on port 3022.
+- `cnothing-console.service`: browser login, approvals, device pairing, and the fallback UI on `127.0.0.1:3022`. Nginx serves `/_next/static/` from `console/.next/static`, proxies Next with HTTP/1.1 (chunked HTML hangs on the default HTTP/1.0 proxy), and caches `/` plus `/login` for two minutes.
 
 ## First installation
 

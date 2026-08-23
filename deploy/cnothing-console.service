@@ -10,7 +10,7 @@ Group=KEYSERVICE_GROUP
 WorkingDirectory=KEYSERVICE_ROOT/console
 Environment=NODE_ENV=production
 Environment=PORT=3022
-ExecStart=KEYSERVICE_BUN run start
+ExecStart=KEYSERVICE_BUN x next start --hostname 127.0.0.1 --port 3022
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

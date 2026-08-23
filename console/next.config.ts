@@ -9,6 +9,8 @@ const localApiOrigin = (process.env.KEYSERVICE_PUBLIC_URL || "http://127.0.0.1:3
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
+  // The 1 GB origin cannot afford sharp on every logo request.
+  images: { unoptimized: true },
   turbopack: {
     root: path.resolve(__dirname),
   },
@@ -24,11 +26,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/",
-        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+        headers: [{ key: "Cache-Control", value: "public, max-age=30, s-maxage=120" }],
       },
       {
         source: "/login",
-        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+        headers: [{ key: "Cache-Control", value: "public, max-age=30, s-maxage=120" }],
       },
     ];
   },

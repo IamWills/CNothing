@@ -6,9 +6,11 @@ export const MCP_WORKFLOW_URI = "resource://cnothing/v4-workflow";
 
 export const MCP_SERVER_INSTRUCTIONS = `CNothing lets an authenticated agent call a user-approved third-party API without receiving the user's credentials.
 
+The host plugin must already hold an agent token, or it must complete POST /v4/agent-enrollments itself and store the claimed token locally. Never ask the user or the model for an agent token, enrollment_secret, password, or OAuth credential. See https://cnothing.com/plugin.md.
+
 Start with list_grants and reuse an active grant for the required provider when possible. If there is no active grant, call list_providers, then request_access. Relay user_action.message and the exact approval_url unchanged. If pushed_to_devices is greater than zero, also tell the user to check the CNothing iOS notification. Poll get_access_status no faster than retry_after_seconds. After approval, use proxy_request for API calls. If proxy_request returns status approval_required, relay that approval_url, poll, then retry the same proxy_request.
 
-The user completes sign-in, provider connection, and approval in CNothing. Never request or accept a password, personal access token, OAuth token, session cookie, or client secret.`;
+The user completes sign-in, provider connection, agent pairing, and approval in CNothing.`;
 
 const emptyInput = { type: "object", properties: {}, additionalProperties: false } as const;
 const standardOutput = {
@@ -101,6 +103,8 @@ export const MCP_TOOLS = [
 
 export const MCP_WORKFLOW_MARKDOWN = `# CNothing v4 agent workflow
 
+Host plugin (not the model): if no agent token is configured, POST /v4/agent-enrollments, store enrollment_secret locally, open approval_url, poll until approved, then store the agent token. Never return enrollment_secret or access_token from a tool. Spec: https://cnothing.com/plugin.md
+
 1. Call \`list_grants\` and reuse a matching active grant.
 2. If no grant matches, call \`list_providers\` and select the exact provider slug. If the provider is missing, call \`request_access\` with \`issuer\` or an https provider URL to propose it; tell the user an operator must review it at the returned console_url, then retry.
 3. Call \`request_access\` with a short reason. Include a known user ID only when it is already available; otherwise omit it.
@@ -109,6 +113,6 @@ export const MCP_WORKFLOW_MARKDOWN = `# CNothing v4 agent workflow
 6. Call \`proxy_request\` with the returned \`grant_id\` and an HTTPS URL on an allowed host.
 7. If \`proxy_request\` returns \`status: approval_required\`, relay the exact \`approval_url\`, poll \`get_access_status\`, then retry the same \`proxy_request\`. Do not invent a new execute tool.
 
-The user performs browser sign-in, provider connection, and approval. CNothing keeps OAuth credentials inside its encrypted vault and injects them only at the proxy boundary.`;
+The user performs browser sign-in, provider connection, agent pairing, and approval. CNothing keeps OAuth credentials inside its encrypted vault and injects them only at the proxy boundary.`;
 
 export type McpToolName = (typeof MCP_TOOLS)[number]["name"];

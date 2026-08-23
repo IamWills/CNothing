@@ -1,0 +1,72 @@
+{
+  "schema_version": "v4",
+  "name": "cnothing-agent-plugin-contract",
+  "documentation": "https://cnothing.com/plugin.md",
+  "skill": "https://cnothing.com/skill.md",
+  "openapi": "https://cnothing.com/openapi.json",
+  "mcp": "https://cnothing.com/mcp",
+  "rules": [
+    "Host plugin holds enrollment_secret and agent token. Model context must never contain them.",
+    "Enrollment HTTP APIs are not MCP tools.",
+    "No Agent identity exists until a signed-in user approves the enrollment.",
+    "Relay approval_url and user_code. Never ask the user or model for tokens."
+  ],
+  "enrollment": {
+    "create": {
+      "method": "POST",
+      "path": "/v4/agent-enrollments",
+      "auth": "none",
+      "body": {
+        "client_name": "required string, 1-80",
+        "client_uri": "optional https URL",
+        "software_id": "optional string"
+      },
+      "returns_to_host_only": ["enrollment_secret"],
+      "returns_to_user": ["approval_url", "user_code"]
+    },
+    "poll": {
+      "method": "GET",
+      "path": "/v4/agent-enrollments/{enrollment_id}",
+      "auth": "Bearer enrollment_secret",
+      "min_interval_seconds_field": "retry_after_seconds",
+      "approved_returns_to_host_only": ["access_token"]
+    },
+    "public_status": {
+      "method": "GET",
+      "path": "/v4/agent-enrollments/{enrollment_id}",
+      "auth": "none",
+      "notes": "No secrets. Used by the Console approval page."
+    },
+    "approve": {
+      "method": "POST",
+      "path": "/v4/agent-enrollments/{enrollment_id}/approve",
+      "auth": "user session",
+      "returns": "agent_id only; never the agent token"
+    },
+    "deny": {
+      "method": "POST",
+      "path": "/v4/agent-enrollments/{enrollment_id}/deny",
+      "auth": "user session"
+    },
+    "approval_page": "/approve-agent/{enrollment_id}"
+  },
+  "runtime": {
+    "hosted_mcp": {
+      "url": "https://cnothing.com/mcp",
+      "auth": "Authorization: Bearer agent_…",
+      "protocol_versions": ["2026-07-28", "2025-11-25", "2025-06-18", "2024-11-05"]
+    },
+    "stdio_mcp": {
+      "token_env": "CNOTHING_AGENT_TOKEN",
+      "token_file_env": "CNOTHING_AGENT_TOKEN_FILE"
+    },
+    "rest": {
+      "grants": "GET /v4/grants",
+      "providers": "GET /v4/providers",
+      "request_access": "POST /v4/access-requests",
+      "access_status": "GET /v4/access-requests/{id}",
+      "proxy": "POST /v4/proxy"
+    }
+  },
+  "tools": ["list_grants", "list_providers", "request_access", "get_access_status", "proxy_request"]
+}

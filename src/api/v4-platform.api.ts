@@ -10,11 +10,16 @@ import { clearUserSessionCookie } from "../v4/session-cookie";
 import {
   readUserSessionToken,
   requireAdmin,
+  requireUser,
   requireUserSession,
   userSessionService,
 } from "../v4/user-session";
 import { bootstrapFirstAdmin, demoteUser, promoteUser, readAdminRequestId } from "../v4/admin.service";
 import { createAgent, listAgents, revokeAgent } from "../v4/platform.repository";
+import {
+  agentEnrollmentService,
+  readEnrollmentSecret,
+} from "../v4/agent-enrollment.service";
 
 function inferBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
@@ -219,11 +224,68 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
     );
   }
 
+  // --- Agent enrollment (plugin host only; never an MCP tool) ---
+
+  if (request.method === "POST" && path === "/v4/agent-enrollments") {
+    const raw = await request.text();
+    let parsed: unknown = {};
+    if (raw.trim()) {
+      try {
+        parsed = JSON.parse(raw) as unknown;
+      } catch {
+        throw new ValidationError("Request body must be valid JSON");
+      }
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new ValidationError("Request body must be a JSON object");
+    }
+    const body = parsed as Record<string, unknown>;
+    const created = await agentEnrollmentService.create({
+      request,
+      apiBaseUrl,
+      client_name: typeof body.client_name === "string" ? body.client_name : undefined,
+      client_uri: body.client_uri,
+      software_id: body.software_id,
+    });
+    return Response.json(created, { status: 201 });
+  }
+
+  if (segments.length >= 2 && segments[0] === "v4" && segments[1] === "agent-enrollments") {
+    const enrollmentId = decodeURIComponent(segments[2] ?? "");
+    if (!enrollmentId) throw new ValidationError("enrollment id is required");
+
+    if (request.method === "GET" && segments.length === 3) {
+      const secret = readEnrollmentSecret(request);
+      if (secret) {
+        return Response.json(
+          await agentEnrollmentService.poll({ id: enrollmentId, secret, apiBaseUrl }),
+        );
+      }
+      return Response.json(await agentEnrollmentService.publicStatus(enrollmentId, apiBaseUrl));
+    }
+
+    if (request.method === "POST" && segments.length === 4 && segments[3] === "approve") {
+      const { user } = await requireUser(request);
+      return Response.json(
+        await agentEnrollmentService.approve({
+          id: enrollmentId,
+          userId: user.id,
+          apiBaseUrl,
+        }),
+      );
+    }
+
+    if (request.method === "POST" && segments.length === 4 && segments[3] === "deny") {
+      const { user } = await requireUser(request);
+      return Response.json(await agentEnrollmentService.deny({ id: enrollmentId, userId: user.id }));
+    }
+  }
+
   // --- Agents ---
 
-  // Agent enrollment is an operator action. Anonymous self-registration lets
-  // attackers create unlimited identities and approval spam even when grants
-  // still require user consent.
+  // Operator mint remains admin-only. Anonymous self-registration is still
+  // refused: plugins create a pending enrollment, and a signed-in user must
+  // approve it before an Agent identity exists.
   if (request.method === "POST" && path === "/v4/agents") {
     await requireAdmin(request);
     const body = await parseJsonBody(request);
@@ -244,22 +306,29 @@ export async function handleV4PlatformRequest(request: Request): Promise<Respons
           created_at: created.agent.created_at,
         },
         access_token: created.access_token,
-        next_step: "Configure this token in the MCP client environment, then call list_grants.",
+        next_step:
+          "Store this token in the host secret store (CNOTHING_AGENT_TOKEN or the plugin token file). Never paste it into a chat, tool argument, or MCP result.",
       },
       { status: 201 },
     );
   }
 
   if (request.method === "GET" && path === "/v4/agents") {
-    await requireAdmin(request);
-    const ownerUserId = url.searchParams.get("owner_user_id")?.trim() || undefined;
+    const { user } = await requireUser(request);
+    const ownerUserId =
+      user.role === "admin"
+        ? url.searchParams.get("owner_user_id")?.trim() || undefined
+        : user.id;
     const items = await listAgents({ owner_user_id: ownerUserId });
     return Response.json({ ok: true, items });
   }
 
   if (request.method === "DELETE" && segments.length === 3 && segments[1] === "agents") {
-    await requireAdmin(request);
-    const revoked = await revokeAgent({ id: decodeURIComponent(segments[2] ?? "") });
+    const { user } = await requireUser(request);
+    const revoked = await revokeAgent({
+      id: decodeURIComponent(segments[2] ?? ""),
+      ...(user.role === "admin" ? {} : { owner_user_id: user.id }),
+    });
     if (!revoked) throw new NotFoundError("Agent not found or already revoked");
     return Response.json({ ok: true, revoked: true });
   }

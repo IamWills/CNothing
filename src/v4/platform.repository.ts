@@ -54,9 +54,11 @@ export async function createAgent(input: {
   tenant_id?: string;
   public_key_pem?: string;
   metadata?: JsonObject;
+  client?: Queryable;
 }): Promise<{ agent: AgentRecord; access_token: string }> {
   const accessToken = generateAgentAccessToken();
-  const result = await pool.query(
+  const db = asQueryable(input.client);
+  const result = await db.query(
     `INSERT INTO cap_agents
        (id, name, public_key_pem, owner_user_id, tenant_id, access_token_hash, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)

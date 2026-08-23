@@ -23,6 +23,7 @@ const MUTABLE_TABLES = [
   "cap_oauth_providers",
   "cap_secret_vault",
   "vault_audit",
+  "cap_agent_enrollments",
   "cap_agents",
   "cap_users",
   "cap_user_sessions",

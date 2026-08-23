@@ -67,6 +67,20 @@ function modernResult(value: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+function enrollmentRequiredData() {
+  const base = config.publicBaseUrl.replace(/\/+$/, "");
+  return {
+    status: "enrollment_required",
+    next_action: "complete_host_enrollment",
+    documentation: `${base}/plugin.md`,
+    enrollment: `${base}/v4/agent-enrollments`,
+    user_action: {
+      message:
+        "This host has no CNothing agent credential. The plugin must POST /v4/agent-enrollments, store enrollment_secret locally, and open approval_url. Never paste the agent token into chat or a tool argument.",
+    },
+  };
+}
+
 function objectArgs(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -241,7 +255,9 @@ export async function processMcpRequest(
 
   const name = typeof params.name === "string" ? params.name : "";
   if (!TOOL_NAMES.has(name)) return protocolError(id, -32602, "Unknown tool", { tool: name });
-  if (!agent) return protocolError(id, -32001, "Authenticated agent required");
+  if (!agent) {
+    return protocolError(id, -32001, "Authenticated agent required", enrollmentRequiredData());
+  }
   try {
     const value = sanitizeAgentResponse(await executeTool(name as McpToolName, objectArgs(params.arguments), agent));
     const toolResult = callResult(value);
@@ -260,6 +276,9 @@ export function handleMcpInfo(baseUrl: string) {
     instructions: MCP_SERVER_INSTRUCTIONS,
     endpoint: `${baseUrl}/mcp`,
     authorization: "Bearer agent token in the HTTP Authorization header",
+    plugin: `${baseUrl}/plugin.md`,
+    plugin_spec: `${baseUrl}/plugin.json`,
+    enrollment: `${baseUrl}/v4/agent-enrollments`,
     tools: MCP_TOOLS.map((tool) => tool.name),
     workflow: MCP_WORKFLOW_URI,
   };
@@ -321,10 +340,13 @@ export async function handleMcpMessage(request: Request): Promise<Response> {
     try {
       agent = await requireAgentFromRequest(request);
     } catch {
-      return Response.json(protocolError(rpc.id ?? null, -32001, "Authenticated agent required"), {
-        status: 401,
-        headers: { "MCP-Protocol-Version": MCP_PROTOCOL_VERSION },
-      });
+      return Response.json(
+        protocolError(rpc.id ?? null, -32001, "Authenticated agent required", enrollmentRequiredData()),
+        {
+          status: 401,
+          headers: { "MCP-Protocol-Version": MCP_PROTOCOL_VERSION },
+        },
+      );
     }
   }
   const response = await processMcpRequest(rpc, agent);

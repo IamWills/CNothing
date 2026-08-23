@@ -39,7 +39,7 @@ curl -X POST "$CN_URL/v4/admin/bootstrap" \
 
 ## 唯一支持的流程
 
-1. 具有 `role=admin` 的管理员在控制台创建 Agent，并把一次性展示的 Agent token 配置到 MCP 客户端环境。
+1. 宿主插件若还没有 Agent token，就由插件自己调用 `POST /v4/agent-enrollments`；用户在 `/approve-agent/{id}` 批准该运行时。token 只写入宿主密钥舱，不进入模型上下文。规格：`https://cnothing.com/plugin.md`。
 2. 用户在 `/login` 登录，在 `/connect` 连接第三方 Provider。
 3. Agent 首先调用 `list_grants`，优先复用符合 Provider 和 Host 范围的有效 Grant。
 4. 没有可用 Grant 时，调用 `list_providers`，再调用 `request_access`。
@@ -54,13 +54,15 @@ curl -X POST "$CN_URL/v4/admin/bootstrap" \
 
 Agent Skill：`https://cnothing.com/skill.md`
 
+插件最低标准：`https://cnothing.com/plugin.md`
+
 OpenAPI：`https://cnothing.com/openapi.json`
 
 ## 核心组件
 
-- `src/v4`：Agent 身份、Human 用户与角色、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、Transaction Intent、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
+- `src/v4`：Agent 身份与用户批准的 enrollment、Human 用户与角色、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、Transaction Intent、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
 - `src/mcp`：托管 MCP transport 与工具执行。
-- `packages/cnothing-mcp`：stdio MCP 适配器，从 `CNOTHING_AGENT_TOKEN` 环境变量读取 Agent 凭证。
+- `packages/cnothing-mcp`：stdio MCP 适配器。没有 `CNOTHING_AGENT_TOKEN` 时由适配器完成用户批准的配对，并把 token 写入本地密钥文件。
 - `console`：用户登录、Provider 连接、按角色显示的 Agent/Provider 管理、审批、Grant 和设备管理。
 - `iOS`：多账户配对、APNs 和 Secure Enclave 审批签名。
 

@@ -92,6 +92,11 @@ describe("CNothing v4 MCP contract", () => {
       method: "tools/call",
       params: { name: "list_grants", arguments: {} },
     });
-    expect(response?.error).toMatchObject({ code: -32001 });
+    expect(response?.error).toMatchObject({
+      code: -32001,
+      data: { status: "enrollment_required", next_action: "complete_host_enrollment" },
+    });
+    expect(JSON.stringify(response)).not.toMatch(/"access_token"/);
+    expect(JSON.stringify(response)).not.toContain("enrs_");
   });
 });

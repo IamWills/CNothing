@@ -27,7 +27,7 @@
     "console:build": "cd console && bun run build",
     "console:start": "cd console && bun run start",
     "mcp:local": "bun run packages/cnothing-mcp/src/index.ts",
-    "test": "bun test src",
+    "test": "bun test src packages/cnothing-mcp",
     "console:typecheck": "cd console && bun run typecheck",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"

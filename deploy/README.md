@@ -39,6 +39,8 @@ Verify all of these after a release:
 curl --fail https://cnothing.com/.well-known/apple-app-site-association
 curl --fail https://cnothing.com/openapi-v4.json
 curl --fail https://cnothing.com/.well-known/mcp
+curl --fail https://cnothing.com/plugin.md
+curl --fail https://cnothing.com/plugin.json
 journalctl -u keyservice.service -n 100 --no-pager
 ```
 

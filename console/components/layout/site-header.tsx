@@ -33,14 +33,13 @@ const userNavigation: Array<{
     href: "/connect",
     label: "Console",
     icon: LayoutGrid,
-    matches: ["/connect", "/connections", "/grants", "/approve-proxy"],
+    matches: ["/connect", "/connections", "/grants", "/approve-proxy", "/approve-agent"],
   },
   {
     href: "/agents",
     label: "Agents",
     icon: Shield,
-    matches: ["/agents"],
-    adminOnly: true,
+    matches: ["/agents", "/approve-agent"],
   },
   {
     href: "/providers",

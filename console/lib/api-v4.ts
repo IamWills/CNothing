@@ -396,6 +396,50 @@ export async function revokeV4Agent(connection: ConsoleConnection, agentId: stri
   );
 }
 
+export type V4AgentEnrollment = {
+  ok: true;
+  enrollment_id: string;
+  status: "pending" | "approved" | "denied" | "expired";
+  client_name: string;
+  client_uri: string | null;
+  software_id: string | null;
+  user_code: string;
+  approval_url: string;
+  expires_at: string;
+  agent_id: string | null;
+  claimed: boolean;
+};
+
+export async function fetchV4AgentEnrollment(connection: ConsoleConnection, enrollmentId: string) {
+  return requestJson<V4AgentEnrollment>(
+    connection,
+    `/v4/agent-enrollments/${encodeURIComponent(enrollmentId)}`,
+  );
+}
+
+export async function approveV4AgentEnrollment(connection: ConsoleConnection, enrollmentId: string) {
+  return requestJson<{
+    ok: true;
+    status: "approved";
+    enrollment_id: string;
+    agent_id: string | null;
+    client_name: string;
+    already_approved: boolean;
+    message?: string;
+  }>(connection, `/v4/agent-enrollments/${encodeURIComponent(enrollmentId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function denyV4AgentEnrollment(connection: ConsoleConnection, enrollmentId: string) {
+  return requestJson<{ ok: true; status: "denied"; enrollment_id: string }>(
+    connection,
+    `/v4/agent-enrollments/${encodeURIComponent(enrollmentId)}/deny`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+}
+
 // --- Access requests + grants ---
 
 export async function fetchV4AccessRequest(connection: ConsoleConnection, id: string) {

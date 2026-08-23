@@ -39,7 +39,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun test src
+        run: bun test src packages/cnothing-mcp
         env:
           TEST_DATABASE_URL: postgresql://keyservice:keyservice@127.0.0.1:5432/cnothing_test
           # Database-backed suites skip themselves when Postgres is unreachable; in CI that must fail instead.

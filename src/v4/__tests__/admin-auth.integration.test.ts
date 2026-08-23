@@ -64,10 +64,18 @@ describeWithDb("human admin identity and bootstrap", () => {
 
   test("normal user accessing admin API is 403", async () => {
     const { token } = await givenUserSession({ user_id: "github:alice" });
-    const response = await dispatch(sessionRequest("/v4/agents", token));
+    const response = await dispatch(sessionRequest("/v4/providers/admin", token));
     expect(response.status).toBe(403);
     const body = await response.json();
     expect(body.error.details.error_code).toBe("admin_required");
+  });
+
+  test("authenticated user can list their own agents", async () => {
+    const { token } = await givenUserSession({ user_id: "github:alice" });
+    const response = await dispatch(sessionRequest("/v4/agents", token));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ ok: true, items: [] });
   });
 
   test("service credential is not accepted as human admin on operator APIs", async () => {

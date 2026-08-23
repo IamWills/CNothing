@@ -4,7 +4,7 @@
   "name_for_human": "CNothing v4",
   "name_for_model": "cnothing_v4_oauth_proxy",
   "description_for_human": "User-approved OAuth API access for AI agents, with encrypted token storage and iOS push approval.",
-  "description_for_model": "Call list_grants first. Reuse a matching active grant; otherwise call list_providers, request_access, relay the exact approval_url and iOS push instruction, wait with get_access_status, then call proxy_request. User credentials never enter tool arguments or results.",
+  "description_for_model": "Host plugin must hold the agent token or complete POST /v4/agent-enrollments itself. Never ask for tokens. Call list_grants first. Reuse a matching active grant; otherwise call list_providers, request_access, relay the exact approval_url and iOS push instruction, wait with get_access_status, then call proxy_request. User credentials never enter tool arguments or results.",
   "auth": {
     "type": "bearer",
     "instructions": "Configure the Agent token in the MCP transport Authorization header. For stdio use CNOTHING_AGENT_TOKEN."
@@ -12,6 +12,8 @@
   "server": { "type": "http", "url": "https://cnothing.com/mcp" },
   "documentation": {
     "skill": "https://cnothing.com/skill.md",
+    "plugin": "https://cnothing.com/plugin.md",
+    "plugin_spec": "https://cnothing.com/plugin.json",
     "openapi": "https://cnothing.com/openapi.json",
     "workflow": "resource://cnothing/v4-workflow"
   },

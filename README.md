@@ -39,7 +39,7 @@ Bootstrap is refused once any admin exists. Later promote/demote calls require a
 
 ## Supported workflow
 
-1. An administrator with `role=admin` creates an Agent in the Console and configures its one-time token in the MCP client environment.
+1. The host plugin either already has an agent token, or it calls `POST /v4/agent-enrollments` and the user approves the runtime at `/approve-agent/{id}`. The token is stored in the host secret store, never in the model context. Spec: `https://cnothing.com/plugin.md`.
 2. The user signs in at `/login` and connects a provider at `/connect`.
 3. The Agent calls `list_grants` and reuses a matching active grant when possible.
 4. Otherwise the Agent calls `list_providers`, then `request_access`.
@@ -54,13 +54,15 @@ Hosted MCP: `https://cnothing.com/mcp`
 
 Agent skill: `https://cnothing.com/skill.md`
 
+Plugin contract: `https://cnothing.com/plugin.md`
+
 OpenAPI: `https://cnothing.com/openapi.json`
 
 ## Components
 
-- `src/v4`: Agent identity, Human users and roles, user sessions, the provider registry and connections, encrypted vault, access grants, transaction intents, credential-injecting proxy, APNs, device pairing, signed device approvals, and share codes.
+- `src/v4`: Agent identity and user-approved enrollment, Human users and roles, user sessions, the provider registry and connections, encrypted vault, access grants, transaction intents, credential-injecting proxy, APNs, device pairing, signed device approvals, and share codes.
 - `src/mcp`: hosted MCP transport and tool execution.
-- `packages/cnothing-mcp`: stdio MCP adapter. Credentials come from `CNOTHING_AGENT_TOKEN`.
+- `packages/cnothing-mcp`: stdio MCP adapter. If `CNOTHING_AGENT_TOKEN` is missing, the adapter enrolls with the user and stores the claimed token locally.
 - `console`: human sign-in, provider connection, role-aware Agent/provider administration, approval, grant, and device management.
 - `iOS`: CNothing authenticator app with account pairing, APNs, and Secure Enclave approval signatures.
 

@@ -6,7 +6,6 @@ import { ChannelRouteTabs } from "@/components/layout/channel-route-tabs";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ReloadIconButton } from "@/components/layout/reload-icon-button";
 import { Card } from "@/components/ui/card";
-import { useConsoleAuth } from "@/hooks/use-console-auth";
 import { sameOriginConnection } from "@/lib/api";
 import { fetchV4Grants, fetchV4Providers } from "@/lib/api-v4";
 import { brand } from "@/lib/brand";
@@ -16,13 +15,12 @@ const sections = [
   { href: "/login", title: "Sign in", description: "Authenticate with GitHub or OIDC.", icon: KeyRound },
   { href: "/connect", title: "Connect providers", description: "Create encrypted OAuth connections.", icon: Link2 },
   { href: "/devices", title: "iOS approvals", description: "Pair devices and receive signed push approvals.", icon: Fingerprint },
-  { href: "/agents", title: "Agents", description: "Provision and revoke Agent identities.", icon: Bot },
+  { href: "/agents", title: "Agents", description: "Approve plugin pairing. Tokens stay in the host, not in chat.", icon: Bot },
   { href: "/grants", title: "Grants", description: "Review and revoke approved API access.", icon: Shield },
 ];
 
 export function HomePage() {
-  const { isAdmin } = useConsoleAuth();
-  const visibleSections = sections.filter((section) => section.href !== "/agents" || isAdmin);
+  const visibleSections = sections;
   const [providerCount, setProviderCount] = React.useState(0);
   const [grantCount, setGrantCount] = React.useState(0);
   const [errorMessage, setErrorMessage] = React.useState("");

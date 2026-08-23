@@ -8,6 +8,7 @@
   "servers": [{ "url": "https://cnothing.com" }],
   "tags": [
     { "name": "Agent", "description": "Bearer-authenticated operations used by an AI agent." },
+    { "name": "Plugin", "description": "Host-only agent enrollment. Tokens are claimed by the plugin process and must never be returned to the model." },
     { "name": "User", "description": "Browser or iOS operations authenticated by a CNothing user session." },
     { "name": "iOS", "description": "Pairing, APNs registration, polling, and device-bound approval." },
     { "name": "Operator", "description": "Human administrative operations. Require a signed-in CNothing user with role=admin. The service bearer token is not a Console login." },
@@ -19,7 +20,12 @@
       "agentToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Agent token issued once by POST /v4/agents. Configure it as CNOTHING_AGENT_TOKEN for the stdio MCP client, or as the Authorization bearer for hosted MCP/HTTP."
+        "description": "Agent token issued by user-approved enrollment or by POST /v4/agents. Configure it as CNOTHING_AGENT_TOKEN or the plugin token file. Never place it in tool arguments."
+      },
+      "enrollmentSecret": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Host-only enrollment secret (enrs_…). Used to poll and claim the agent token. Never expose it to the model."
       },
       "userSession": {
         "type": "apiKey",
@@ -394,17 +400,55 @@
         "responses": { "200": { "description": "Canonical user ID and share-code status." } }
       }
     },
+    "/v4/agent-enrollments": {
+      "post": {
+        "tags": ["Plugin"],
+        "summary": "Start host-only agent pairing",
+        "description": "Creates a pending enrollment. Returns enrollment_secret to the plugin process only. No Agent row exists until a signed-in user approves /approve-agent/{id}. This endpoint is not an MCP tool.",
+        "responses": { "201": { "description": "Pending enrollment. Store enrollment_secret locally." } }
+      }
+    },
+    "/v4/agent-enrollments/{id}": {
+      "get": {
+        "tags": ["Plugin", "User"],
+        "summary": "Poll enrollment or read the public approval view",
+        "description": "Without Authorization this returns the public pairing view (no secrets). With Bearer enrs_… the plugin claims the agent token once after approval.",
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "security": [{ "enrollmentSecret": [] }, {}],
+        "responses": { "200": { "description": "Public status, pending poll, or a one-time access_token for the host." } }
+      }
+    },
+    "/v4/agent-enrollments/{id}/approve": {
+      "post": {
+        "tags": ["User"],
+        "summary": "Approve a plugin runtime as this user's agent",
+        "description": "Mints the Agent owned by the signed-in user. The Console response never includes the agent token.",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Approved. Token is available only to the plugin poll." } }
+      }
+    },
+    "/v4/agent-enrollments/{id}/deny": {
+      "post": {
+        "tags": ["User"],
+        "summary": "Deny a plugin runtime",
+        "security": [{ "userSession": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": { "200": { "description": "Denied." } }
+      }
+    },
     "/v4/agents": {
       "get": {
-        "tags": ["Operator"],
+        "tags": ["User", "Operator"],
         "summary": "List agents",
+        "description": "Ordinary users see their own agents. Admins may filter by owner_user_id or list all.",
         "security": [{ "userSession": [] }],
         "responses": { "200": { "description": "Agents without token hashes." } }
       },
       "post": {
         "tags": ["Operator"],
-        "summary": "Enroll an agent",
-        "description": "Returns the agent token once. Store it in a secret manager; CNothing stores only its hash.",
+        "summary": "Mint an agent token for host recovery",
+        "description": "Admin only. Returns the agent token once. Store it in a secret manager; never paste it into a chat. Prefer POST /v4/agent-enrollments for plugins.",
         "security": [{ "userSession": [] }],
         "responses": { "201": { "description": "Agent and one-time plaintext access token." } }
       }
@@ -413,6 +457,7 @@
       "delete": {
         "tags": ["Operator"],
         "summary": "Revoke an agent token",
+        "description": "Users may revoke their own agents. Admins may revoke any agent.",
         "security": [{ "userSession": [] }],
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "responses": { "200": { "description": "Agent revoked." } }

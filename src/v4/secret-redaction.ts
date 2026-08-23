@@ -45,7 +45,7 @@ export function redactSecrets(value: unknown, depth = 0): unknown {
     return value;
   }
   if (typeof value === "string") {
-    if (/^(agent_|Bearer |gho_|ghp_|ghu_|ghs_|ghr_)/i.test(value)) {
+    if (/^(agent_|enrs_|Bearer |gho_|ghp_|ghu_|ghs_|ghr_)/i.test(value)) {
       return REDACTED;
     }
     return value;
@@ -72,6 +72,7 @@ export function redactLogMessage(message: string): string {
     .replace(/Bearer\s+[A-Za-z0-9._\-+/=]+/gi, "Bearer [REDACTED]")
     .replace(/access_token[=:]\s*["']?[^"'\s&]+/gi, "access_token=[REDACTED]")
     .replace(/refresh_token[=:]\s*["']?[^"'\s&]+/gi, "refresh_token=[REDACTED]")
+    .replace(/enrollment_secret[=:]\s*["']?[^"'\s&]+/gi, "enrollment_secret=[REDACTED]")
     .replace(/client_secret[=:]\s*["']?[^"'\s&]+/gi, "client_secret=[REDACTED]");
 }
 

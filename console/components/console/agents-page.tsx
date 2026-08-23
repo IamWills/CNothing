@@ -36,7 +36,7 @@ export function AgentsPage() {
   }, [session?.userId, form.owner_user_id]);
 
   const refresh = React.useCallback(async () => {
-    if (!isAdmin) {
+    if (!isLoggedIn) {
       setAgents([]);
       return;
     }
@@ -50,7 +50,7 @@ export function AgentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [connection, isAdmin]);
+  }, [connection, isLoggedIn]);
 
   React.useEffect(() => {
     void refresh();
@@ -64,7 +64,9 @@ export function AgentsPage() {
     try {
       const response = await registerV4Agent(connection, form);
       setIssuedToken(response.access_token);
-      setStatusMessage(`Registered agent ${response.agent.name}. Copy the access token now — it won't be shown again.`);
+      setStatusMessage(
+        `Registered agent ${response.agent.name}. Store this token in the host secret store now. Never paste it into a chat.`,
+      );
       await refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Registration failed.");
@@ -74,7 +76,7 @@ export function AgentsPage() {
   return (
     <PageFrame
       title="Agents"
-      description={`${brand.tagline}. Register agents and issue their access tokens for the v4 universal proxy.`}
+      description={`${brand.tagline}. Plugins pair themselves; you approve the runtime. The agent token never appears in chat.`}
       actions={
         <>
           <ReloadIconButton onReload={() => void refresh()} disabled={loading} />
@@ -93,13 +95,15 @@ export function AgentsPage() {
 
       {!isLoggedIn ? (
         <Card className="p-4 text-sm text-slate-600">
-          Sign in at /login. Agent enrollment requires an admin role.
+          Sign in at /login. Your agent plugin will open an approval link; compare the pairing
+          code, then approve. Spec: /plugin.md
         </Card>
-      ) : !isAdmin ? (
+      ) : (
         <Card className="p-4 text-sm text-slate-600">
-          Signed in as {sessionAccountLabel(session)}. Agent enrollment is limited to administrators.
+          Signed in as {sessionAccountLabel(session)}. Plugins call POST /v4/agent-enrollments and
+          send you an approval URL. This page lists runtimes you already approved.
         </Card>
-      ) : null}
+      )}
 
       {errorMessage ? (
         <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</Card>
@@ -108,52 +112,57 @@ export function AgentsPage() {
         <Card className="border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{statusMessage}</Card>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <Card className="space-y-4 p-6">
-          <div className="flex items-center gap-2">
-            <Bot className="h-5 w-5 text-[color:var(--brand)]" />
-            <h2 className="text-lg font-semibold">Register Agent</h2>
-          </div>
-          <form className="space-y-4" onSubmit={(event) => void handleRegister(event)}>
-            <div className="space-y-2">
-              <Label htmlFor="agent-name">Agent name</Label>
-              <Input
-                id="agent-name"
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                placeholder="claude-desktop"
-                required
-              />
+      <div className={`grid gap-6 ${isAdmin ? "lg:grid-cols-[380px_1fr]" : ""}`}>
+        {isAdmin ? (
+          <Card className="space-y-4 p-6">
+            <div className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-[color:var(--brand)]" />
+              <h2 className="text-lg font-semibold">Operator recovery</h2>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="owner-user-id">Owner user ID</Label>
-              <Input
-                id="owner-user-id"
-                value={form.owner_user_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, owner_user_id: event.target.value }))}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={!isAdmin}>
-              Register agent
-            </Button>
-          </form>
-          {issuedToken ? (
-            <Card className="space-y-2 border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
-                <KeyRound className="h-4 w-4" />
-                Agent access token
+            <p className="text-sm text-slate-600">
+              Mint a token into a host secret store only. Do not paste it into a model conversation.
+            </p>
+            <form className="space-y-4" onSubmit={(event) => void handleRegister(event)}>
+              <div className="space-y-2">
+                <Label htmlFor="agent-name">Agent name</Label>
+                <Input
+                  id="agent-name"
+                  value={form.name}
+                  onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="claude-desktop"
+                  required
+                />
               </div>
-              <code className="block overflow-x-auto rounded bg-white p-3 text-xs text-slate-800">{issuedToken}</code>
-            </Card>
-          ) : null}
-        </Card>
+              <div className="space-y-2">
+                <Label htmlFor="owner-user-id">Owner user ID</Label>
+                <Input
+                  id="owner-user-id"
+                  value={form.owner_user_id}
+                  onChange={(event) => setForm((prev) => ({ ...prev, owner_user_id: event.target.value }))}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full">
+                Register agent
+              </Button>
+            </form>
+            {issuedToken ? (
+              <Card className="space-y-2 border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
+                  <KeyRound className="h-4 w-4" />
+                  Host secret only
+                </div>
+                <code className="block overflow-x-auto rounded bg-white p-3 text-xs text-slate-800">{issuedToken}</code>
+              </Card>
+            ) : null}
+          </Card>
+        ) : null}
 
         <Card className="overflow-hidden">
           <div className="border-b border-[color:var(--border)] px-6 py-4">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-[color:var(--brand)]" />
-              <h2 className="text-lg font-semibold">Registered agents</h2>
+              <h2 className="text-lg font-semibold">{isAdmin ? "Registered agents" : "Your agent runtimes"}</h2>
             </div>
           </div>
           <div className="divide-y divide-[color:var(--border)]">

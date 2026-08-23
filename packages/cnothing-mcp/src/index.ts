@@ -10,9 +10,9 @@ import {
   MCP_WORKFLOW_URI,
   type McpToolName,
 } from "./tools";
+import { resolveAgentToken } from "./enrollment-client";
 
 const BASE_URL = (process.env.CNOTHING_BASE_URL ?? "https://cnothing.com").replace(/\/+$/, "");
-const AGENT_TOKEN = process.env.CNOTHING_AGENT_TOKEN?.trim() ?? "";
 const LEGACY_PROTOCOL_VERSIONS = new Set([MCP_LEGACY_PROTOCOL_VERSION, "2025-06-18", "2024-11-05"]);
 const SUPPORTED_PROTOCOL_VERSIONS = [MCP_PROTOCOL_VERSION, ...LEGACY_PROTOCOL_VERSIONS];
 const SERVER_CAPABILITIES = {
@@ -60,16 +60,16 @@ function respondError(id: string | number | null, code: number, message: string)
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
 }
 
-async function api(method: string, path: string, body?: unknown): Promise<Record<string, unknown>> {
-  if (!AGENT_TOKEN) {
-    throw new Error(
-      "CNOTHING_AGENT_TOKEN is not configured. Ask the user or operator to create an agent in the CNothing Console and configure its one-time token in this MCP server environment.",
-    );
-  }
+async function api(
+  token: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<Record<string, unknown>> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
-      authorization: `Bearer ${AGENT_TOKEN}`,
+      authorization: `Bearer ${token}`,
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -84,18 +84,22 @@ async function api(method: string, path: string, body?: unknown): Promise<Record
   return objectArgs(data);
 }
 
-async function callTool(name: McpToolName, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function callTool(
+  token: string,
+  name: McpToolName,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   switch (name) {
     case "list_grants":
-      return api("GET", "/v4/grants");
+      return api(token, "GET", "/v4/grants");
     case "list_providers":
-      return api("GET", "/v4/providers");
+      return api(token, "GET", "/v4/providers");
     case "request_access":
-      return api("POST", "/v4/access-requests", args);
+      return api(token, "POST", "/v4/access-requests", args);
     case "get_access_status":
-      return api("GET", `/v4/access-requests/${encodeURIComponent(String(args.access_request_id ?? ""))}`);
+      return api(token, "GET", `/v4/access-requests/${encodeURIComponent(String(args.access_request_id ?? ""))}`);
     case "proxy_request":
-      return api("POST", "/v4/proxy", args);
+      return api(token, "POST", "/v4/proxy", args);
   }
 }
 
@@ -170,7 +174,17 @@ async function handleMessage(rpc: JsonRpcRequest): Promise<void> {
           return;
         }
         try {
-          const data = await callTool(name as McpToolName, objectArgs(params.arguments));
+          const resolved = await resolveAgentToken();
+          if ("enrollment" in resolved) {
+            const data = resolved.enrollment;
+            const toolResult = {
+              content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+              structuredContent: data,
+            };
+            respond(id, isModern ? modernResult(toolResult) : toolResult);
+            return;
+          }
+          const data = await callTool(resolved.token, name as McpToolName, objectArgs(params.arguments));
           const toolResult = {
             content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
             structuredContent: data,

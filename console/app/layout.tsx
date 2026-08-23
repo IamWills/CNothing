@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://cnothing.com"),
   title: "CNothing — Universal Credential-Injecting Proxy for AI Agents",
   description:
-    "v4 proxy: one human approval per OAuth provider, then agents call any API without seeing tokens. Skill: /skill.md · MCP: /mcp",
+    "v4 proxy: one human approval per OAuth provider, then agents call any API without seeing tokens. Skill: /skill.md · Plugin: /plugin.md · MCP: /mcp",
   applicationName: "CNothing",
   keywords: [
     "CNothing",
@@ -49,9 +49,10 @@ export const metadata: Metadata = {
   other: {
     "ai:product": "CNothing",
     "ai:version": "v4",
-    "ai:capabilities": "oauth-proxy,mcp,ios-approvals",
+    "ai:capabilities": "oauth-proxy,mcp,ios-approvals,agent-plugin-enrollment",
     "ai:getting-started": "https://cnothing.com/getting-started.md",
     "ai:primary-skill": "https://cnothing.com/skill.md",
+    "ai:plugin-contract": "https://cnothing.com/plugin.md",
     "ai:mcp-discovery": "https://cnothing.com/.well-known/mcp",
     "ai:openapi": "https://cnothing.com/openapi-v4.json",
   },
@@ -71,8 +72,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           "CNothing v4: universal credential-injecting proxy for AI agents. One human approval per OAuth provider; agents call any HTTPS API without seeing tokens.",
         sameAs: ["https://github.com/IamWills/CNothing", "https://www.npmjs.com/package/cnothing"],
         featureList: [
+          "User-approved plugin pairing at /plugin.md; agent tokens never enter model context",
           "POST /v4/proxy credential-injecting proxy",
-          "Self-service agent register and access requests",
           "MCP discovery via /.well-known/mcp",
           "Primary skill at /skill.md",
           "OpenAPI at /openapi-v4.json",

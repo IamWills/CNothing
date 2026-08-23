@@ -21,7 +21,7 @@ Use CNothing when a task requires an API protected by a user's OAuth account.
 
 ## Role boundary
 
-The user signs in, connects the Provider, and approves access in CNothing. The Agent calls only the CNothing tools or v4 API. Never request or accept passwords, personal access tokens, OAuth tokens, refresh tokens, cookies, session tokens, or client secrets.
+The host plugin stores the CNothing agent token. If it has none, it must complete `POST /v4/agent-enrollments` itself and keep `enrollment_secret` / `access_token` out of the conversation. The user signs in, approves the plugin at `approval_url`, connects the Provider, and approves API access in CNothing. The Agent calls only the CNothing tools or v4 API. Never request or accept passwords, personal access tokens, OAuth tokens, refresh tokens, cookies, session tokens, agent tokens, or client secrets.
 
 Do not add `Authorization` or `Cookie` to `proxy_request`; CNothing strips those headers and injects the approved Provider credential inside the proxy.
 
@@ -34,4 +34,5 @@ Do not add `Authorization` or `Cookie` to `proxy_request`; CNothing strips those
 - Host not allowed: use a URL from the grant's `allowed_hosts`; do not broaden the grant without a new user approval.
 
 Hosted MCP: `https://cnothing.com/mcp`
+Plugin contract: `https://cnothing.com/plugin.md`
 OpenAPI: `https://cnothing.com/openapi.json`

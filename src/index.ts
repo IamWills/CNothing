@@ -60,9 +60,12 @@ function withCors(response: Response, request: Request): Response {
 function renderHomePage(baseUrl: string): string {
   const endpointRows = [
     ["/health", "Health check"],
+    ["/plugin.md", "Minimum agent plugin contract (host enrollment + secret isolation)"],
+    ["/plugin.json", "Machine-readable plugin contract"],
     ["/skill.md", "Primary skill markdown for AI discovery"],
     ["/mcp", "Authenticated MCP endpoint for v4 proxy tools"],
     ["/openapi.json", "OpenAPI document for the v4 credential-injecting proxy"],
+    ["/v4/agent-enrollments", "Host-only agent pairing (token never returned to the model)"],
     ["/v4/providers", "List OAuth providers"],
     ["/v4/access-requests", "Agent requests connection-level proxy access"],
     ["/v4/proxy", "Universal credential-injecting HTTP proxy (agent never sees tokens)"],
@@ -104,6 +107,22 @@ function renderHomePage(baseUrl: string): string {
     </main>
   </body>
 </html>`;
+}
+
+function servePublicText(relativePath: string, contentType: string, request: Request): Response {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const content = readFileSync(path.join(__dirname, "..", relativePath), "utf8");
+  return withCors(
+    new Response(content, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=60",
+      },
+    }),
+    request,
+  );
 }
 
 function serveOpenApiDocument(request: Request, filename: string): Response {
@@ -160,22 +179,21 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (pathname === "/skill.md" && request.method === "GET") {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const content = readFileSync(
-      path.join(__dirname, "..", "skills", "cnothing-v4", "SKILL.md"),
-      "utf8",
-    );
-    return withCors(
-      new Response(content, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/markdown; charset=utf-8",
-          "Cache-Control": "public, max-age=60",
-        },
-      }),
-      request,
-    );
+    return servePublicText("skills/cnothing-v4/SKILL.md", "text/markdown; charset=utf-8", request);
+  }
+
+  if (
+    (pathname === "/plugin.md" || pathname === "/docs/agent-plugin.md") &&
+    request.method === "GET"
+  ) {
+    return servePublicText("docs/agent-plugin.md", "text/markdown; charset=utf-8", request);
+  }
+
+  if (
+    (pathname === "/plugin.json" || pathname === "/.well-known/cnothing-plugin") &&
+    request.method === "GET"
+  ) {
+    return servePublicText("docs/plugin.json", "application/json; charset=utf-8", request);
   }
 
   // Universal Links for iOS: https://cnothing.com/approve-proxy/{id} → CNothing app

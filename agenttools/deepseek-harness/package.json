@@ -1,0 +1,50 @@
+{
+  "name": "cnothing-deepseek",
+  "version": "4.0.0",
+  "description": "DeepSeek Harness plugin for CNothing v4 agent identity and user-approved OAuth proxy access.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outfile dist/index.js --format esm --target node --external cnothing-agent",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "cnothing-agent": "4.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-tools": { "optional": true }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IamWills/CNothing.git",
+    "directory": "agenttools/deepseek-harness"
+  },
+  "homepage": "https://cnothing.com",
+  "keywords": [
+    "cnothing",
+    "deepseek",
+    "harness",
+    "agent"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

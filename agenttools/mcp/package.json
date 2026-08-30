@@ -1,0 +1,38 @@
+{
+  "name": "cnothing-mcp",
+  "version": "4.0.0",
+  "description": "CNothing v4 stdio MCP adapter. Enrollment stays in the host process; the model never sees agent tokens.",
+  "type": "module",
+  "bin": {
+    "cnothing-mcp": "./dist/index.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outfile dist/index.js --format esm --target node --external cnothing-agent --banner '#!/usr/bin/env node'",
+    "prepublishOnly": "bun run build",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "cnothing-agent": "4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IamWills/CNothing.git",
+    "directory": "agenttools/mcp"
+  },
+  "homepage": "https://cnothing.com",
+  "keywords": [
+    "cnothing",
+    "mcp",
+    "agent"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

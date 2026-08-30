@@ -16,6 +16,12 @@
     "README.md",
     "README.CN.MD"
   ],
+  "workspaces": [
+    "agenttools/core",
+    "agenttools/node",
+    "agenttools/mcp",
+    "agenttools/deepseek-harness"
+  ],
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "start": "bun run src/index.ts",
@@ -26,8 +32,8 @@
     "console:dev": "cd console && bun run dev",
     "console:build": "cd console && bun run build",
     "console:start": "cd console && bun run start",
-    "mcp:local": "bun run packages/cnothing-mcp/src/index.ts",
-    "test": "bun test src packages/cnothing-mcp",
+    "mcp:local": "bun run agenttools/mcp/src/index.ts",
+    "test": "bun test src agenttools",
     "console:typecheck": "cd console && bun run typecheck",
     "typecheck": "bunx tsc --noEmit",
     "lint": "bunx eslint src --ext .ts"

@@ -85,4 +85,4 @@ If the host cannot store a secret, it cannot use CNothing.
 
 ## Reference implementation
 
-`packages/cnothing-mcp` is a stdio adapter that enrolls when `CNOTHING_AGENT_TOKEN` is missing, writes the claimed token to a `0600` file, and never returns it from a tool.
+`agenttools/mcp` is a stdio adapter that enrolls when `CNOTHING_AGENT_TOKEN` is missing, writes the claimed token to a `0600` file, and never returns it from a tool. `agenttools/node` (`cnothing-agent`) is the same core for programmatic hosts.

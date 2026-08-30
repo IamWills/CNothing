@@ -62,7 +62,8 @@ OpenAPI：`https://cnothing.com/openapi.json`
 
 - `src/v4`：Agent 身份与用户批准的 enrollment、Human 用户与角色、用户会话、Provider Registry/Connection、加密 Vault、访问申请、Grant、Transaction Intent、凭证注入代理、APNs、设备配对、设备签名审批和 share code。
 - `src/mcp`：托管 MCP transport 与工具执行。
-- `packages/cnothing-mcp`：stdio MCP 适配器。没有 `CNOTHING_AGENT_TOKEN` 时由适配器完成用户批准的配对，并把 token 写入本地密钥文件。
+- `agenttools`：宿主侧 Agent SDK（`cnothing-agent`）、stdio MCP、DeepSeek Harness 插件。Enrollment 与 agent token 留在宿主进程。
+- `packages/cnothing-mcp`：兼容入口，启动 `agenttools/mcp`。
 - `console`：用户登录、Provider 连接、按角色显示的 Agent/Provider 管理、审批、Grant 和设备管理。
 - `iOS`：多账户配对、APNs 和 Secure Enclave 审批签名。
 

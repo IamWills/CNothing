@@ -1,0 +1,38 @@
+{
+  "name": "cnothing-agent",
+  "version": "4.0.0",
+  "description": "CNothing v4 host SDK: user-approved agent enrollment and credential-injecting proxy access without exposing tokens to the model.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build ../core/src/index.ts --outfile dist/index.js --format esm --target node && bunx tsc -p tsconfig.dts.json",
+    "prepublishOnly": "bun run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IamWills/CNothing.git",
+    "directory": "agenttools/node"
+  },
+  "homepage": "https://cnothing.com",
+  "keywords": [
+    "cnothing",
+    "agent",
+    "oauth",
+    "mcp"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

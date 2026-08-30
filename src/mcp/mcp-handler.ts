@@ -14,7 +14,7 @@ import {
   MCP_WORKFLOW_MARKDOWN,
   MCP_WORKFLOW_URI,
   type McpToolName,
-} from "../../packages/cnothing-mcp/src/tools";
+} from "../../agenttools/mcp/src/tools";
 import { isAllowedBrowserOrigin } from "../utils/http";
 
 type JsonRpcId = string | number | null;

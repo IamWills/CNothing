@@ -62,7 +62,8 @@ OpenAPI: `https://cnothing.com/openapi.json`
 
 - `src/v4`: Agent identity and user-approved enrollment, Human users and roles, user sessions, the provider registry and connections, encrypted vault, access grants, transaction intents, credential-injecting proxy, APNs, device pairing, signed device approvals, and share codes.
 - `src/mcp`: hosted MCP transport and tool execution.
-- `packages/cnothing-mcp`: stdio MCP adapter. If `CNOTHING_AGENT_TOKEN` is missing, the adapter enrolls with the user and stores the claimed token locally.
+- `agenttools`: host-side Agent SDK (`cnothing-agent`), stdio MCP, and DeepSeek Harness plugin. Enrollment and the agent token stay in the host process.
+- `packages/cnothing-mcp`: compatibility entry that starts `agenttools/mcp`.
 - `console`: human sign-in, provider connection, role-aware Agent/provider administration, approval, grant, and device management.
 - `iOS`: CNothing authenticator app with account pairing, APNs, and Secure Enclave approval signatures.
 

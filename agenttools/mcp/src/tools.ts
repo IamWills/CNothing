@@ -1,4 +1,9 @@
-import { AGENT_INSTRUCTIONS, AGENT_TOOLS, AGENT_WORKFLOW, type AgentToolName } from "cnothing-agent";
+import {
+  AGENT_INSTRUCTIONS,
+  AGENT_TOOLS,
+  AGENT_WORKFLOW,
+} from "../../core/src/catalog";
+import type { AgentToolName } from "../../core/src/types";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 export const MCP_LEGACY_PROTOCOL_VERSION = "2025-11-25";

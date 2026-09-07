@@ -4,7 +4,7 @@ import {
   renderModelJson,
   type AgentToolName,
   type CNothingAgent,
-} from "cnothing-agent";
+} from "../../core/src/index";
 
 import { defineTool } from "./define-tool";
 import type { Context, ToolDefinition } from "./dsh-types";

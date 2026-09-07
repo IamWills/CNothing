@@ -14,13 +14,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts --outfile dist/index.js --format esm --target node --external cnothing-agent --banner '#!/usr/bin/env node'",
+    "build": "rm -rf dist && bun build src/index.ts --outfile dist/index.js --format esm --target node --banner '#!/usr/bin/env node'",
     "prepublishOnly": "bun run build",
     "start": "bun run src/index.ts"
   },
-  "dependencies": {
-    "cnothing-agent": "4.0.0"
-  },
+  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/IamWills/CNothing.git",

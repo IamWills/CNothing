@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { createCNothingAgent, MemoryCredentialStore } from "cnothing-agent";
+import { createCNothingAgent, MemoryCredentialStore } from "../../../core/src/index";
 
 import { handleMcpMessage } from "../server";
 

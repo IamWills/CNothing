@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { createCNothingAgent, MemoryCredentialStore } from "cnothing-agent";
+import { createCNothingAgent, MemoryCredentialStore } from "../../../core/src/index";
 
 import { apply, createCNothingTools, inject, name } from "../plugin";
 import type { ToolDefinition } from "../dsh-types";

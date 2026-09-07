@@ -5,7 +5,7 @@ import {
   createCNothingAgent,
   renderModelJson,
   type AgentToolName,
-} from "cnothing-agent";
+} from "../../core/src/index";
 
 import {
   MCP_LEGACY_PROTOCOL_VERSION,

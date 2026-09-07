@@ -18,12 +18,10 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts --outfile dist/index.js --format esm --target node --external cnothing-agent",
+    "build": "rm -rf dist && bun build src/index.ts --outfile dist/index.js --format esm --target node",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "cnothing-agent": "4.0.0"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-tools": "*"

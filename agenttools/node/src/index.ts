@@ -10,7 +10,7 @@ export {
   createCNothingAgent,
   renderModelJson,
   userVisibleEnrollment,
-} from "cnothing-agent-core";
+} from "../../core/src/index";
 export type {
   AgentError,
   AgentOptions,
@@ -26,4 +26,4 @@ export type {
   ProxyRequestInput,
   RequestAccessInput,
   ToolResult,
-} from "cnothing-agent-core";
+} from "../../core/src/index";

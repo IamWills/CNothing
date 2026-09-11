@@ -216,6 +216,24 @@ export async function findIdentityByProviderSubject(
   return result.rows[0] ? mapIdentityRow(result.rows[0]) : null;
 }
 
+/** Resolve a login account within its provider, never by email across providers.
+ * Multiple identities for one owner are fine; multiple owners are ambiguous.
+ */
+export async function findUserIdByProviderAccount(provider: string, account: string): Promise<{ userId: string | null; ambiguous: boolean }> {
+  const result = await pool.query(
+    `SELECT DISTINCT i.user_id
+     FROM cap_user_identities i
+     JOIN cap_oauth_providers p ON p.id = i.provider_id
+     WHERE LOWER(p.slug) = LOWER($1)
+       AND (i.subject = $2
+         OR LOWER(i.email) = LOWER($2)
+         OR LOWER(i.metadata->>'login') = LOWER($2))
+     LIMIT 2`,
+    [provider, account],
+  );
+  return { userId: result.rows.length === 1 ? String(result.rows[0].user_id) : null, ambiguous: result.rows.length > 1 };
+}
+
 export async function findLatestIdentityForUser(userId: string): Promise<UserIdentityRecord | null> {
   const result = await pool.query(
     `SELECT * FROM cap_user_identities WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,

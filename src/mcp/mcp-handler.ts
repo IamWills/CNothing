@@ -137,26 +137,7 @@ async function executeTool(name: McpToolName, args: Record<string, unknown>, age
         discoveryUrl: typeof args.discovery_url === "string" ? args.discovery_url : undefined,
         apiBaseUrl: config.publicBaseUrl.replace(/\/+$/, ""),
       });
-      if (response.status === "provider_review_required") {
-        return {
-          ...response,
-          user_action: {
-            message: response.human_instruction,
-            console_url: response.console_url,
-          },
-        };
-      }
-      return {
-        ...response,
-        next_action: "wait_for_user",
-        retry_after_seconds: 5,
-        user_action: {
-          message: response.pushed_to_devices > 0
-            ? "Approve the request from the CNothing iOS notification, or open this approval link."
-            : "Open this CNothing approval link to continue.",
-          approval_url: response.approval_url,
-        },
-      };
+      return response;
     }
     case "get_access_status": {
       const response = await proxyService.getAccessStatus(requiredString(args, "access_request_id"), agent);

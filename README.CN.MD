@@ -1,5 +1,20 @@
 # CNothing v4
 
+当前实现的是 **OAuth API 授权代理**。它尚未实现任意第三方网站的浏览器登录会话；网站有“使用 Google 登录”按钮，并不意味着 Google API 授权能登录该网站。通常只需提交 `provider`（来自 `list_providers`）和 `reason`，用户在审批页连接并选择账号。`user_id` 是可选的 CNothing 身份路由，不是目标网站账号；用户提供已登录账号时，可传 `user_id: "google:createn@gmail.com"`（通用格式 `provider:account`），由服务端查找对应登录身份并向绑定手机推送；不要编造账号或为推送重复创建申请。
+
+已知手机端使用 Google 账号登录时，agent 可调用：
+
+```json
+{
+  "provider": "google",
+  "reason": "访问用户授权的 Google API",
+  "user_id": "google:createn@gmail.com"
+}
+```
+
+这里 `provider` 是要访问的 API Provider，`user_id` 中的 `google` 是用户登录 CNothing 的身份 Provider，两者可以不同。账号别名通过已保存的登录身份查找绑定手机；找不到或存在多个所有者时，保留审批链接供用户继续。
+
+
 CNothing 是面向 AI Agent 的认证基础设施。用户连接 OAuth Provider 并批准 Agent 的访问授权；CNothing 只在 HTTP 代理边界注入 Provider 凭证。Agent 永远不会获得密码、access token、refresh token、cookie 或 provider client secret。
 
 Grant 是 Mandate 的当前表示：由 principal（现阶段为 User）授予 Agent 的委托权限，约束为 hosts、methods 和过期时间。Agent 继续调用 `list_grants` 和 `proxy_request`，不必理解 Mandate 这个名字。

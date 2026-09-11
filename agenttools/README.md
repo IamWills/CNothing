@@ -1,5 +1,7 @@
 # Agent tools
 
+CNothing currently provides OAuth API delegation, not browser login to arbitrary websites. Normally request access with only `provider` (from `list_providers`) and `reason`; the user chooses their connected account on the approval page. `user_id` is optional CNothing approval routing, not a website account selector. When the user provides their login account, pass `user_id: "google:createn@gmail.com"` (general form `provider:account`) to route approval to their paired phone. CNothing resolves the stored login identity; do not invent an account. Keep the same approval request while waiting.
+
 Host-side adapters for CNothing v4. One core holds enrollment secrets and the agent token; Node, MCP, and DeepSeek Harness only show the model `approval_url` and `user_code` until a user approves. Spec: https://cnothing.com/plugin.md
 
 ```

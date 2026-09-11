@@ -1,5 +1,7 @@
 # CNothing v4
 
+CNothing currently provides OAuth API delegation, not browser login to arbitrary websites. Normally request access with only `provider` (from `list_providers`) and `reason`; the user chooses their connected account on the approval page. `user_id` is optional CNothing approval routing, not a website account selector. When the user provides their login account, pass `user_id: "google:createn@gmail.com"` (general form `provider:account`) to route approval to their paired phone. CNothing resolves the stored login identity; do not invent an account. Keep the same approval request while waiting.
+
 CNothing is authentication infrastructure for AI agents. A user connects an OAuth provider and approves an Agent grant; CNothing then injects the provider credential at the HTTP proxy boundary. The Agent never receives passwords, access tokens, refresh tokens, cookies, or provider client secrets.
 
 A Grant is the current representation of a Mandate: delegated authority from a principal (today, a User) to an agent, constrained to hosts, methods, and an expiry. Agents keep calling `list_grants` and `proxy_request`; they do not need to know the Mandate name.

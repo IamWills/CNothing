@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { oauthReturnTo } from "@/lib/return-to";
 import { Link2, Plus } from "lucide-react";
 import { ConnectionPanel } from "@/components/console/connection-panel";
 import { PageFrame } from "@/components/layout/page-frame";
@@ -49,7 +50,7 @@ export function ConnectPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const redirectAfter = `${window.location.origin}/connections`;
+      const redirectAfter = oauthReturnTo(window.location.search, window.location.origin, "/connections");
       const response = await startV4OAuthConnect(connection, {
         provider_slug: provider.slug,
         redirect_after: redirectAfter,

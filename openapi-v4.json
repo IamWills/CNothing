@@ -79,7 +79,7 @@
           },
           "user_id": {
             "type": "string",
-            "description": "Optional iOS push target. Pass a GitHub username, github:username, a u_ share code, or a previously resolved CNothing user ID directly. Do not call or invent a user lookup endpoint."
+            "description": "Optional iOS approval recipient. Pass provider:account (for example google:createn@gmail.com) to resolve the stored login identity and push to its paired devices. The identity provider may differ from the requested API provider. CNothing user IDs, GitHub usernames and u_ share codes are also supported. Omit when unknown; no separate lookup call is needed."
           },
           "callback_url": {
             "type": "string",

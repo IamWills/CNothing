@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 
 import config from "../config";
+import { findUserById, findUserIdByProviderAccount } from "./platform.repository";
 import {
   createShareCode,
   findActiveShareCodeUser,
@@ -73,7 +74,7 @@ export const shareCodeService = new ShareCodeService();
 
 /**
  * Resolve an agent-supplied identity hint to a canonical CNothing user_id.
- * Accepts: full id (github:alice), share code (u_XXXXXX), or github login
+ * Accepts: provider:account aliases, existing OIDC email ids, canonical ids, share codes, or GitHub login
  * (alice → github:alice). Bare GitHub logins are always mapped to github:{login};
  * no separate lookup endpoint exists — agents must pass the username as user_id.
  */
@@ -86,9 +87,30 @@ export async function resolveAgentUserHint(raw?: string): Promise<{
     return {};
   }
 
-  // Explicit provider-prefixed id — always accept as targeting hint.
-  if (value.includes(":")) {
-    return { userId: value };
+  // OIDC login may use a verified email as the canonical user id. Resolve only
+  // an existing CNothing user; an arbitrary provider email is not an identity.
+  if (value.includes("@") && !value.includes(":")) {
+    const user = await findUserById(value.toLowerCase());
+    return user ? { userId: user.id } : { unresolved: value };
+  }
+
+  // provider:account is a login identity alias, not necessarily a stored user id.
+  // Resolve it before device lookup (OIDC users can have an email-only id).
+  const separator = value.indexOf(":");
+  if (separator >= 0) {
+    const provider = value.slice(0, separator).trim().toLowerCase();
+    const account = value.slice(separator + 1).trim();
+    if (!provider || !account) return { unresolved: value };
+    // Internal OIDC ids are opaque; preserve their existing wire format.
+    if (provider === "oidc") return { userId: value };
+    const resolved = await findUserIdByProviderAccount(provider, account);
+    if (resolved.userId) return { userId: resolved.userId };
+    if (resolved.ambiguous) return { unresolved: value };
+    // Legacy GitHub username routing predates the identity registry.
+    if (provider === "github" && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(account)) {
+      return { userId: `github:${account}` };
+    }
+    return { unresolved: value };
   }
 
   // Share code only when explicitly prefixed (avoid colliding with 6-char GitHub logins).

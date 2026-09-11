@@ -1,5 +1,7 @@
 # CNothing agent plugin contract
 
+CNothing currently provides OAuth API delegation, not browser login to arbitrary websites. Normally request access with only `provider` (from `list_providers`) and `reason`; the user chooses their connected account on the approval page. `user_id` is optional CNothing approval routing, not a website account selector. When the user provides their login account, pass `user_id: "google:createn@gmail.com"` (general form `provider:account`) to route approval to their paired phone. CNothing resolves the stored login identity; do not invent an account. Keep the same approval request while waiting.
+
 This is the minimum standard a host plugin must implement to use CNothing. An agent that can write plugins should implement this contract rather than asking a human to paste secrets or to invent a CNothing-specific integration.
 
 CNothing is new. Hosts are not expected to ship a built-in CNothing plugin. The plugin an agent writes **holds identity**. The model **must never see** the enrollment secret or the agent token.

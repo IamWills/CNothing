@@ -17,6 +17,7 @@ import {
   fetchV4AuthProviders,
   fetchV4Connections,
   sessionFromMe,
+  startV4OAuthConnect,
   type V4AccessRequest,
   type V4AuthProvider,
   type V4OAuthConnection,
@@ -107,6 +108,22 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
         : [],
     [connections, request],
   );
+
+  async function handleConnect() {
+    if (!request) return;
+    setLoading(true);
+    setErrorMessage("");
+    try {
+      const response = await startV4OAuthConnect(connection, {
+        provider_slug: request.provider,
+        redirect_after: returnTo,
+      });
+      window.location.href = response.authorization_url;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to connect provider.");
+      setLoading(false);
+    }
+  }
 
   async function handleApprove() {
     const isTransaction = request?.type === "transaction";
@@ -318,9 +335,9 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              <a href={`/connect?redirect_after=${encodeURIComponent(returnTo)}`}>
-                <Button>Connect {request.provider} at /connect</Button>
-              </a>
+              <Button disabled={loading} onClick={() => void handleConnect()}>
+                Connect {request.provider}
+              </Button>
               <Button variant="outline" onClick={() => window.location.reload()}>
                 Refresh this page
               </Button>

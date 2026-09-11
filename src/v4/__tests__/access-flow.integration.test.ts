@@ -1,8 +1,12 @@
-import { beforeEach, expect, test } from "bun:test";
+import { beforeEach, expect, test, spyOn } from "bun:test";
 
 import { describeWithDb, resetDatabase, warmConnectionPool } from "../../__tests__/helpers/db";
 import { asPendingAccess, givenAgent, givenConnection, givenProvider, asMandateApproval } from "../../__tests__/helpers/fixtures";
 
+import { ensureUser, upsertUserIdentity } from "../platform.repository";
+import { createUserDevice, updateDevicePushToken, listActivePushDevices } from "../device.repository";
+import { resolveAgentUserHint } from "../share-code.service";
+import * as apns from "../apns.service";
 import { proxyService } from "../proxy.service";
 import {
   createProxyAccessRequest,
@@ -35,6 +39,99 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     expect(result.requested_hosts).toEqual(["api.github.com"]);
     expect(result.resolved_user_id).toBe(USER_ID);
     expect(result.approval_url).toContain(`/approve-proxy/${result.access_request_id}`);
+  });
+
+  test("existing OIDC email identities resolve without inventing provider prefixes", async () => {
+    await ensureUser("alice@example.com");
+    expect(await resolveAgentUserHint("Alice@example.com")).toEqual({ userId: "alice@example.com" });
+    expect(await resolveAgentUserHint("unknown@example.com")).toEqual({ unresolved: "unknown@example.com" });
+  });
+
+  test("provider:email routes the request to the phone owner's canonical identity", async () => {
+    const { agent } = await givenAgent();
+    const google = await givenProvider({ slug: "google" });
+    const targetApi = await givenProvider({ slug: "calendar" });
+    const owner = "createn@gmail.com";
+    await ensureUser(owner);
+    await upsertUserIdentity({ user_id: owner, provider_id: google.id, subject: "google-sub-123", email: owner });
+    await createUserDevice({ id: "test-phone", user_id: owner, platform: "ios", device_name: "iPhone" });
+    await updateDevicePushToken({ device_id: "test-phone", user_id: owner, push_token: "test-push-token", push_environment: "sandbox" });
+
+    expect(await resolveAgentUserHint(" Google:Createn@gmail.com ")).toEqual({ userId: owner });
+    expect(await resolveAgentUserHint("google:google-sub-123")).toEqual({ userId: owner });
+    const push = spyOn(apns, "sendApprovalPush").mockResolvedValue({ sent: 1, failed: 0, skipped: false });
+    let result;
+    try {
+      result = asPendingAccess(await proxyService.requestAccess({
+        agent, provider: targetApi.slug, userId: "google:createn@gmail.com", apiBaseUrl: API_BASE_URL,
+      }));
+      expect(push).toHaveBeenCalledTimes(1);
+      expect(push.mock.calls[0]?.[0]).toMatchObject({
+        userId: owner, devices: [{ id: "test-phone", push_token: "test-push-token" }],
+        accessRequestId: result.access_request_id,
+      });
+      expect(result.pushed_to_devices).toBe(1);
+    } finally {
+      push.mockRestore();
+    }
+    expect(result.resolved_user_id).toBe(owner);
+    expect((await listActivePushDevices(result.resolved_user_id!)).map(device => device.id)).toEqual(["test-phone"]);
+    expect((await proxyService.listPendingForUser(owner)).map(request => request.access_request_id)).toContain(result.access_request_id);
+    const connection = await givenConnection({ providerId: targetApi.id, userId: owner });
+    await expect(proxyService.approveAccess({
+      accessRequestId: result.access_request_id, userId: "another-user", connectionId: connection.id,
+    })).rejects.toThrow();
+    await proxyService.approveAccess({ accessRequestId: result.access_request_id, userId: owner, connectionId: connection.id });
+    expect(await proxyService.getAccessStatus(result.access_request_id, agent)).toMatchObject({ status: "approved", next_action: "call_proxy_request" });
+  });
+
+  test("provider account resolution cannot cross providers or choose an ambiguous owner", async () => {
+    const google = await givenProvider({ slug: "google" });
+    await givenProvider({ slug: "microsoft" });
+    await upsertUserIdentity({ user_id: "owner-1", provider_id: google.id, subject: "sub-1", email: "same@example.com" });
+    expect(await resolveAgentUserHint("microsoft:same@example.com")).toEqual({ unresolved: "microsoft:same@example.com" });
+    expect(await resolveAgentUserHint("google:missing@example.com")).toEqual({ unresolved: "google:missing@example.com" });
+    await upsertUserIdentity({ user_id: "owner-1", provider_id: google.id, subject: "sub-2", email: "same@example.com" });
+    expect(await resolveAgentUserHint("google:same@example.com")).toEqual({ userId: "owner-1" });
+    await upsertUserIdentity({ user_id: "owner-2", provider_id: google.id, subject: "sub-3", email: "same@example.com" });
+    expect(await resolveAgentUserHint("google:same@example.com")).toEqual({ unresolved: "google:same@example.com" });
+  });
+
+  test("provider usernames resolve through stored login metadata", async () => {
+    const provider = await givenProvider({ slug: "github" });
+    await upsertUserIdentity({ user_id: "canonical-owner", provider_id: provider.id, subject: "123", metadata: { login: "Alice" } });
+    expect(await resolveAgentUserHint("github:alice")).toEqual({ userId: "canonical-owner" });
+    expect(await resolveAgentUserHint("google:")).toEqual({ unresolved: "google:" });
+    expect(await resolveAgentUserHint(":alice")).toEqual({ unresolved: ":alice" });
+  });
+
+  test("unresolved email still produces one usable approval with polling guidance", async () => {
+    const { agent } = await givenAgent();
+    const provider = await givenProvider();
+    const result = asPendingAccess(await proxyService.requestAccess({
+      agent, provider: provider.slug, userId: "unknown@example.com", apiBaseUrl: API_BASE_URL,
+    }));
+    expect(result.resolved_user_id).toBeNull();
+    expect(result.next_action).toBe("wait_for_user");
+    expect(result.retry_after_seconds).toBe(5);
+    expect(result.user_action.approval_url).toBe(result.approval_url);
+    expect(result.human_instruction).not.toContain("re-requesting");
+    const claimed = await proxyService.getAccessRequestForApproval(result.access_request_id, USER_ID);
+    expect(claimed.user_hint).toBe(USER_ID);
+    expect(await proxyService.getAccessStatus(result.access_request_id, agent)).toMatchObject({
+      status: "pending", next_action: "wait_for_user", retry_after_seconds: 5,
+    });
+  });
+
+  test("expired pending requests tell the agent to stop polling", async () => {
+    const { agent } = await givenAgent();
+    const provider = await givenProvider();
+    const request = await createProxyAccessRequest({
+      agent_id: agent.id, provider_slug: provider.slug, requested_hosts: ["api.github.com"], ttl_seconds: -60,
+    });
+    expect(await proxyService.getAccessStatus(request.id, agent)).toMatchObject({
+      status: "expired", next_action: "none",
+    });
   });
 
   test("request_access rejects an unknown provider", async () => {

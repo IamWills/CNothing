@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { oauthReturnTo } from "@/lib/return-to";
 import { LogIn, ShieldCheck } from "lucide-react";
 import { PageFrame } from "@/components/layout/page-frame";
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,7 @@ export function LoginPage({ initialProviders = [] }: { initialProviders?: V4Auth
                 variant="secondary"
                 onClick={() => {
                   const live = sameOriginConnection();
-                  const redirectAfter = `${window.location.origin}/login`;
+                  const redirectAfter = oauthReturnTo(window.location.search, window.location.origin, "/login");
                   window.location.href = buildV4AuthProviderStartUrl(live, provider, redirectAfter);
                 }}
               >

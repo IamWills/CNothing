@@ -7,13 +7,15 @@ description: Use a user-approved OAuth connection to call third-party APIs witho
 
 Use CNothing when a task requires an API protected by a user's OAuth account.
 
+CNothing does not establish browser login sessions on arbitrary websites. A website's “Sign in with Google” button does not mean a CNothing Google API grant can log into that website. For that task, use the target website's browser sign-in flow with user participation. Use a known `provider:account` only as the approval recipient (`user_id`); do not invent accounts or treat a website URL as a verified OAuth issuer.
+
 ## Required sequence
 
 1. Call `list_grants` first.
 2. Reuse an active grant only when its provider and `allowed_hosts` cover the intended request.
 3. If no grant matches, call `list_providers` and select the exact provider slug. If it is missing, call `request_access` with `issuer` or pass an https issuer as `provider` to propose it; tell the user an operator must review it at the returned `console_url`, then retry.
 4. Call `request_access` with a short, task-specific reason.
-5. If the conversation already contains the user's CNothing ID, GitHub username, or `u_` share code, pass it as `user_id` so a paired iOS device can receive a push. If it is unknown, omit it and continue.
+5. Normally send only `provider` and `reason`. If the user supplied a login account, pass `user_id: "google:createn@gmail.com"` (general form `provider:account`) to push to their paired phone. CNothing IDs and `u_` share codes also work; omit when unknown. This field routes approval; it does not select a third-party account. Keep the same request ID; never re-request just to enable push.
 6. Relay `user_action.message` and the exact `approval_url` unchanged. When `pushed_to_devices` is positive, also tell the user to check the CNothing iOS notification.
 7. Call `get_access_status` no faster than `retry_after_seconds`.
 8. After approval, call `proxy_request` with the returned `grant_id` and an HTTPS URL covered by `allowed_hosts`.

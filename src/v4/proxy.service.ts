@@ -17,7 +17,7 @@ import {
 } from "./oauth.repository";
 import { oauthConnectionService, oauthProviderService } from "./oauth-connection.service";
 import { approvalService } from "./approval.service";
-import { toAccessRequestPublic } from "./approval";
+import { approvalIsPending, toAccessRequestPublic } from "./approval";
 import {
   approveAccessRequestWithGrant,
   findProxyGrantById,
@@ -86,6 +86,7 @@ function providerReviewRequired(
     console_url: `${consoleBase}/providers`,
     next_action: "wait_for_operator" as const,
     human_instruction: message,
+    user_action: { message, console_url: `${consoleBase}/providers` },
   };
 }
 
@@ -258,16 +259,13 @@ export class ProxyService {
     const approvalBase = config.consoleUrl?.replace(/\/+$/, "") ?? input.apiBaseUrl.replace(/\/+$/, "");
     const userQuery = userHint ? `?user=${encodeURIComponent(userHint)}` : "";
 
-    // Agent-facing guidance: how the human can enable phone approvals when the
-    // request could not be pushed to any paired device.
-    let humanOnboarding: string | undefined;
-    if (resolved.unresolved) {
-      humanOnboarding = `Could not resolve "${resolved.unresolved}" to a CNothing user. Ask the human to open ${approvalBase}/devices, copy their agent ID or share code, and send it to you — or just give them approval_url to open on their phone. Do not block waiting for user_id.`;
-    } else if (!userHint) {
-      humanOnboarding = `No user_id provided. If you know the human's GitHub username, CNothing id (github:…), or u_ short code, call request_access again WITH user_id so they get a phone push. Otherwise send this exact approval_url (best opened on their phone). They can also copy their agent ID from ${approvalBase}/devices. Do not block waiting for user_id.`;
-    } else if (pushedToDevices === 0) {
-      humanOnboarding = `No paired phone found for user "${userHint}". Tell the human: 1) sign in at ${approvalBase}/login; 2) open ${approvalBase}/devices, generate the pairing QR, install the CNothing iOS app and scan it. For now, open approval_url (on phone or desktop).`;
-    }
+    const approvalUrl = `${approvalBase}/approve-proxy/${request.id}${userQuery}`;
+    const message = pushedToDevices > 0
+      ? "Approve the request from the CNothing iOS notification, or open this approval link."
+      : "Open this CNothing approval link, sign in, connect the requested provider if needed, and approve API access.";
+    const humanOnboarding = resolved.unresolved
+      ? "The supplied user_id did not resolve to a CNothing user. Continue with this approval_url; the signed-in user can claim the request. Do not guess another account or create another request."
+      : undefined;
 
     return {
       ok: true as const,
@@ -276,10 +274,11 @@ export class ProxyService {
       provider: provider.slug,
       requested_hosts: request.requested_hosts,
       // Browser page in Console — NOT an API path. Do not rewrite this URL.
-      approval_url: `${approvalBase}/approve-proxy/${request.id}${userQuery}`,
-      human_instruction: userHint
-        ? "If pushed_to_devices > 0, tell the human to check their phone notification. Always also share approval_url as a fallback (phone Universal Link or browser)."
-        : "Give the human this exact approval_url — prefer they open it on their phone. If you already know their GitHub username, prefer re-requesting with user_id for push. Do not invent /v4/approve/... paths. Do not block waiting for user_id.",
+      approval_url: approvalUrl,
+      next_action: "wait_for_user" as const,
+      retry_after_seconds: 5,
+      user_action: { message, approval_url: approvalUrl },
+      human_instruction: "Share the exact approval_url and poll this access_request_id. Do not create another request to add user_id or enable phone push.",
       pushed_to_devices: pushedToDevices,
       resolved_user_id: userHint ?? null,
       callback_registered: Boolean(callbackUrl),
@@ -302,6 +301,11 @@ export class ProxyService {
     return {
       ok: true as const,
       ...toAccessRequestPublic(request),
+      ...(request.status === "pending" && !approvalIsPending(request)
+        ? { status: "expired" as const, next_action: "none" as const }
+        : request.status === "pending"
+          ? { next_action: "wait_for_user" as const, retry_after_seconds: 5 }
+          : { next_action: request.status === "approved" && request.grant_id ? "call_proxy_request" : "none" }),
     };
   }
 

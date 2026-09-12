@@ -13,12 +13,13 @@ struct ApprovalDetailView: View {
     @State private var isWorking = false
     @State private var isLoading = false
     @State private var errorMessage = ""
+    @State private var resultIsApproval = true
     @State private var resultMessage = ""
 
     private var matchingConnections: [OAuthConnection] {
         guard let detail else { return connections }
         let matches = connections.filter { $0.provider_slug == detail.provider }
-        return matches.isEmpty ? connections : matches
+        return matches
     }
 
     var body: some View {
@@ -72,32 +73,11 @@ struct ApprovalDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-
-                    Section {
-                        Button {
-                            Task { await decide(approve: true) }
-                        } label: {
-                            Label(detail.isTransaction ? "Approve Action" : "Approve", systemImage: "checkmark.circle.fill")
-                                .frame(maxWidth: .infinity)
-                                .fontWeight(.semibold)
-                        }
-                        .disabled((!detail.isTransaction && selectedConnectionId.isEmpty) || isWorking)
-
-                        Button(role: .destructive) {
-                            Task { await decide(approve: false) }
-                        } label: {
-                            Label("Deny", systemImage: "xmark.circle")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .disabled(isWorking)
-                    }
                 }
-            } else if errorMessage.isEmpty {
-                ProgressView("Loading…")
             }
 
             if !resultMessage.isEmpty {
-                Section { Text(resultMessage).foregroundStyle(.green).font(.footnote) }
+                Section { Text(resultMessage).foregroundStyle(resultIsApproval ? Color.green : Color.red).font(.footnote) }
             }
             if !errorMessage.isEmpty {
                 Section {
@@ -108,6 +88,39 @@ struct ApprovalDetailView: View {
                         Task { await load(resetSession: true) }
                     }
                 }
+            }
+        }
+        .overlay {
+            if detail == nil && errorMessage.isEmpty {
+                LoadingStateView()
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let detail, detail.status == "pending", resultMessage.isEmpty {
+                HStack(spacing: 24) {
+                    Button(role: .destructive) {
+                        Task { await decide(approve: false) }
+                    } label: {
+                        Label("Deny", systemImage: "xmark.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                    .tint(.red)
+                    .disabled(isWorking || isLoading)
+                    Button {
+                        Task { await decide(approve: true) }
+                    } label: {
+                        Label("Approve", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                    .tint(Color(red: 0.08, green: 0.48, blue: 0.23))
+                    .disabled((!detail.isTransaction && selectedConnectionId.isEmpty) || isWorking || isLoading)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(.bar)
             }
         }
         .navigationTitle("Approval")
@@ -139,9 +152,11 @@ struct ApprovalDetailView: View {
         defer { isLoading = false }
         do {
             detail = try await api.accessRequest(id: requestId)
-            connections = try await api.connections().filter { $0.status == "active" }
-            if selectedConnectionId.isEmpty, let first = matchingConnections.first {
-                selectedConnectionId = first.id
+            if detail?.status == "pending" && detail?.isTransaction != true {
+                connections = try await api.connections().filter { $0.status == "active" }
+            }
+            if !matchingConnections.contains(where: { $0.id == selectedConnectionId }) {
+                selectedConnectionId = matchingConnections.first?.id ?? ""
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -171,6 +186,7 @@ struct ApprovalDetailView: View {
                 try await api.deny(requestId: requestId)
                 resultMessage = String(localized: "Denied.")
             }
+            resultIsApproval = approve
             onDecided?()
             try? await Task.sleep(for: .seconds(1))
             dismiss()

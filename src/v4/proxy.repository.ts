@@ -198,6 +198,18 @@ export async function listPendingAccessRequestsForUser(
   return result.rows.map(mapAccessRequestRow);
 }
 
+/** Durable decision history, restricted to the authenticated principal. */
+export async function listAccessRequestHistory(userId: string, offset: number, limit: number) {
+  const result = await pool.query(
+    `SELECT * FROM proxy_access_requests
+     WHERE (principal_id = $1 OR user_id = $1 OR user_hint = $1)
+       AND (status IN ('approved', 'denied', 'expired') OR (status = 'pending' AND expires_at <= NOW()))
+     ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
+    [userId, limit, offset],
+  );
+  return result.rows.map(mapAccessRequestRow);
+}
+
 /** Bind a pending request to a user when the agent omitted user_id (enables iOS poll/push). */
 export async function claimProxyAccessRequestUserHint(input: {
   id: string;

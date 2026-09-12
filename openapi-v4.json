@@ -119,7 +119,8 @@
           "pairing_code": { "type": "string" },
           "device_name": { "type": "string" },
           "platform": { "type": "string", "default": "ios" },
-          "public_key_jwk": { "type": "object", "description": "P-256 public key; the private key remains in the iOS Secure Enclave." }
+          "public_key_jwk": { "type": "object", "description": "P-256 public key; the private key remains in the iOS Secure Enclave." },
+          "code_verifier": { "type": "string", "minLength": 43, "maxLength": 128, "description": "Required when redeeming a code issued by the mobile browser login flow. S256 must match the stored code_challenge." }
         }
       },
       "DeviceVerdictInput": {
@@ -339,6 +340,36 @@
           { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
         ],
         "responses": { "302": { "description": "Redirect back to the Console." } }
+      }
+    },
+    "/v4/access-requests/history": {
+      "get": {
+        "summary": "List the signed-in user's durable approval history",
+        "description": "Returns up to 50 approved, denied or expired requests, newest first, and has_more. Accessible to browser or paired device user sessions; never returns another user's records.",
+        "parameters": [{ "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }],
+        "responses": { "200": { "description": "Decision history page" } }
+      }
+    },
+    "/v4/devices/mobile-return": {
+      "get": {
+        "summary": "Confirm browser login and return to the iOS App",
+        "description": "Authenticated, non-cacheable HTML confirmation page. Use as redirect_after on the chosen login provider start endpoint. Carries state and an S256 code_challenge; never puts a session token into the callback URL.",
+        "parameters": [
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "code_challenge", "in": "query", "required": true, "schema": { "type": "string", "minLength": 43, "maxLength": 43 } }
+        ],
+        "responses": { "200": { "description": "Account confirmation page" } }
+      }
+    },
+    "/v4/devices/mobile-pairing-codes": {
+      "post": {
+        "summary": "Issue a verifier-bound mobile pairing code",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["code_challenge"], "properties": {
+            "code_challenge": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+          }
+        } } } },
+        "responses": { "201": { "description": "One-time code bound to the signed-in user and S256 challenge" } }
       }
     },
     "/v4/devices/pairing-codes": {

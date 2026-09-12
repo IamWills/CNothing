@@ -1,4 +1,4 @@
-import { createHmac, createPublicKey, createVerify, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, createPublicKey, createVerify, randomBytes, randomUUID } from "node:crypto";
 
 import config from "../config";
 import { NotFoundError, UnauthorizedError, ValidationError } from "../utils/errors";
@@ -81,12 +81,16 @@ function generatePairingCode(): string {
 
 export class DeviceService {
   /** User (Console session) generates a code shown as text/QR to the phone. */
-  async issuePairingCode(userId: string) {
+  async issuePairingCode(userId: string, codeChallenge?: string) {
+    if (codeChallenge !== undefined && !/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
+      throw new ValidationError("Invalid S256 code_challenge");
+    }
     const code = generatePairingCode();
     const record = await createPairingCode({
       user_id: userId,
       code_hash: hashPairingCode(code),
       ttl_seconds: PAIRING_CODE_TTL_SECONDS,
+      code_challenge: codeChallenge,
     });
     // Scanned by the iOS app camera; carries the server origin so the app
     // works against any deployment without manual server entry.
@@ -104,6 +108,7 @@ export class DeviceService {
   /** iOS app redeems the code: binds the device and mints a device session. */
   async pairDevice(input: {
     pairingCode: string;
+    codeVerifier?: string;
     deviceName: string;
     platform?: string;
     publicKeyJwk?: unknown;
@@ -113,11 +118,15 @@ export class DeviceService {
     if (!code) {
       throw new ValidationError("pairing_code is required", { error_code: "missing_field" });
     }
+    if (input.codeVerifier !== undefined && !/^[A-Za-z0-9._~-]{43,128}$/.test(input.codeVerifier)) {
+      throw new ValidationError("Invalid code_verifier");
+    }
     const publicKeyJwk = validatePublicKeyJwk(input.publicKeyJwk);
     const deviceId = randomUUID();
     const consumed = await consumePairingCode({
       code_hash: hashPairingCode(code),
       device_id: deviceId,
+      code_challenge: input.codeVerifier ? createHash("sha256").update(input.codeVerifier).digest("base64url") : undefined,
     });
     if (!consumed) {
       throw new UnauthorizedError("Invalid or expired pairing code", {

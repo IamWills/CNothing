@@ -33,7 +33,7 @@ struct PendingRequestsView: View {
 
                 Section {
                     if isLoading && items.isEmpty && errorMessage.isEmpty {
-                        ProgressView("Loading…")
+                        EmptyView()
                     } else if items.isEmpty && !isLoading {
                         Text("No pending authorization requests. Ask an agent to request access, or open an approval link.")
                             .font(.footnote)
@@ -87,6 +87,9 @@ struct PendingRequestsView: View {
                         Text("Requests from every paired account are listed here.")
                     }
                 }
+            }
+            .overlay {
+                if isLoading && items.isEmpty && errorMessage.isEmpty { LoadingStateView() }
             }
             .navigationTitle("Approvals")
             .toolbar {

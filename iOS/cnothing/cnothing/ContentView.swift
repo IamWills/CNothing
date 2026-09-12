@@ -8,6 +8,7 @@ import SwiftUI
 enum MainTab: Hashable {
     case accounts
     case approvals
+    case history
 }
 
 struct ContentView: View {
@@ -28,6 +29,10 @@ struct ContentView: View {
                         Label("Approvals", systemImage: "checkmark.shield.fill")
                     }
                     .tag(MainTab.approvals)
+
+                ApprovalHistoryView()
+                    .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                    .tag(MainTab.history)
             }
         } else {
             PairingView()

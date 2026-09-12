@@ -5,7 +5,9 @@ import { readUserSessionToken, requireUserSession } from "../v4/user-session";
 import { listOAuthProviders, toProviderPublic } from "../v4/oauth.repository";
 import { oauthConnectionService } from "../v4/oauth-connection.service";
 import { proxyService } from "../v4/proxy.service";
-import { toAccessRequestPublic } from "../v4/approval";
+import { listAccessRequestHistory } from "../v4/proxy.repository";
+import { mobilePairingPage } from "../v4/mobile-pairing";
+import { approvalFromAccessRow, toAccessRequestPublic } from "../v4/approval";
 import { deviceService } from "../v4/device.service";
 import { shareCodeService } from "../v4/share-code.service";
 import config from "../config";
@@ -46,6 +48,19 @@ export async function handleV4Request(request: Request): Promise<Response> {
 
   // --- Devices (iOS authenticator pairing) ---
 
+  if (request.method === "GET" && path === "/v4/devices/mobile-return") {
+    const session = await requireUserSession(request);
+    return mobilePairingPage(url, session.user_id);
+  }
+
+  if (request.method === "POST" && path === "/v4/devices/mobile-pairing-codes") {
+    const session = await requireUserSession(request);
+    const body = await parseJsonBody(request);
+    return Response.json(await deviceService.issuePairingCode(session.user_id, readRequiredString(body, "code_challenge")), {
+      status: 201, headers: { "Cache-Control": "no-store" },
+    });
+  }
+
   if (request.method === "POST" && path === "/v4/devices/pairing-codes") {
     const session = await requireUserSession(request);
     return Response.json(await deviceService.issuePairingCode(session.user_id), { status: 201 });
@@ -58,6 +73,7 @@ export async function handleV4Request(request: Request): Promise<Response> {
       deviceName: typeof body.device_name === "string" ? body.device_name : "",
       platform: typeof body.platform === "string" ? body.platform : undefined,
       publicKeyJwk: body.public_key_jwk,
+      codeVerifier: typeof body.code_verifier === "string" ? body.code_verifier : undefined,
     });
     return Response.json(result, { status: 201 });
   }
@@ -139,6 +155,20 @@ export async function handleV4Request(request: Request): Promise<Response> {
     });
     const created = "status" in result && result.status === "pending";
     return Response.json(result, { status: created ? 201 : 200 });
+  }
+
+  if (request.method === "GET" && path === "/v4/access-requests/history") {
+    const session = await requireUserSession(request);
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new ValidationError("Invalid history offset");
+    const rows = await listAccessRequestHistory(session.user_id, offset, 51);
+    return Response.json({
+      ok: true, has_more: rows.length > 50,
+      items: rows.slice(0, 50).map(row => ({
+        ...toAccessRequestPublic(approvalFromAccessRow(row)),
+        status: row.status === "pending" ? "expired" : row.status,
+      })),
+    }, { headers: { "Cache-Control": "no-store" } });
   }
 
   // Pending approvals for the signed-in user (iOS authenticator polling).

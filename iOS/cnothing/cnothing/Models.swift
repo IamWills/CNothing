@@ -36,6 +36,8 @@ struct AccessRequest: Decodable, Identifiable, Hashable {
     let status: String
     let expires_at: String
     let created_at: String?
+    let decided_at: String?
+    let grant_id: String?
     let type: String?
     let action: String?
 
@@ -108,4 +110,21 @@ struct APIErrorEnvelope: Decodable {
     }
 
     let error: Inner
+}
+
+struct LoginProvider: Decodable, Identifiable {
+    let type: String
+    let name: String
+    let display_name: String
+    let start_path: String
+    var id: String { "\(type):\(name)" }
+}
+
+struct LoginProvidersResponse: Decodable {
+    let items: [LoginProvider]
+}
+
+struct ApprovalHistoryResponse: Decodable {
+    let items: [AccessRequest]
+    let has_more: Bool
 }

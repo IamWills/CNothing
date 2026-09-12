@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AuthenticationServices
 
 struct PairingView: View {
     /// When true, shown as a sheet to add another account while already paired.
@@ -8,6 +9,10 @@ struct PairingView: View {
 
     @ObservedObject var api = APIClient.shared
     @Environment(\.dismiss) private var dismiss
+
+    @StateObject private var providerLogin = ProviderLogin()
+    @State private var providers: [LoginProvider] = []
+    @State private var isLoadingProviders = false
 
     @State private var pairingCode = ""
     @State private var serverURL = APIClient.shared.baseURL.absoluteString
@@ -26,14 +31,31 @@ struct PairingView: View {
                         Text(isAddingAccount ? "Add Another Account" : "Pair as Approval Device")
                             .font(.headline)
                         Text(
-                            isAddingAccount
-                                ? "Generate a pairing QR on the CNothing Console Devices page for the account you want to add, then scan it here."
-                                : "Sign in to the CNothing Console on the web, open the Devices page to generate a pairing QR code, then scan it here. You'll receive and approve agent authorization requests on this phone, just like Microsoft Authenticator."
+                            "Sign in with your provider on this phone to receive approval requests. You can also scan a pairing QR code."
                         )
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
+                }
+
+                Section("Sign in to add an account") {
+                    if isLoadingProviders { ProgressView().controlSize(.small) }
+                    ForEach(providers) { provider in
+                        Button {
+                            Task { await signIn(provider) }
+                        } label: {
+                            Label("Sign in with \(provider.display_name)", systemImage: "person.crop.circle.badge.plus")
+                                .padding(.vertical, 6)
+                        }
+                        .disabled(isWorking)
+                    }
+                    if providers.isEmpty && !isLoadingProviders {
+                        Text("No login providers available. Check the server address or use a pairing code.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Button("Refresh Providers") { Task { await loadProviders() } }
+                        .disabled(isWorking || isLoadingProviders)
                 }
 
                 Section {
@@ -69,7 +91,7 @@ struct PairingView: View {
                             message: errorMessage,
                             isWorking: isWorking
                         ) {
-                            Task { await pair(resetSession: true) }
+                            Task { await loadProviders() }
                         }
                     }
                 }
@@ -89,6 +111,7 @@ struct PairingView: View {
                     .disabled(pairingCode.trimmingCharacters(in: .whitespaces).isEmpty || isWorking)
                 }
             }
+            .task { await loadProviders() }
             .navigationTitle(isAddingAccount ? "Add Account" : "CNothing")
             .navigationBarTitleDisplayMode(isAddingAccount ? .inline : .large)
             .toolbar {
@@ -115,6 +138,43 @@ struct PairingView: View {
                 }
             }
         }
+    }
+
+    private func loginBase() throws -> URL {
+        guard let url = URL(string: serverURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme == "https", url.host != nil, url.user == nil, url.password == nil else {
+            throw APIError.network(String(localized: "Enter a valid HTTPS server address."))
+        }
+        return url
+    }
+
+    private func loadProviders() async {
+        isLoadingProviders = true
+        errorMessage = ""
+        defer { isLoadingProviders = false }
+        do { providers = try await api.loginProviders(base: loginBase()) }
+        catch { providers = []; errorMessage = error.localizedDescription }
+    }
+
+    private func signIn(_ provider: LoginProvider) async {
+        isWorking = true
+        errorMessage = ""
+        defer { isWorking = false }
+        do {
+            try await providerLogin.signIn(provider: provider, base: loginBase())
+            await finishPairing()
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // Closing the system login sheet leaves the existing accounts unchanged.
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func finishPairing() async {
+        await PushRegistrar.shared.requestAuthorizationAndRegister()
+        if let token = UserDefaults.standard.string(forKey: "cnothing.lastPushToken") {
+            await api.registerPushToken(token)
+        }
+        onFinished?()
+        if isAddingAccount { dismiss() }
     }
 
     private func handleScannedPayload(_ payload: String) {
@@ -150,15 +210,7 @@ struct PairingView: View {
                 deviceName: UIDevice.current.name,
                 baseURLOverride: override
             )
-            await PushRegistrar.shared.requestAuthorizationAndRegister()
-            // Re-register last known push token for all accounts (including the new one).
-            if let token = UserDefaults.standard.string(forKey: "cnothing.lastPushToken") {
-                await api.registerPushToken(token)
-            }
-            onFinished?()
-            if isAddingAccount {
-                dismiss()
-            }
+            await finishPairing()
         } catch {
             api.resetNetworkSession()
             errorMessage = error.localizedDescription

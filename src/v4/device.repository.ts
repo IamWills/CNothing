@@ -46,15 +46,16 @@ export async function createPairingCode(input: {
   user_id: string;
   code_hash: string;
   ttl_seconds: number;
+  code_challenge?: string;
 }): Promise<{ id: string; expires_at: string }> {
   const id = randomUUID();
   const result = await pool.query(
     `
-      INSERT INTO device_pairing_codes (id, user_id, code_hash, expires_at)
-      VALUES ($1, $2, $3, NOW() + ($4 || ' seconds')::interval)
+      INSERT INTO device_pairing_codes (id, user_id, code_hash, expires_at, code_challenge)
+      VALUES ($1, $2, $3, NOW() + ($4 || ' seconds')::interval, $5)
       RETURNING id, expires_at
     `,
-    [id, input.user_id, input.code_hash, String(input.ttl_seconds)],
+    [id, input.user_id, input.code_hash, String(input.ttl_seconds), input.code_challenge ?? null],
   );
   return { id, expires_at: asIso(result.rows[0].expires_at) };
 }
@@ -62,15 +63,17 @@ export async function createPairingCode(input: {
 export async function consumePairingCode(input: {
   code_hash: string;
   device_id: string;
+  code_challenge?: string;
 }): Promise<{ user_id: string } | null> {
   const result = await pool.query(
     `
       UPDATE device_pairing_codes
       SET consumed_at = NOW(), device_id = $2
       WHERE code_hash = $1 AND consumed_at IS NULL AND expires_at > NOW()
+        AND (code_challenge IS NULL OR code_challenge = $3)
       RETURNING user_id
     `,
-    [input.code_hash, input.device_id],
+    [input.code_hash, input.device_id, input.code_challenge ?? null],
   );
   const row = result.rows[0];
   return row ? { user_id: String(row.user_id) } : null;

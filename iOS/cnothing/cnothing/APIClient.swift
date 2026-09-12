@@ -94,7 +94,7 @@ final class APIClient: ObservableObject {
     // MARK: - Pairing
 
     /// Pair an additional (or first) account. Activates the new account on success.
-    func pair(code: String, deviceName: String, baseURLOverride: URL? = nil) async throws {
+    func pair(code: String, deviceName: String, baseURLOverride: URL? = nil, codeVerifier: String? = nil) async throws {
         let keyTag = UUID().uuidString
         var body: [String: Any] = [
             "pairing_code": code,
@@ -105,6 +105,7 @@ final class APIClient: ObservableObject {
             throw APIError.network(String(localized: "Unable to create the device approval key. Check device security settings and try again."))
         }
         body["public_key_jwk"] = jwk
+        if let codeVerifier { body["code_verifier"] = codeVerifier }
 
         let pairBase = baseURLOverride ?? baseURL
         if let baseURLOverride {
@@ -209,6 +210,22 @@ final class APIClient: ObservableObject {
     }
 
     // MARK: - Approvals
+
+    func loginProviders(base: URL) async throws -> [LoginProvider] {
+        let response: LoginProvidersResponse = try await request(
+            method: "GET", path: "/v4/auth/providers", authenticated: false, baseURLOverride: base
+        )
+        return response.items
+    }
+
+    func approvalHistory(for account: PairedAccount, offset: Int) async throws -> ApprovalHistoryResponse {
+        guard let token = AccountStore.shared.sessionToken(for: account.deviceId),
+              let base = URL(string: account.baseURL) else { throw APIError.notPaired }
+        return try await request(
+            method: "GET", path: "/v4/access-requests/history?offset=\(offset)",
+            baseURLOverride: base, sessionTokenOverride: token
+        )
+    }
 
     func pendingRequests() async throws -> [AccessRequest] {
         let response: PendingRequestsResponse = try await request(

@@ -115,3 +115,59 @@ test("proxy_request strips credential headers before calling the API", async () 
 
   expect(body.headers).toEqual({ Accept: "application/json" });
 });
+
+test("GitHub flow pairs once, preserves pending request, then verifies API access without tokens", async () => {
+  const store = new MemoryCredentialStore();
+  const calls: string[] = [];
+  let checks = 0;
+  const agent = createCNothingAgent({ store, fetch: async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    calls.push(`${init?.method ?? "GET"} ${path}`);
+    if (path === "/v4/agent-enrollments") return jsonResponse(201, {
+      enrollment_id: "pairing-1", enrollment_secret: "enrs_private",
+      approval_url: "https://cnothing.com/approve-agent/pairing-1", user_code: "ABCD",
+    });
+    if (path === "/v4/agent-enrollments/pairing-1") return jsonResponse(200, {
+      status: "approved", access_token: "agent_private",
+    });
+    if (path === "/v4/grants") return jsonResponse(200, { ok: true, items: [] });
+    if (path === "/v4/providers") return jsonResponse(200, { ok: true, items: [{ slug: "github" }] });
+    if (path === "/v4/access-requests") return jsonResponse(201, {
+      ok: true, status: "pending", access_request_id: "access-1",
+      approval_url: "https://cnothing.com/approve-proxy/access-1",
+    });
+    if (path === "/v4/access-requests/access-1") {
+      checks++;
+      return jsonResponse(200, checks === 1 ? {
+        ok: true, status: "pending", access_request_id: "access-1", waiting_for: "provider_connection",
+      } : { ok: true, type: "delegation", status: "approved", grant_id: "grant-1" });
+    }
+    if (path === "/v4/proxy") {
+      expect(JSON.parse(String(init?.body))).toEqual({ grant_id: "grant-1", method: "GET", url: "https://api.github.com/user" });
+      return jsonResponse(200, { ok: true, status: 200, body: { login: "alice" } });
+    }
+    return jsonResponse(404, {});
+  } });
+  expect(await agent.listGrants()).toMatchObject({ status: "enrollment_required", resume_tool: "list_grants" });
+  expect(await agent.listGrants()).toMatchObject({ next_action: "call_list_providers" });
+  expect(await agent.listProviders()).toMatchObject({ next_action: "call_request_access" });
+  expect(await agent.requestAccess({ provider: "github", reason: "Verify my GitHub account" })).toMatchObject({ access_request_id: "access-1" });
+  expect(await agent.getAccessStatus({ access_request_id: "access-1" })).toMatchObject({ status: "pending", retry_after_seconds: 5, next_action: "wait_for_user" });
+  const approved = await agent.getAccessStatus({ access_request_id: "access-1" });
+  expect(approved).toMatchObject({ next_action: "call_proxy_request", grant_id: "grant-1" });
+  expect(containsHostSecret(approved)).toBe(false);
+  expect(await agent.proxyRequest({ grant_id: "grant-1", method: "GET", url: "https://api.github.com/user" })).toMatchObject({ status: "ok", http_status: 200, body: { login: "alice" } });
+  expect(calls.filter((call) => call === "POST /v4/agent-enrollments")).toHaveLength(1);
+  expect(calls.filter((call) => call === "POST /v4/access-requests")).toHaveLength(1);
+});
+
+test("API errors retain actionable details instead of prompting blind retries", async () => {
+  const store = new MemoryCredentialStore();
+  await store.writeToken("agent_ready");
+  const agent = createCNothingAgent({ store, fetch: async () => jsonResponse(400, {
+    error: { message: "Missing hosts", details: { error_code: "missing_hosts" } },
+  }) });
+  expect(await agent.requestAccess({ provider: "custom", reason: "Read" })).toMatchObject({
+    ok: false, http_status: 400, error: { message: "Missing hosts", details: { error_code: "missing_hosts" } },
+  });
+});

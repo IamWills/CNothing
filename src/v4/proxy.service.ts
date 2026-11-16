@@ -6,6 +6,7 @@ import type { AgentRecord } from "./platform.entity";
 import type { OAuthConnectionRecord } from "./oauth.entity";
 import {
   findOAuthConnectionById,
+  listOAuthConnectionsForUser,
   findOAuthProviderById,
   findOAuthProviderByIssuer,
   findOAuthProviderBySlug,
@@ -262,7 +263,7 @@ export class ProxyService {
     const approvalUrl = `${approvalBase}/approve-proxy/${request.id}${userQuery}`;
     const message = pushedToDevices > 0
       ? "Approve the request from the CNothing iOS notification, or open this approval link."
-      : "Open this CNothing approval link, sign in, connect the requested provider if needed, and approve API access.";
+      : `Open this link. 1) Sign in to CNothing. 2) Click Connect ${provider.slug} if prompted and authorize its API. 3) Return here and click Approve. Signing in alone is not API authorization.`;
     const humanOnboarding = resolved.unresolved
       ? "The supplied user_id did not resolve to a CNothing user. Continue with this approval_url; the signed-in user can claim the request. Do not guess another account or create another request."
       : undefined;
@@ -298,9 +299,30 @@ export class ProxyService {
     if (!request || request.agent_id !== agent.id) {
       throw new NotFoundError("Access request not found");
     }
+    const pending = approvalIsPending(request);
+    const approvalBase = config.consoleUrl?.replace(/\/+$/, "") ?? config.publicBaseUrl.replace(/\/+$/, "");
+    const approvalUrl = `${approvalBase}/approve-proxy/${request.id}${request.user_hint ? `?user=${encodeURIComponent(request.user_hint)}` : ""}`;
+    const ownerId = request.principal.id || request.user_hint;
+    const connections = pending && ownerId && request.type !== "transaction"
+      ? await listOAuthConnectionsForUser(ownerId) : [];
+    const connected = connections.some((item) => item.provider_slug === request.provider_slug && item.status === "active");
+    const waitingFor = request.type === "transaction" ? "action_approval"
+      : !ownerId ? "sign_in_and_connect" : connected ? "access_approval" : "provider_connection";
     return {
       ok: true as const,
       ...toAccessRequestPublic(request),
+      ...(pending ? {
+        approval_url: approvalUrl,
+        waiting_for: waitingFor,
+        user_action: {
+          approval_url: approvalUrl,
+          message: waitingFor === "provider_connection"
+            ? `Open this link, connect ${request.provider_slug}, then approve this same request. Signing in to CNothing alone does not connect its API.`
+            : waitingFor === "sign_in_and_connect"
+              ? `Open this link, sign in to CNothing, connect ${request.provider_slug} if prompted, then approve. Keep this page open through the steps.`
+              : "Open this link and approve the pending request. No new access request is needed.",
+        },
+      } : {}),
       ...(request.status === "pending" && !approvalIsPending(request)
         ? { status: "expired" as const, next_action: "none" as const }
         : request.status === "pending"

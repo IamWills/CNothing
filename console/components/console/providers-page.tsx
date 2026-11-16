@@ -40,6 +40,16 @@ const emptyCreateForm = {
   supported_scopes: '["openid"]',
 };
 
+function parseScopeList(raw: string): string[] {
+  const value = raw.trim();
+  if (!value) return [];
+  const parsed: unknown = value.startsWith("[") ? JSON.parse(value) : value.split(/[\s,]+/);
+  if (!Array.isArray(parsed) || parsed.some((scope) => typeof scope !== "string")) {
+    throw new Error("Scopes must be a JSON array of strings or separated by spaces or commas.");
+  }
+  return [...new Set((parsed as string[]).map((scope) => scope.trim()).filter(Boolean))];
+}
+
 const registryBadgeClass: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-800",
   disabled: "bg-slate-200 text-slate-700",
@@ -63,7 +73,7 @@ export function ProvidersPage() {
     Record<string, { client_id: string; client_secret: string }>
   >({});
   const [metadataForms, setMetadataForms] = React.useState<
-    Record<string, { issuer: string; authorization_url: string; token_url: string }>
+    Record<string, { issuer: string; authorization_url: string; token_url: string; default_scopes: string }>
   >({});
   const [errorMessage, setErrorMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
@@ -101,6 +111,7 @@ export function ProvidersPage() {
               issuer: provider.issuer ?? "",
               authorization_url: provider.authorization_url ?? "",
               token_url: provider.token_url ?? "",
+              default_scopes: provider.default_scopes.join(" "),
             };
           }
         }
@@ -122,10 +133,6 @@ export function ProvidersPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const parseScopeList = (raw: string): string[] => {
-        const parsed = JSON.parse(raw) as unknown;
-        return Array.isArray(parsed) ? parsed.map(String) : [];
-      };
       const payload: Parameters<typeof createV4Provider>[1] = {
         slug: createForm.slug.trim(),
         display_name: createForm.display_name.trim(),
@@ -209,7 +216,9 @@ export function ProvidersPage() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const payload: Parameters<typeof updateV4Provider>[2] = {};
+      const payload: Parameters<typeof updateV4Provider>[2] = {
+        default_scopes: parseScopeList(form.default_scopes),
+      };
       if (form.issuer.trim()) payload.issuer = form.issuer.trim();
       if (form.authorization_url.trim()) payload.authorization_url = form.authorization_url.trim();
       if (form.token_url.trim()) payload.token_url = form.token_url.trim();
@@ -406,14 +415,19 @@ export function ProvidersPage() {
             />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="default-scopes">Default scopes (JSON array)</Label>
+            <Label htmlFor="default-scopes">Default scopes</Label>
             <Input
               id="default-scopes"
+              placeholder="tweet.read users.read offline.access"
               value={createForm.default_scopes}
               onChange={(event) =>
                 setCreateForm((prev) => ({ ...prev, default_scopes: event.target.value }))
               }
             />
+            <p className="text-xs text-slate-500">
+              Scopes requested when connecting. Separate with spaces or commas, or use a JSON array.
+              For X: tweet.read users.read offline.access.
+            </p>
           </div>
           <div className="md:col-span-2">
             <Button type="submit">Register provider</Button>
@@ -435,6 +449,7 @@ export function ProvidersPage() {
               issuer: selected.issuer ?? "",
               authorization_url: selected.authorization_url ?? "",
               token_url: selected.token_url ?? "",
+              default_scopes: selected.default_scopes.join(" "),
             }
           }
           onCredentialChange={(next) =>
@@ -463,9 +478,9 @@ export function ProvidersPage() {
 function ProviderDetail(props: {
   provider: V4OAuthProviderAdmin;
   credentialForm: { client_id: string; client_secret: string };
-  metadataForm: { issuer: string; authorization_url: string; token_url: string };
+  metadataForm: { issuer: string; authorization_url: string; token_url: string; default_scopes: string };
   onCredentialChange: (next: { client_id: string; client_secret: string }) => void;
-  onMetadataChange: (next: { issuer: string; authorization_url: string; token_url: string }) => void;
+  onMetadataChange: (next: { issuer: string; authorization_url: string; token_url: string; default_scopes: string }) => void;
   onSaveCredentials: () => void;
   onSaveMetadata: () => void;
   onReview: () => void;
@@ -594,6 +609,20 @@ function ProviderDetail(props: {
               props.onMetadataChange({ ...metadataForm, token_url: event.target.value })
             }
           />
+        </div>
+        <div className="space-y-2 md:col-span-3">
+          <Label htmlFor={`scopes-${provider.id}`}>Default scopes</Label>
+          <Input
+            id={`scopes-${provider.id}`}
+            value={metadataForm.default_scopes}
+            placeholder="tweet.read users.read offline.access"
+            onChange={(event) =>
+              props.onMetadataChange({ ...metadataForm, default_scopes: event.target.value })
+            }
+          />
+          <p className="text-xs text-slate-500">
+            Separate with spaces or commas, or use a JSON array. Reconnect after changing scopes.
+          </p>
         </div>
         <div className="flex items-end">
           <Button type="button" variant="outline" onClick={props.onSaveMetadata}>

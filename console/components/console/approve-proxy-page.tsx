@@ -173,6 +173,25 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
           : "Grant an agent connection-level API access. Tokens stay on CNothing and are never shown to the agent."
       }
     >
+      {request?.type !== "transaction" ? (
+        <Card className="mb-4 space-y-3 p-5">
+          <h3 className="font-semibold">Complete API access in this page</h3>
+          <ol className="list-inside list-decimal space-y-2 text-sm text-slate-700">
+            <li>{isLoggedIn ? "✓ Signed in to CNothing" : "Sign in to CNothing to identify who approves."}</li>
+            <li>
+              {matchingConnections.length > 0 ? "✓ API account connected" : `Connect ${request?.provider ?? "the requested provider"} and authorize its API.`}
+              {" "}This is separate from signing in, even when both use GitHub.
+            </li>
+            <li>{request?.status === "approved" ? "✓ Agent access approved" : "Review the request below and click Approve."}</li>
+          </ol>
+          <p className="text-sm text-slate-600">
+            After each redirect, continue on this same page. Your agent waits on the existing
+            request; you do not need to ask it to start again. This authorizes API calls, not a
+            browser session on the provider website.
+          </p>
+        </Card>
+      ) : null}
+
       {!authReady || loading ? (
         <Card className="mb-4 p-5 text-sm text-slate-600">Loading approval request…</Card>
       ) : null}
@@ -321,12 +340,12 @@ export function ApproveProxyPage({ accessRequestId }: { accessRequestId: string 
           <Card className="mb-4 space-y-4 border-rose-200 bg-rose-50/70 p-5">
             <div>
               <h3 className="font-semibold text-rose-950">
-                No active {request.provider} connection
+                Step 2: Connect {request.provider} API
               </h3>
               <p className="mt-2 text-sm text-rose-900/90">
-                Signing in to CNothing is not enough. You must also connect the{" "}
-                <strong>{request.provider}</strong> provider once so CNothing can inject tokens for
-                the agent. After connecting, return to this page to approve.
+                Your CNothing sign-in is complete. Click Connect {request.provider} below and
+                authorize the account you want the agent to use. You will return here for step 3:
+                review and approve this request. No need to restart the agent or create a new request.
               </p>
               {session?.userId ? (
                 <p className="mt-2 text-sm text-rose-900/90">

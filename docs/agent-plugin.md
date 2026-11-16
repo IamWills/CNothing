@@ -61,6 +61,27 @@ Required sequence:
 
 Do not send `Authorization` or `Cookie` inside `proxy_request`. CNothing injects the user's provider credential.
 
+## Resume without restarting authorization
+
+| Tool result | Next step |
+| --- | --- |
+| `enrollment_required` | Show the pairing link and code. After user approval, retry `resume_tool` with the original arguments. The host claims its token. Do not use the enrollment id with `get_access_status`. |
+| `pending` | Keep the access request id and approval link. Follow `waiting_for` and `user_action`; wait at least `retry_after_seconds`. If the user is unavailable, return the link and resume later. |
+| `approved` delegation | Call `proxy_request` with `grant_id`. No additional login or token exchange. |
+| `approved` transaction | Retry the original `proxy_request` with identical arguments, including its idempotency key. |
+| `denied` / `expired` | Stop. Do not silently create another request. |
+| `provider_review_required` | Show the operator setup link and wait for configuration; repeated access requests will not fix it. |
+
+GitHub example: after `request_access({"provider":"github","reason":"Read my GitHub profile"})`,
+the user opens the returned link, signs in to CNothing, clicks **Connect github** if prompted,
+then returns to the same page and clicks **Approve**. GitHub sign-in identifies the CNothing user;
+it does not automatically connect a GitHub API account. The agent checks the same request id,
+then verifies access with `proxy_request({"grant_id":"<returned grant_id>","method":"GET","url":"https://api.github.com/user"})`.
+A successful profile response proves API access; it does not establish a github.com browser session.
+
+Preserve structured error details. A provider API `403` may mean missing scope or organization
+permission; it is not an instruction to recreate CNothing enrollment or repeatedly ask for access.
+
 ## MCP 2026-07-28 hosted client
 
 If the plugin speaks hosted MCP `2026-07-28`, each request must include:

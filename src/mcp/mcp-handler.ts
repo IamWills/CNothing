@@ -1,3 +1,5 @@
+import { AppError } from "../utils/errors";
+import { guideToolResult } from "../../agenttools/core/src/tool-guidance";
 import config from "../config";
 import { requireAgentFromRequest } from "../v4/agent-auth";
 import { oauthProviderService } from "../v4/oauth-connection.service";
@@ -240,11 +242,18 @@ export async function processMcpRequest(
     return protocolError(id, -32001, "Authenticated agent required", enrollmentRequiredData());
   }
   try {
-    const value = sanitizeAgentResponse(await executeTool(name as McpToolName, objectArgs(params.arguments), agent));
+    const value = sanitizeAgentResponse(guideToolResult(name as McpToolName, await executeTool(name as McpToolName, objectArgs(params.arguments), agent)));
     const toolResult = callResult(value);
     return result(id, isModern ? modernResult(toolResult) : toolResult);
   } catch (error) {
-    const toolResult = callResult({ ok: false, status: "error", next_action: "inspect_error", error: { message: error instanceof Error ? error.message : "Tool failed" } }, true);
+    const toolResult = callResult(sanitizeAgentResponse({
+      ok: false, status: "error", next_action: "inspect_error",
+      ...(error instanceof AppError ? { http_status: error.statusCode } : {}),
+      error: {
+        message: error instanceof Error ? error.message : "Tool failed",
+        ...(error instanceof AppError && error.details ? { details: error.details } : {}),
+      },
+    }), true);
     return result(id, isModern ? modernResult(toolResult) : toolResult);
   }
 }

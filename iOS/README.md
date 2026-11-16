@@ -75,6 +75,38 @@ Devices 页可随时吊销设备。
 因此即使设备会话令牌泄露，没有手机上的私钥也无法完成任何审批。网页 Console
 的审批（浏览器会话）不受影响，仍按原有方式进行。
 
+## 批准前验证身份
+
+每次点击「批准」，App 都会通过系统 LocalAuthentication 验证设备所有者：
+优先使用 Face ID / Touch ID，并支持设备密码回退。没有生物识别时仍可使用设备密码；
+没有设置设备密码则阻止批准，并提示先在系统设置中配置。
+
+每次批准使用新的验证上下文，不复用上一笔批准的验证结果。验证成功后才获取
+challenge、使用现有设备密钥签名并提交批准。取消、系统中断或验证失败不会提交批准，
+请求保留待审批状态；重试需要重新验证。拒绝请求仍可直接操作。
+验证期间切换账号会中止批准；挑战、签名和提交始终绑定同一个账号。
+既有已配对账号不需要重新配对。这个验证是 App 内的提交门禁，服务端继续验证原有
+设备签名，不把签名本身当作已通过 Face ID 的远程证明。
+
+本地身份验证分支回归检查（在 `iOS/` 目录执行）：
+
+```bash
+swiftc cnothing/cnothing/ApprovalAuthentication.swift tests/ApprovalAuthenticationChecks.swift -o /tmp/cnothing-auth-checks
+/tmp/cnothing-auth-checks
+```
+
+使用替代 LAContext 验证成功、设备未保护、三种取消和返回 false 共六个分支；
+不触发真实生物识别，也不访问网络。
+
+真机验收（Face ID / Touch ID 无法由编译验证替代）：
+
+- 生物识别成功：只提交一次批准，Agent 收到 approved。
+- 选择系统设备密码并验证成功：正常批准。
+- 取消验证、验证失败、切到后台被系统取消：请求仍 pending，没有发送批准。
+- 连续批准两笔请求：两次都需要验证，等待期间不能重复点击。
+- 没有设置设备密码：阻止批准，仍可拒绝请求。
+- 验证期间切换账号：中止；返回后重新检查并批准。
+
 ## 服务端 APNs 配置
 
 推送需要 Apple Developer 的 APNs Auth Key（.p8）。在 keyservice 的环境变量中配置：

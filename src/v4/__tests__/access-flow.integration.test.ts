@@ -41,6 +41,29 @@ describeWithDb("v4 access request → grant lifecycle", () => {
     expect(result.approval_url).toContain(`/approve-proxy/${result.access_request_id}`);
   });
 
+  test("one GitHub request guides sign-in, connection and approval without restarting", async () => {
+    const { agent } = await givenAgent();
+    const provider = await givenProvider({ slug: "github", apiHosts: ["api.github.com"] });
+    const created = asPendingAccess(await proxyService.requestAccess({
+      agent, provider: "github", reason: "Read my GitHub profile", apiBaseUrl: API_BASE_URL,
+    }));
+    expect(await proxyService.getAccessStatus(created.access_request_id, agent)).toMatchObject({
+      status: "pending", waiting_for: "sign_in_and_connect", retry_after_seconds: 5,
+    });
+    await proxyService.getAccessRequestForApproval(created.access_request_id, USER_ID);
+    const connecting = await proxyService.getAccessStatus(created.access_request_id, agent);
+    expect(connecting).toMatchObject({ status: "pending", waiting_for: "provider_connection" });
+    expect(connecting.approval_url).toContain(created.access_request_id);
+    const connection = await givenConnection({ providerId: provider.id, userId: USER_ID });
+    expect(await proxyService.getAccessStatus(created.access_request_id, agent)).toMatchObject({
+      status: "pending", waiting_for: "access_approval",
+    });
+    await proxyService.approveAccess({ accessRequestId: created.access_request_id, userId: USER_ID, connectionId: connection.id });
+    expect(await proxyService.getAccessStatus(created.access_request_id, agent)).toMatchObject({
+      status: "approved", next_action: "call_proxy_request",
+    });
+  });
+
   test("existing OIDC email identities resolve without inventing provider prefixes", async () => {
     await ensureUser("alice@example.com");
     expect(await resolveAgentUserHint("Alice@example.com")).toEqual({ userId: "alice@example.com" });

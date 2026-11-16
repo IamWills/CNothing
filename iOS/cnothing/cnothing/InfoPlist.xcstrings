@@ -41,6 +41,23 @@
           }
         }
       }
+    },
+    "NSFaceIDUsageDescription" : {
+      "comment" : "Privacy - Face ID Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verify your identity before approving agent access or actions."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在批准 Agent 访问授权或具体操作前验证你的身份。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

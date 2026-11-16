@@ -285,7 +285,17 @@ final class APIClient: ObservableObject {
     }
 
     func approve(requestId: String, connectionId: String? = nil) async throws -> ApproveResponse {
-        let proof = try await signedChallenge(requestId: requestId, verdict: "approved")
+        // Verify before requesting a challenge: cancellation never submits an approval.
+        guard let account = activeAccount,
+              let token = AccountStore.shared.sessionToken(for: account.deviceId),
+              let base = URL(string: account.baseURL) else { throw APIError.notPaired }
+        try await ApprovalAuthentication.verify()
+        guard activeAccount?.deviceId == account.deviceId else {
+            throw ApprovalAuthentication.Failure.accountChanged
+        }
+        let proof = try await signedChallenge(
+            requestId: requestId, verdict: "approved", account: account, base: base, token: token
+        )
         var body: [String: Any] = [
             "challenge_id": proof.challengeId,
             "signature": proof.signature,
@@ -296,19 +306,28 @@ final class APIClient: ObservableObject {
         return try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/approve",
-            body: body
+            body: body,
+            baseURLOverride: base,
+            sessionTokenOverride: token
         )
     }
 
     func deny(requestId: String) async throws {
-        let proof = try await signedChallenge(requestId: requestId, verdict: "denied")
+        guard let account = activeAccount,
+              let token = AccountStore.shared.sessionToken(for: account.deviceId),
+              let base = URL(string: account.baseURL) else { throw APIError.notPaired }
+        let proof = try await signedChallenge(
+            requestId: requestId, verdict: "denied", account: account, base: base, token: token
+        )
         let _: SimpleOkResponse = try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/deny",
             body: [
                 "challenge_id": proof.challengeId,
                 "signature": proof.signature,
-            ]
+            ],
+            baseURLOverride: base,
+            sessionTokenOverride: token
         )
     }
 
@@ -354,13 +373,17 @@ final class APIClient: ObservableObject {
 
     private func signedChallenge(
         requestId: String,
-        verdict: String
+        verdict: String,
+        account: PairedAccount,
+        base: URL,
+        token: String
     ) async throws -> (challengeId: String, signature: String) {
-        guard let account = activeAccount else { throw APIError.notPaired }
         let challenge: ApprovalChallengeResponse = try await request(
             method: "POST",
             path: "/v4/access-requests/\(requestId)/challenge",
-            body: [:]
+            body: [:],
+            baseURLOverride: base,
+            sessionTokenOverride: token
         )
         let payload =
             "cnothing-approval.v1.\(challenge.challenge_id).\(challenge.nonce).\(requestId).\(verdict)"

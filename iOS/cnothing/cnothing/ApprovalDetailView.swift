@@ -15,6 +15,7 @@ struct ApprovalDetailView: View {
     @State private var errorMessage = ""
     @State private var resultIsApproval = true
     @State private var resultMessage = ""
+    @State private var verificationMessage = ""
 
     private var matchingConnections: [OAuthConnection] {
         guard let detail else { return connections }
@@ -76,6 +77,16 @@ struct ApprovalDetailView: View {
                 }
             }
 
+            if detail?.status == "pending" {
+                Section {
+                    Label("Approval requires Face ID, Touch ID, or your device passcode.", systemImage: "lock.shield")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !verificationMessage.isEmpty {
+                Section { Text(verificationMessage).font(.footnote).foregroundStyle(.secondary) }
+            }
             if !resultMessage.isEmpty {
                 Section { Text(resultMessage).foregroundStyle(resultIsApproval ? Color.green : Color.red).font(.footnote) }
             }
@@ -164,7 +175,9 @@ struct ApprovalDetailView: View {
     }
 
     private func decide(approve: Bool) async {
+        guard !isWorking, !isLoading, detail?.status == "pending", resultMessage.isEmpty else { return }
         errorMessage = ""
+        verificationMessage = ""
         isWorking = true
         defer { isWorking = false }
         do {
@@ -190,6 +203,8 @@ struct ApprovalDetailView: View {
             onDecided?()
             try? await Task.sleep(for: .seconds(1))
             dismiss()
+        } catch let error as ApprovalAuthentication.Failure {
+            verificationMessage = error.localizedDescription
         } catch {
             // Approval may fail due to TLS; reset so the next tap gets a fresh session.
             api.resetNetworkSession()

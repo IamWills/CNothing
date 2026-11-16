@@ -44,7 +44,7 @@ export const AGENT_TOOLS: readonly AgentToolDefinition[] = [
     name: "request_access",
     title: "Request user-approved API access",
     description:
-      "Request API access, not a website browser login. Normally pass only provider and reason. When the user supplies a known login account, pass user_id as provider:account, for example google:createn@gmail.com, to route phone approval. CNothing IDs and share codes also work; omit when unknown. Create one request and keep its access_request_id; do not re-request to enable push. Relay the returned user_action.message and exact approval_url unchanged, then call get_access_status at retry_after_seconds.",
+      "Request API access, not a website browser login. Normally pass only provider and reason. For GitHub use provider=github; do not call GitHub OAuth endpoints or ask for tokens. CNothing sign-in, connecting GitHub, and approving this request are separate user steps on the returned link. When the user supplies a known login account, pass user_id as provider:account, for example google:createn@gmail.com, to route phone approval. CNothing IDs and share codes also work; omit when unknown. Create one request and keep its access_request_id; do not re-request to enable push. Relay the returned user_action.message and exact approval_url unchanged, then call get_access_status at retry_after_seconds.",
     parameters: {
       provider: {
         type: "string",
@@ -83,7 +83,7 @@ export const AGENT_TOOLS: readonly AgentToolDefinition[] = [
     name: "get_access_status",
     title: "Check an access request",
     description:
-      "Check a previously created access request. While pending, wait retry_after_seconds before calling again. When approved, save grant_id and continue with proxy_request. When denied or expired, stop and explain the status to the user.",
+      "Check a previously created access request, never an enrollment id. Pending is expected while the user signs in, connects the provider, or approves; follow waiting_for and user_action. While pending, wait retry_after_seconds before calling again. Do not busy-loop: if the user is unavailable, share the link and resume this same request later. When approved, save grant_id and continue with proxy_request (GitHub account check: GET https://api.github.com/user). For a transaction approval retry the original proxy_request with identical arguments. When denied or expired, stop and explain the status to the user.",
     parameters: {
       access_request_id: { type: "string", required: true, description: "Access request id from request_access." },
     },
@@ -111,6 +111,21 @@ export const AGENT_TOOLS: readonly AgentToolDefinition[] = [
   },
 ] as const;
 
+const RECOVERY_GUIDE = `
+
+Authorization state guide (applies to every tool):
+- enrollment_required: first pair this Agent runtime. Show user_action.approval_url and code. After approval retry the ORIGINAL tool with the same arguments; the host claims its token. This is not a provider access_request_id.
+- pending: show the existing approval_url. The user signs in to CNothing, connects the requested API provider if needed, then explicitly approves. GitHub sign-in alone is not a GitHub API connection. Do not create another request or drive OAuth endpoints yourself.
+- approved: use grant_id with proxy_request. To verify GitHub access use {"grant_id":"<returned grant_id>","method":"GET","url":"https://api.github.com/user"}. A successful API response completes API authorization, not a github.com browser session.
+- transaction approved: retry the exact original proxy_request, retaining its idempotency_key.
+- denied / expired: stop; do not automatically recreate requests.
+- provider_review_required: operator setup is required. Show console_url and stop polling/retrying until the operator confirms setup.
+- HTTP 401/403: inspect the error code and details. Distinguish CNothing Agent authentication from the upstream provider response; do not repeatedly re-enroll or re-request access for an upstream scope, organization, or permission error.
+Wait retry_after_seconds between checks. If user action cannot happen now, report the link and request id and resume later rather than consuming many tool calls.
+`;
+
+export const AGENT_RECOVERY_GUIDE = RECOVERY_GUIDE;
+
 export const AGENT_WORKFLOW = `# CNothing v4 agent workflow
 
 Scope: API authorization only. CNothing does not establish browser sessions on arbitrary websites, even if they offer Google/OAuth sign-in. For website login, use the target website browser flow with user participation. Use a user-supplied provider:account as user_id for phone approval routing. Do not invent accounts or use a website URL as an OAuth issuer without verified metadata.
@@ -125,7 +140,7 @@ Host plugin (not the model): if no agent token is configured, POST /v4/agent-enr
 6. Call \`proxy_request\` with the returned \`grant_id\` and an HTTPS URL on an allowed host.
 7. If \`proxy_request\` returns \`status: approval_required\`, relay the exact \`approval_url\`, poll \`get_access_status\`, then retry the same \`proxy_request\`. Do not invent a new execute tool.
 
-The user performs browser sign-in, provider connection, agent pairing, and approval. CNothing keeps OAuth credentials inside its encrypted vault and injects them only at the proxy boundary.`;
+The user performs browser sign-in, provider connection, agent pairing, and approval. CNothing keeps OAuth credentials inside its encrypted vault and injects them only at the proxy boundary.${RECOVERY_GUIDE}`;
 
 export const AGENT_INSTRUCTIONS = `CNothing lets an authenticated agent call a user-approved third-party API without receiving the user's credentials. It does not log a browser into arbitrary websites that offer OAuth/Google sign-in. For website login, use that website's browser flow with user participation. A known provider:account (e.g. google:createn@gmail.com) can be passed as user_id to route approval to the paired phone.
 
@@ -133,4 +148,4 @@ The host plugin must already hold an agent token, or it must complete POST /v4/a
 
 Start with list_grants and reuse an active grant for the required provider when possible. If there is no active grant, call list_providers, then request_access with only provider and reason by default. user_id accepts a user-supplied provider:account, CNothing ID, or share code for phone approval routing; the identity provider can differ from the requested API provider. Keep the same access_request_id; never repeat request_access just for push. Relay user_action.message and the exact approval_url unchanged. If pushed_to_devices is greater than zero, also tell the user to check the CNothing iOS notification. Poll get_access_status no faster than retry_after_seconds. After approval, use proxy_request for API calls. If proxy_request returns status approval_required, relay that approval_url, poll, then retry the same proxy_request.
 
-The user completes sign-in, provider connection, agent pairing, and approval in CNothing.`;
+The user completes sign-in, provider connection, agent pairing, and approval in CNothing.${RECOVERY_GUIDE}`;

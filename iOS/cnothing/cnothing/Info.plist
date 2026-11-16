@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Verify your identity before approving agent access or actions.</string>
     <key>CFBundleURLTypes</key>
     <array><dict><key>CFBundleURLName</key><string>com.molobaya.app.cnothing.login</string>
     <key>CFBundleURLSchemes</key><array><string>cnothing</string></array></dict></array>

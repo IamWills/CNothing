@@ -1,6 +1,7 @@
+import { guideToolResult } from "./tool-guidance";
 import { FileCredentialStore } from "./file-store";
 import { asObject, asString } from "./json";
-import { assertModelSafe, userVisibleEnrollment } from "./redaction";
+import { assertModelSafe, containsHostSecret, userVisibleEnrollment } from "./redaction";
 import type {
   AgentError,
   AgentOptions,
@@ -35,6 +36,12 @@ function sanitizeProxyHeaders(headers: Record<string, string> | undefined): Reco
     out[key] = value;
   }
   return out;
+}
+
+class ApiError extends Error {
+  constructor(message: string, readonly httpStatus: number, readonly details: JsonObject) {
+    super(message);
+  }
 }
 
 type Session = { token: string } | { enrollment: EnrollmentRequired };
@@ -85,12 +92,19 @@ export class CNothingAgent {
   async invoke(name: AgentToolName, args: Record<string, unknown> = {}): Promise<ToolResult> {
     try {
       const session = await this.session();
-      if ("enrollment" in session) return session.enrollment;
-      const data = await this.callTool(session.token, name, args);
+      if ("enrollment" in session) return {
+        ...session.enrollment,
+        resume_tool: name,
+        instruction: `This is runtime pairing, not provider access. Share the pairing link. After the user approves, retry ${name} with the same arguments; the host will claim its credential automatically. Do not call get_access_status with the enrollment id.`,
+      };
+      const data = guideToolResult(name, await this.callTool(session.token, name, args));
       assertModelSafe(data);
       return data;
     } catch (error) {
-      return agentError(error instanceof Error ? error.message : "Tool failed");
+      const result = error instanceof ApiError
+        ? { ...agentError(error.message), http_status: error.httpStatus, error: { message: error.message, details: error.details } }
+        : agentError(error instanceof Error ? error.message : "Tool failed");
+      return containsHostSecret(result) ? agentError("Tool failed; sensitive error details were withheld") : result;
     }
   }
 
@@ -194,8 +208,9 @@ export class CNothingAgent {
     const record = asObject(data);
     if (!response.ok) {
       const error = asObject(record.error);
-      throw new Error(
+      throw new ApiError(
         typeof error.message === "string" ? error.message : `CNothing API returned HTTP ${response.status}`,
+        response.status, asObject(error.details),
       );
     }
     return record;

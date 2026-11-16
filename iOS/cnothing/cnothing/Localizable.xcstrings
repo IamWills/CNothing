@@ -1042,6 +1042,66 @@
           }
         }
       }
+    },
+    "Set a device passcode in Settings to approve requests securely." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在系统设置中设置设备密码，再安全批准请求。"
+          }
+        }
+      }
+    },
+    "Verification cancelled. This request has not been approved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消身份验证，此请求尚未批准。"
+          }
+        }
+      }
+    },
+    "Verification failed. This request has not been approved. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身份验证失败，此请求尚未批准，请重试。"
+          }
+        }
+      }
+    },
+    "The active account changed. Review the request again before approving." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前账户已切换，请重新检查请求后再批准。"
+          }
+        }
+      }
+    },
+    "Verify your identity to approve this agent request." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证身份以批准此次 Agent 请求。"
+          }
+        }
+      }
+    },
+    "Approval requires Face ID, Touch ID, or your device passcode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准前需通过面容 ID、触控 ID 或设备密码验证。"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"
